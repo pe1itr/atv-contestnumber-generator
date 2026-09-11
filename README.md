@@ -22,7 +22,7 @@ Beide versies hebben dezelfde invoer, resoluties, coderegels, bandkeuzes en beel
 
 **File → Quit** sluit het programma af.
 
-**Info → Over dit programma** toont het doel, uitleg over het gebruik, de auteur, het versienummer en de compilatiedatum. De huidige versie is **1.1.0**. Versie en auteur staan centraal in `src/app_info.h`; de datum wordt tijdens compilatie vastgelegd en is niet de datum waarop je het programma start.
+**Info → Over dit programma** toont het doel, uitleg over het gebruik, de auteur, het versienummer en de compilatiedatum. De huidige versie is **1.2.0**. Versie en auteur staan centraal in `src/app_info.h`; de datum wordt tijdens compilatie vastgelegd en is niet de datum waarop je het programma start.
 
 ## Gebruik: Contest
 
