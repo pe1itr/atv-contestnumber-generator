@@ -34,7 +34,7 @@ Kies bovenaan bij **Beeldtype** voor **Contest** (standaard).
 
 Een `/` in een roepnaam wordt uitsluitend in de bestandsnaam vervangen door `_`. Op het beeld blijft de slash staan. De uitvoer is witte, vetgedrukte tekst op zwart: roepnaam bovenaan, de vier cijfers groot in het midden en de optionele locator eronder. **De gekozen band staat altijd rechtsonder**, ook zonder locator. Met **Inverse (zwart op wit)** worden alle letters, inclusief de band, zwart op een witte achtergrond. Het voorbeeld past zich direct aan. Inverse bestanden krijgen het achtervoegsel `-inverse`, bijvoorbeeld `PE1ITR-1957-436MHz-1920x1440-inverse.jpg`, zodat beide versies naast elkaar kunnen bestaan. Met **Cijfersom in beeld** verschijnt linksonder `de som is 22` bij code `1957` (1 + 9 + 5 + 7). Deze optie staat standaard uit en werkt ook zonder locator. Bij een onvolledige of ongeldige code blijft de som in het voorbeeld verborgen. De band en de som gebruiken dezelfde lettergrootte: 6% van de beeldhoogte. Op de kleinste resoluties wordt de beschikbare regelhoogte benut voor leesbaarheid. De bestandsnaam blijft bij deze optie hetzelfde; bij opnieuw opslaan vraagt het programma of het bestaande bestand vervangen mag worden. Met **Code rechtsboven (DATV)** verschijnt dezelfde viercijferige code ook klein rechtsboven, zodat die zichtbaar blijft wanneer alleen de bovenkant van het beeld wordt ontvangen. De optie staat standaard uit en volgt de inverse-instelling. De kleine code gebruikt dezelfde lettergrootte als band en som. De roepnaam krijgt bij deze optie ruimte onder de extra regel om overlap te voorkomen. Voorloopnullen blijven behouden; bij een ongeldige of onvolledige code blijft de extra code verborgen. De bestandsnaam verandert niet door deze optie. De letters schalen met de resolutie en worden bij lange tekst passend gemaakt.
 
-Automatische codes volgen het meegeleverde PHP-voorbeeld: eerste cijfer 1–9, vier verschillende cijfers, en geen naast elkaar staande cijfers die precies één verschillen. Handmatig ingevoerde codes hoeven alleen uit vier cijfers te bestaan. De generator bewaart geen codehistorie; een code kan bij een latere generatie opnieuw voorkomen.
+Automatische codes volgen deze regels: eerste cijfer 1–9, vier verschillende cijfers, en geen naast elkaar staande cijfers die precies één verschillen. Handmatig ingevoerde codes hoeven alleen uit vier cijfers te bestaan. De generator bewaart geen codehistorie; een code kan bij een latere generatie opnieuw voorkomen.
 
 | 4:3 | 16:9 |
 | --- | --- |
@@ -64,7 +64,7 @@ De roepnaam staat in het bovenste zwarte vlak en de locator in het onderste. Een
 
 Contestcode, automatische nummerkeuze, band, inverse, cijfersom, extra DATV-code en het locatorvinkje zijn in deze modus uitgeschakeld. De locator wordt altijd getoond. Bij terugschakelen naar Contest zijn je eerdere instellingen weer beschikbaar.
 
-De originele bestanden uit `temp/pm5544.jpg` en `temp/pm5544w.jpg` zijn als buildbronnen gekopieerd naar `assets/`. Het 720×576-beeld wordt naar de gekozen 4:3-resolutie geschaald; het 1280×720-beeld naar de gekozen 16:9-resolutie. De bronpixels worden tijdens het bouwen verliesloos als RGB-runs ingebouwd. **Geen losse testbeelden, fontbestanden of Python nodig bij het gebruiken van het programma.** Verspreid alleen het programma voor het gewenste platform (Linux gebruikt wel de eerder genoemde systeembibliotheken).
+De PM5544-bronbeelden staan in `assets/pm5544.jpg` en `assets/pm5544w.jpg`. Het 720×576-beeld wordt naar de gekozen 4:3-resolutie geschaald; het 1280×720-beeld naar de gekozen 16:9-resolutie. De bronpixels worden tijdens het bouwen verliesloos als RGB-runs ingebouwd. **Geen losse testbeelden, fontbestanden of Python nodig bij het gebruiken van het programma.** Verspreid alleen het programma voor het gewenste platform (Linux gebruikt wel de eerder genoemde systeembibliotheken).
 
 ## Bouwen
 
@@ -72,38 +72,12 @@ Op Linux met een C-compiler, MinGW-w64, `pkg-config`, Python 3 met Pillow en de 
 
 ```sh
 make
-make test-linux
 ```
 
-`make` bouwt zowel `dist/atv-contestnummer` als `dist/atv-contestnummer.exe`. `make linux` en `make windows` zijn beschikbaar voor gerichte tussentijdse builds; lever bij afronding altijd beide bestanden. `make test-linux` draait de gedeelde tests, genereert 360 Linux-JPG's (320 contestvarianten en 40 PM5544-varianten) en controleert die met Python/Pillow. Op Fedora zijn de ontwikkelpakketten onder meer `gcc`, `make`, `pkgconf-pkg-config`, `gtk3-devel` en `mingw64-gcc`; op Debian/Ubuntu `build-essential`, `pkg-config`, `libgtk-3-dev` en `gcc-mingw-w64-x86-64`.
+`make` bouwt zowel `dist/atv-contestnummer` als `dist/atv-contestnummer.exe`. `make linux` en `make windows` zijn beschikbaar voor gerichte tussentijdse builds; lever bij afronding altijd beide bestanden. Op Fedora zijn de ontwikkelpakketten onder meer `gcc`, `make`, `pkgconf-pkg-config`, `gtk3-devel` en `mingw64-gcc`; op Debian/Ubuntu `build-essential`, `pkg-config`, `libgtk-3-dev` en `gcc-mingw-w64-x86-64`.
 
 Op Windows met MinGW-w64 (`gcc` en `windres` in `PATH`) en Python 3 met Pillow (`python` in `PATH`): `build-windows.bat` bouwt alleen de Windows-versie. Gebruik voor de volledige levering daarnaast `make` in een Linux-omgeving, bijvoorbeeld WSL met bovengenoemde afhankelijkheden. Alle dynamische imports van de Windows-exe zijn Windows-systeembibliotheken.
 
 De JPG-encoder gebruikt [Windows Imaging Component](https://learn.microsoft.com/en-us/windows/win32/wic/-wic-creating-encoder) met kwaliteit 98%. Het programma schrijft eerst een tijdelijk bestand in de uitvoermap en vervangt het doelbestand pas na geslaagde compressie.
 
 Linux gebruikt GdkPixbuf voor JPG-compressie, eveneens met kwaliteit 98%, en schrijft ook eerst naar een tijdelijk bestand voordat de definitieve naam wordt geplaatst.
-
-## Controle van beeldbestanden
-
-`make test` controleert invoervalidatie, veilige roepnaambestandsnamen, beeldverhoudingen en de automatische coderegels. Ook controleert deze test dat PM5544-tekst, inclusief lange roepnamen, binnen de zwarte vlakken blijft. Voor een integratietest kan de Windows-exe zonder hoofdvenster 360 JPG's maken (alle resoluties, met en zonder locator, normaal en inverse, met en zonder cijfersom en extra code rechtsboven, plus beide PM5544-testbeelden met en zonder tekst) en 1000 willekeurige codes controleren:
-
-```bat
-mkdir C:\atv-test
-dist\atv-contestnummer.exe --smoke-test C:\atv-test
-```
-
-Gebruik voor deze interne testoptie een bestaand pad zonder spaties. Met Python en Pillow controleer je vervolgens afmetingen, zwart-wituitvoer, tekstposities en de band rechtsonder:
-
-```sh
-python3 tests/check_images.py /pad/naar/atv-test
-```
-
-`temp/create_contestcode.php` is het oorspronkelijke referentievoorbeeld en is niet nodig voor de toepassing.
-
-De bedieningstest controleert dat een automatische code direct zichtbaar is, dat Nieuw nummer een andere code oplevert, en dat export de zichtbare code behoudt. Ook controleert deze test lage resoluties in bestandsnamen en schakelen tussen Contest en PM5544 en het opslaan zonder contestcode. Deze test heeft toegang tot een grafische sessie nodig, maar toont geen hoofdvenster:
-
-```sh
-make test-ui-linux
-make build/test_windows_ui.exe
-wine build/test_windows_ui.exe
-```
