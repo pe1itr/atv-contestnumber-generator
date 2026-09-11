@@ -9,16 +9,21 @@
 #include <commdlg.h>
 #include <wincodec.h>
 #include <bcrypt.h>
+#include <shellapi.h>
 #include <stdio.h>
 #include <wchar.h>
 #include "resource.h"
 #include "core.h"
 #include "app_info.h"
 #include "pm5544.h"
+#include "datv.h"
 
 static IWICImagingFactory *factory;
 static int ready;
 static wchar_t contest_square[7];
+static DatvSettings ts_settings;
+static DatvUdpSettings udp_settings;
+static int genius_level=1;
 
 static void read_text(HWND window, int id, wchar_t *text, int capacity) {
     GetDlgItemTextW(window, id, text, capacity);
@@ -228,6 +233,220 @@ cleanup:
 static void error(HWND window, const wchar_t *message) {
     MessageBoxW(window, message, L"ATV contestnummer", MB_OK | MB_ICONERROR);
 }
+static void ts_error(HWND window, const char *message) {
+    wchar_t text[256]; MultiByteToWideChar(CP_UTF8,0,message,-1,text,256); error(window,text);
+}
+typedef struct {
+    HBITMAP bitmap;
+    Resolution size;
+    char call[25];
+    DatvStream *stream;
+} UdpDialog;
+static void udp_status_message(HWND window,const char *message) {
+    wchar_t text[512]; MultiByteToWideChar(CP_UTF8,0,message,-1,text,512);
+    SetDlgItemTextW(window,IDC_UDP_STATUS,text);
+}
+static void udp_poll(HWND window,UdpDialog *d) {
+    if (!d->stream) return;
+    DatvUdpStatus status; datv_udp_status(d->stream,&status);
+    char text[512]; datv_udp_status_text(udp_settings,status,text,sizeof(text));
+    udp_status_message(window,text);
+    BOOL busy=status.state==DATV_PREPARING || status.state==DATV_RUNNING;
+    const int fields[]={IDC_UDP_IP,IDC_UDP_PORT,IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP,IDC_UDP_START};
+    for (int i=0;i<6;++i) EnableWindow(GetDlgItem(window,fields[i]),!busy);
+    EnableWindow(GetDlgItem(window,IDC_UDP_STOP),busy);
+}
+static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp) {
+    UdpDialog *d=(UdpDialog *)GetWindowLongPtrW(window,DWLP_USER);
+    if (message==WM_INITDIALOG) {
+        d=(UdpDialog *)lp; SetWindowLongPtrW(window,DWLP_USER,lp);
+        SetDlgItemTextA(window,IDC_UDP_IP,udp_settings.ip);
+        SendDlgItemMessageW(window,IDC_UDP_IP,EM_SETLIMITTEXT,15,0);
+        SetDlgItemInt(window,IDC_UDP_PORT,udp_settings.port,FALSE);
+        SetDlgItemInt(window,IDC_UDP_BITRATE,udp_settings.video.bitrate,FALSE);
+        SetDlgItemInt(window,IDC_UDP_FPS,udp_settings.video.fps,FALSE);
+        SetDlgItemInt(window,IDC_UDP_GOP,udp_settings.video.gop,FALSE);
+        EnableWindow(GetDlgItem(window,IDC_UDP_STOP),FALSE);
+        if (!SetTimer(window,1,200,NULL)) { EndDialog(window,0); return TRUE; }
+        return TRUE;
+    }
+    if (message==WM_TIMER) { udp_poll(window,d); return TRUE; }
+    if (message==WM_CLOSE || (message==WM_COMMAND && LOWORD(wp)==IDCANCEL)) {
+        KillTimer(window,1); datv_udp_destroy(d->stream); d->stream=NULL;
+        EndDialog(window,0); return TRUE;
+    }
+    if (message==WM_COMMAND && LOWORD(wp)==IDC_UDP_STOP) {
+        datv_udp_stop(d->stream); return TRUE;
+    }
+    if (message==WM_COMMAND && LOWORD(wp)==IDC_UDP_START) {
+        if (d->stream) {
+            DatvUdpStatus status; datv_udp_status(d->stream,&status);
+            if (status.state==DATV_PREPARING || status.state==DATV_RUNNING) return TRUE;
+            datv_udp_destroy(d->stream); d->stream=NULL;
+        }
+        DatvUdpSettings s=udp_settings;
+        GetDlgItemTextA(window,IDC_UDP_IP,s.ip,sizeof(s.ip));
+        char text[3][32]; const char *values[4];
+        int fields[]={IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP};
+        for (int i=0;i<3;++i) GetDlgItemTextA(window,fields[i],text[i],32);
+        values[0]=text[0]; values[1]="10"; values[2]=text[1]; values[3]=text[2];
+        int w,h; BOOL valid=FALSE;
+        s.port=(int)GetDlgItemInt(window,IDC_UDP_PORT,&valid,FALSE);
+        if (!valid || !datv_test_options(4,values,&s.video,&w,&h)) {
+            udp_status_message(window,"Gebruik poort 1-65535, bitrate 48000-2000000 bit/s, 1-25 beelden/s en GOP 1-250."); return TRUE;
+        }
+        const char *error=datv_udp_validate(s,d->size.width,d->size.height);
+        if (error) { udp_status_message(window,error); return TRUE; }
+        DIBSECTION dib={0};
+        if (GetObjectW(d->bitmap,sizeof(dib),&dib)!=sizeof(dib) || !dib.dsBm.bmBits) {
+            udp_status_message(window,"Kan het beeld niet lezen."); return TRUE;
+        }
+        datv_udp_destroy(d->stream);
+        char detail[256];
+        d->stream=datv_udp_start(dib.dsBm.bmBits,d->size.width,d->size.height,dib.dsBm.bmWidthBytes,d->call,s,detail);
+        if (!d->stream) udp_status_message(window,detail);
+        else { udp_settings=s; udp_poll(window,d); }
+        return TRUE;
+    }
+    return FALSE;
+}
+static void output_udp(HWND window) {
+    if (genius_level!=2) return;
+    wchar_t call[25],locator[LOCATOR_MAX_LENGTH+1],code[5];
+    read_text(window,IDC_CALL,call,25); read_text(window,IDC_LOCATOR,locator,LOCATOR_MAX_LENGTH+1); read_text(window,IDC_CODE,code,5);
+    BOOL pm=pm_mode(window), show=pm||IsDlgButtonChecked(window,IDC_SHOW_LOCATOR)==BST_CHECKED;
+    if (!valid_call(call) || ((show||locator[0])&&!valid_locator(locator)) || (!pm&&!valid_code(code))) {
+        error(window,L"Vul eerst een geldige roepnaam, locator en contestcode in."); return;
+    }
+    UdpDialog d={0}; d.size=resolution(window);
+    const char *invalid=datv_validate(udp_settings.video,d.size.width,d.size.height);
+    if (invalid) { ts_error(window,invalid); return; }
+    int band=(int)SendDlgItemMessageW(window,IDC_BAND,CB_GETCURSEL,0,0);
+    if (band<0 || band>10) return;
+    WideCharToMultiByte(CP_UTF8,0,call,-1,d.call,sizeof(d.call),NULL,NULL);
+    d.bitmap=pm?render_pm(d.size,call,locator):render(d.size.width,d.size.height,call,code,locator,show,bands[band],
+        IsDlgButtonChecked(window,IDC_INVERSE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_SHOW_SUM)==BST_CHECKED,
+        IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_BLUE_YELLOW)==BST_CHECKED);
+    if (!d.bitmap) { error(window,L"Kan het beeld niet maken."); return; }
+    HINSTANCE instance=(HINSTANCE)GetWindowLongPtrW(window,GWLP_HINSTANCE);
+    if (DialogBoxParamW(instance,MAKEINTRESOURCEW(IDD_UDP),window,udp_dialog,(LPARAM)&d)==-1)
+        error(window,L"Kan het UDP-venster niet openen.");
+    datv_udp_destroy(d.stream); DeleteObject(d.bitmap);
+}
+typedef struct {
+    HBITMAP bitmap;
+    wchar_t path[MAX_PATH];
+    char call[25], error[256];
+    DatvSettings settings;
+    DatvResult result;
+    BOOL overwrite;
+    HANDLE thread;
+    int ok;
+} TsJob;
+static DWORD WINAPI ts_worker(LPVOID data) {
+    TsJob *job=data;
+    wchar_t directory[MAX_PATH],temporary[MAX_PATH];
+    DWORD path_length=GetFullPathNameW(job->path,MAX_PATH,directory,NULL);
+    if (!path_length || path_length>=MAX_PATH) goto failure;
+    wchar_t *last=wcsrchr(directory,L'\\');
+    if (!last) goto failure;
+    last[1]=0;
+    if (!GetTempFileNameW(directory,L"atv",0,temporary)) goto failure;
+    FILE *file=_wfopen(temporary,L"wb");
+    DIBSECTION dib={0};
+    int ok=file && GetObjectW(job->bitmap,sizeof(dib),&dib)==sizeof(dib) && dib.dsBm.bmBits &&
+        datv_write(file,dib.dsBm.bmBits,dib.dsBm.bmWidth,dib.dsBm.bmHeight,dib.dsBm.bmWidthBytes,
+            job->call,job->settings,&job->result,job->error);
+    if (file && fclose(file)!=0) ok=0;
+    if (ok && !MoveFileExW(temporary,job->path,MOVEFILE_WRITE_THROUGH|(job->overwrite?MOVEFILE_REPLACE_EXISTING:0))) ok=0;
+    DeleteFileW(temporary);
+    if (ok) { job->ok=1; return 0; }
+failure:
+    if (!job->error[0]) strcpy(job->error,"TS opslaan is mislukt. Controleer pad, vrije ruimte en schrijfrechten.");
+    return 1;
+}
+static INT_PTR CALLBACK ts_progress(HWND window, UINT message, WPARAM wp, LPARAM lp) {
+    (void)wp;
+    TsJob *job=(TsJob *)GetWindowLongPtrW(window,DWLP_USER);
+    if (message==WM_INITDIALOG) {
+        job=(TsJob *)lp; SetWindowLongPtrW(window,DWLP_USER,lp);
+        job->thread=CreateThread(NULL,0,ts_worker,job,0,NULL);
+        if (!job->thread) { strcpy(job->error,"Kan de TS-exporttaak niet starten."); EndDialog(window,0); }
+        else if (!SetTimer(window,1,100,NULL)) {
+            WaitForSingleObject(job->thread,INFINITE); CloseHandle(job->thread); EndDialog(window,job->ok);
+        }
+        return TRUE;
+    }
+    if (message==WM_TIMER && job && WaitForSingleObject(job->thread,0)==WAIT_OBJECT_0) {
+        KillTimer(window,1); CloseHandle(job->thread); EndDialog(window,job->ok); return TRUE;
+    }
+    if (message==WM_CLOSE || message==WM_COMMAND) return TRUE;
+    return FALSE;
+}
+static INT_PTR CALLBACK ts_options(HWND window, UINT message, WPARAM wp, LPARAM lp) {
+    (void)lp;
+    if (message==WM_INITDIALOG) {
+        SetDlgItemInt(window,IDC_TS_BITRATE,ts_settings.bitrate,FALSE);
+        SetDlgItemInt(window,IDC_TS_SECONDS,ts_settings.seconds,FALSE);
+        SetDlgItemInt(window,IDC_TS_FPS,ts_settings.fps,FALSE);
+        SetDlgItemInt(window,IDC_TS_GOP,ts_settings.gop,FALSE);
+        return TRUE;
+    }
+    if (message==WM_COMMAND && LOWORD(wp)==IDOK) {
+        const int ids[]={IDC_TS_BITRATE,IDC_TS_SECONDS,IDC_TS_FPS,IDC_TS_GOP};
+        char text[4][32]; const char *values[4];
+        for (int i=0; i<4; ++i) { GetDlgItemTextA(window,ids[i],text[i],32); values[i]=text[i]; }
+        DatvSettings s; int w,h;
+        if (!datv_test_options(4,values,&s,&w,&h)) {
+            error(window,L"Gebruik bitrate 48000-2000000 bit/s, duur 1-60 s, 1-25 beelden/s en GOP 1-250."); return TRUE;
+        }
+        ts_settings=s; EndDialog(window,IDOK); return TRUE;
+    }
+    if (message==WM_CLOSE || (message==WM_COMMAND && LOWORD(wp)==IDCANCEL)) { EndDialog(window,IDCANCEL); return TRUE; }
+    return FALSE;
+}
+static void export_ts(HWND window) {
+    if (genius_level!=2) return;
+    wchar_t call[25],locator[LOCATOR_MAX_LENGTH+1],code[5],safe[25];
+    read_text(window,IDC_CALL,call,25); read_text(window,IDC_LOCATOR,locator,LOCATOR_MAX_LENGTH+1); read_text(window,IDC_CODE,code,5);
+    BOOL pm=pm_mode(window), show=pm||IsDlgButtonChecked(window,IDC_SHOW_LOCATOR)==BST_CHECKED;
+    if (!valid_call(call) || ((show||locator[0])&&!valid_locator(locator)) || (!pm&&!valid_code(code))) {
+        error(window,L"Vul eerst een geldige roepnaam, locator en contestcode in."); return;
+    }
+    Resolution r=resolution(window);
+    const char *invalid=datv_validate(ts_settings,r.width,r.height);
+    if (invalid) { ts_error(window,invalid); return; }
+    HINSTANCE instance=(HINSTANCE)GetWindowLongPtrW(window,GWLP_HINSTANCE);
+    if (DialogBoxParamW(instance,MAKEINTRESOURCEW(IDD_TS),window,ts_options,0)!=IDOK) return;
+    TsJob job={0}; job.settings=ts_settings;
+    WideCharToMultiByte(CP_UTF8,0,call,-1,job.call,25,NULL,NULL);
+    filename_call(safe,call);
+    swprintf(job.path,MAX_PATH,L"%ls-%ls-%dx%d-%dbps.ts",safe,pm?L"PM5544":code,r.width,r.height,ts_settings.bitrate);
+    OPENFILENAMEW picker={0}; picker.lStructSize=sizeof(picker); picker.hwndOwner=window;
+    picker.lpstrFilter=L"MPEG-TS (*.ts)\0*.ts\0\0"; picker.lpstrFile=job.path; picker.nMaxFile=MAX_PATH;
+    picker.lpstrTitle=L"TS opslaan"; picker.lpstrDefExt=L"ts";
+    picker.Flags=OFN_EXPLORER|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR|OFN_OVERWRITEPROMPT;
+    if (!GetSaveFileNameW(&picker)) {
+        if (CommDlgExtendedError()) error(window,L"Het opslagvenster kon niet worden geopend.");
+        return;
+    }
+    job.overwrite=GetFileAttributesW(job.path)!=INVALID_FILE_ATTRIBUTES;
+    int band=(int)SendDlgItemMessageW(window,IDC_BAND,CB_GETCURSEL,0,0);
+    if (band<0 || band>10) return;
+    job.bitmap=pm?render_pm(r,call,locator):render(r.width,r.height,call,code,locator,show,bands[band],
+        IsDlgButtonChecked(window,IDC_INVERSE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_SHOW_SUM)==BST_CHECKED,
+        IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_BLUE_YELLOW)==BST_CHECKED);
+    if (!job.bitmap) { error(window,L"Kan het beeld niet maken."); return; }
+    if (DialogBoxParamW(instance,MAKEINTRESOURCEW(IDD_TS_PROGRESS),window,ts_progress,(LPARAM)&job)==-1)
+        strcpy(job.error,"Kan het voortgangsvenster niet openen.");
+    DeleteObject(job.bitmap);
+    if (!job.ok) ts_error(window,job.error);
+    else {
+        wchar_t message[512];
+        swprintf(message,512,L"TS opgeslagen: %ls (QP %d, %d beelden, grootste IDR %d bytes)",job.path,job.result.qp,job.result.frames,job.result.largest_idr);
+        SetDlgItemTextW(window,IDC_STATUS,message);
+    }
+}
 static void generate(HWND window, BOOL choose_path) {
     wchar_t call[25], locator[LOCATOR_MAX_LENGTH+1], code[5], safe_call[25];
     wchar_t path[MAX_PATH], temporary[MAX_PATH], filename[100], message[400];
@@ -346,6 +565,7 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
     switch (message) {
     case WM_INITDIALOG: {
         ready = 0;
+        ts_settings=datv_defaults(); udp_settings=datv_udp_defaults(); genius_level=1;
         contest_square[0] = 0;
         SendDlgItemMessageW(window, IDC_MODE, CB_ADDSTRING, 0, (LPARAM)L"Contest");
         SendDlgItemMessageW(window, IDC_MODE, CB_ADDSTRING, 0, (LPARAM)L"PM5544");
@@ -373,6 +593,27 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
     case WM_COMMAND:
         if (LOWORD(wp) == IDCANCEL) { EndDialog(window, 0); return TRUE; }
         if (!ready) break;
+        if (LOWORD(wp)==IDM_LEVEL1 || LOWORD(wp)==IDM_LEVEL2) {
+            int level=LOWORD(wp)==IDM_LEVEL2?2:1;
+            HMENU menu=GetMenu(window), file=GetSubMenu(menu,0);
+            if (level!=genius_level) {
+                if (level==2) {
+                    InsertMenuW(file,2,MF_BYPOSITION|MF_STRING,IDM_EXPORT_TS,L"Exporteer TS-proefbestand...");
+                    InsertMenuW(file,3,MF_BYPOSITION|MF_STRING,IDM_UDP,L"DATV UDP-uitvoer...");
+                } else {
+                    DeleteMenu(file,IDM_EXPORT_TS,MF_BYCOMMAND); DeleteMenu(file,IDM_UDP,MF_BYCOMMAND);
+                }
+                genius_level=level;
+            }
+            CheckMenuRadioItem(GetSubMenu(menu,1),IDM_LEVEL1,IDM_LEVEL2,level==2?IDM_LEVEL2:IDM_LEVEL1,MF_BYCOMMAND);
+            DrawMenuBar(window); return TRUE;
+        }
+        if (LOWORD(wp)==IDM_EXPORT_TS) { export_ts(window); return TRUE; }
+        if (LOWORD(wp)==IDM_UDP) { output_udp(window); return TRUE; }
+        if (LOWORD(wp)==IDM_CODEC_LICENSE) {
+            wchar_t text[2048]; MultiByteToWideChar(CP_UTF8,0,app_codec_license(),-1,text,2048);
+            MessageBoxW(window,text,L"OpenH264-licentie",MB_OK|MB_ICONINFORMATION); return TRUE;
+        }
         if (LOWORD(wp) == IDM_QUIT) { EndDialog(window, 0); return TRUE; }
         if (LOWORD(wp) == IDM_EXPORT) { generate(window, FALSE); return TRUE; }
         if (LOWORD(wp) == IDM_EXPORT_AS) { generate(window, TRUE); return TRUE; }
@@ -436,12 +677,34 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
         &IID_IWICImagingFactory, (void **)&factory);
     if (FAILED(hr)) { error(NULL, L"De Windows JPEG-encoder kan niet worden gestart."); CoUninitialize(); return 1; }
     int result;
-    if (wcsncmp(command, L"--smoke-test ", 13) == 0) result = smoke_test(command+13);
+    int argc=0;
+    LPWSTR *argv=CommandLineToArgvW(GetCommandLineW(),&argc);
+    if (argv && argc>=3 && !wcscmp(argv[1],L"--ts-test")) {
+        char text[6][32]; const char *values[6];
+        result=1;
+        if (argc<=9) {
+            BOOL converted=TRUE;
+            for (int i=3; i<argc; ++i) {
+                text[i-3][0]=0;
+                if (!WideCharToMultiByte(CP_UTF8,0,argv[i],-1,text[i-3],32,NULL,NULL)) converted=FALSE;
+                values[i-3]=text[i-3];
+            }
+            TsJob job={0}; int w,h;
+            DWORD length=GetFullPathNameW(argv[2],MAX_PATH,job.path,NULL);
+            if (converted && length && length<MAX_PATH && datv_test_options(argc-3,values,&job.settings,&w,&h)) {
+                strcpy(job.call,"PE1ITR");
+                job.bitmap=render(w,h,L"PE1ITR",L"1957",L"JO21QK",TRUE,L"436 MHz",FALSE,TRUE,TRUE,FALSE);
+                if (job.bitmap) { ts_worker(&job); DeleteObject(job.bitmap); result=job.ok?0:1; }
+            }
+        }
+    }
+    else if (wcsncmp(command, L"--smoke-test ", 13) == 0) result = smoke_test(command+13);
     else {
         INITCOMMONCONTROLSEX controls = {sizeof(controls), ICC_STANDARD_CLASSES};
         InitCommonControlsEx(&controls);
         result = (int)DialogBoxParamW(instance, MAKEINTRESOURCEW(IDD_MAIN), NULL, dialog, 0);
     }
+    if (argv) LocalFree(argv);
     pm5544_cleanup();
     IWICImagingFactory_Release(factory);
     CoUninitialize();

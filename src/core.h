@@ -2,6 +2,9 @@
 #define ATV_CORE_H
 #include <stddef.h>
 #include <wchar.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 typedef struct { int width, height; } Resolution;
 #define LOCATOR_MAX_LENGTH 12
 #define RESOLUTION_COUNT 10
@@ -21,4 +24,7 @@ int valid_code(const wchar_t *s);
 int code_digit_sum(const wchar_t *s);
 int generated_code_valid(unsigned code);
 void filename_call(wchar_t *out, const wchar_t *in);
+#ifdef __cplusplus
+}
+#endif
 #endif

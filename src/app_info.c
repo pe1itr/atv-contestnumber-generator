@@ -2,6 +2,12 @@
 #include <stdio.h>
 #include <string.h>
 
+const char *app_codec_license(void) {
+    return
+#include "../third_party/openh264/license_text.inc"
+    ;
+}
+
 const char *app_info_text(void) {
     static char text[2048];
     const char *months = "JanFebMarAprMayJunJulAugSepOctNovDec";
@@ -33,7 +39,12 @@ const char *app_info_text(void) {
         "wordt naast het programma opgeslagen, met maximaal zes locatortekens "
         "en de resolutie in de naam. "
         "Kies File > Exporteren naar... om zelf een map en bestandsnaam te kiezen. "
-        "Bij een bestaand bestand wordt gevraagd of je het wilt vervangen.",
+        "Bij een bestaand bestand wordt gevraagd of je het wilt vervangen.\n\n"
+        "Config > Genius level 2 toont File > Exporteer TS-proefbestand. "
+        "Dit maakt H.264-video zonder audio met ingebouwde OpenH264. "
+        "File > DATV UDP-uitvoer zendt het huidige beeld naar een IP-adres en poort. "
+        "Start/Stop bedienen de uitzending; sluiten stopt ook. "
+        "Zie Info > OpenH264-licentie voor de bibliotheeklicentie.",
         APP_VERSION, year, number, day, APP_AUTHOR);
     return text;
 }

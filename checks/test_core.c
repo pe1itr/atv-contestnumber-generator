@@ -1,0 +1,93 @@
+#include "core.h"
+#include "datv.h"
+#include <assert.h>
+#include <stdio.h>
+int main(void) {
+    DatvUdpSettings udp=datv_udp_defaults();
+    assert(udp.port==10000 && udp.video.fps==10 && udp.video.gop==2);
+    assert(datv_udp_validate(udp,160,120));
+    const char *bad_ips[]={"", "1.2.3", "1.2.3.256", "01.2.3.4", "1.2.3.4x", "0.0.0.0", "224.0.0.1", "255.255.255.255", "host.local"};
+    for (unsigned i=0;i<sizeof(bad_ips)/sizeof(bad_ips[0]);++i) {
+        snprintf(udp.ip,sizeof(udp.ip),"%s",bad_ips[i]); assert(datv_udp_validate(udp,160,120));
+    }
+    snprintf(udp.ip,sizeof(udp.ip),"127.0.0.1"); assert(!datv_udp_validate(udp,160,120));
+    udp.port=0; assert(datv_udp_validate(udp,160,120));
+    udp.port=65536; assert(datv_udp_validate(udp,160,120));
+    udp.port=10000; udp.video.fps=26; assert(datv_udp_validate(udp,160,120));
+    DatvSettings settings=datv_defaults();
+    assert(!datv_validate(settings,320,240));
+    assert(datv_validate(settings,641,480));
+    assert(datv_validate(settings,120,67));
+    settings.bitrate=47999; assert(datv_validate(settings,320,240));
+    const char *args[]={"60000","10","2","1","160","120"}; int width,height;
+    assert(datv_test_options(6,args,&settings,&width,&height));
+    assert(settings.bitrate==60000 && settings.gop==1 && width==160 && height==120);
+    const char *bad[]={"999999999999999999999999999999"};
+    assert(!datv_test_options(1,bad,&settings,&width,&height));
+    assert(valid_call(L"PE1ITR"));
+    assert(valid_call(L"DL/PE1ITR/P"));
+    assert(!valid_call(L"PE1ITR/../../"));
+    assert(!valid_call(L"CON"));
+    assert(!valid_call(L"PE1 ITR"));
+    assert(valid_locator(L"JO21"));
+    assert(valid_locator(L"JO21QK"));
+    assert(valid_locator(L"JO21QK86"));
+    assert(valid_locator(L"JO21QK86DV"));
+    assert(valid_locator(L"JO21QK86DW12"));
+    assert(!valid_locator(L"JO21QK86DW1"));
+    assert(!valid_locator(L"JO21QK86DWAB"));
+    assert(!valid_locator(L"JO21QK86DW12AB"));
+    wchar_t short_locator[7], previous_square[7] = L"";
+    filename_locator(short_locator, L"JO21QK86DW12");
+    assert(!wcscmp(short_locator, L"JO21QK"));
+    filename_locator(short_locator, L"JO21");
+    assert(!wcscmp(short_locator, L"JO21"));
+    filename_locator(short_locator, L"../BAD");
+    assert(!short_locator[0]);
+    assert(!locator_square_changed(previous_square, L"JO21QK86DW12"));
+    assert(!locator_square_changed(previous_square, L"JO21QK99AA99"));
+    assert(!locator_square_changed(previous_square, L"JO21Q"));
+    assert(!locator_square_changed(previous_square, L"JO21"));
+    assert(locator_square_changed(previous_square, L"JO22QK86DW12"));
+    assert(locator_square_changed(previous_square, L"JO21QK86DW12"));
+    assert(!valid_locator(L"SO21QK"));
+    assert(!valid_locator(L"JO21YK"));
+    assert(!valid_locator(L"JO21Q"));
+    assert(!valid_locator(L"JOAA"));
+    assert(valid_code(L"0001"));
+    assert(valid_code(L"2222"));
+    assert(!valid_code(L"123"));
+    assert(!valid_code(L"12345"));
+    assert(!valid_code(L"12A4"));
+    assert(code_digit_sum(L"1957") == 22);
+    assert(code_digit_sum(L"0001") == 1);
+    assert(code_digit_sum(L"0000") == 0);
+    assert(code_digit_sum(L"9999") == 36);
+    assert(code_digit_sum(L"12A4") == -1);
+    assert(code_digit_sum(L"123") == -1);
+    assert(code_digit_sum(L"----") == -1);
+    unsigned count = 0;
+    for (unsigned code=0; code<10000; ++code) if (generated_code_valid(code)) {
+        int d[4] = {(int)code/1000, (int)code/100%10, (int)code/10%10, (int)code%10};
+        assert(d[0] > 0);
+        for (int i=0; i<4; ++i) {
+            for (int j=0; j<i; ++j) assert(d[i] != d[j]);
+            if (i) assert(d[i] != d[i-1]+1 && d[i] != d[i-1]-1);
+        }
+        ++count;
+    }
+    assert(count > 0);
+    assert(!generated_code_valid(1234));
+    assert(!generated_code_valid(2222));
+    assert(generated_code_valid(1957));
+    for (int i=0; i<RESOLUTION_COUNT; ++i) {
+        assert(resolutions43[i].width*3 == resolutions43[i].height*4);
+        /* 120 pixels wide needs a rounded height of 68 instead of 67.5. */
+        assert(resolutions169[i].height == (resolutions169[i].width*9+8)/16);
+    }
+    wchar_t filename[25];
+    filename_call(filename, L"DL/PE1ITR/P");
+    assert(wcscmp(filename, L"DL_PE1ITR_P") == 0);
+    printf("Core checks passed; %u valid automatic codes.\n", count);
+    return 0;
+}

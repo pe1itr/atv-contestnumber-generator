@@ -1,6 +1,6 @@
 # ATV contestnummer generator
 
-Een programma in C voor Windows en Linux dat een contestkaart of PM5544-testbeeld als JPG maakt. Er worden standaard **altijd beide builds** gemaakt.
+Een programma voor Windows en Linux dat een contestkaart of PM5544-testbeeld als JPG maakt. Genius level 2 kan ook H.264/MPEG-TS-bestanden maken en UDP naar een DATV-zender sturen. Er worden standaard **altijd beide builds** gemaakt.
 
 Download de nieuwste Windows-versie: [atv-contestnummer.exe](https://github.com/pe1itr/atv-contestnumber-generator/releases/latest/download/atv-contestnummer.exe). Alle uitgaven staan bij [GitHub Releases](https://github.com/pe1itr/atv-contestnumber-generator/releases).
 
@@ -22,7 +22,7 @@ Beide versies hebben dezelfde invoer, resoluties, coderegels, bandkeuzes en beel
 
 **File → Quit** sluit het programma af.
 
-**Info → Over dit programma** toont het doel, uitleg over het gebruik, de auteur, het versienummer en de compilatiedatum. De huidige versie is **1.2.0**. Versie en auteur staan centraal in `src/app_info.h`; de datum wordt tijdens compilatie vastgelegd en is niet de datum waarop je het programma start.
+**Info → Over dit programma** toont het doel, uitleg over het gebruik, de auteur, het versienummer en de compilatiedatum. De huidige versie is **1.4.0**. Versie en auteur staan centraal in `src/app_info.h`; de datum wordt tijdens compilatie vastgelegd en is niet de datum waarop je het programma start.
 
 ## Gebruik: Contest
 
@@ -74,9 +74,32 @@ Contestcode, automatische nummerkeuze, band, inverse, blauw/geel, cijfersom, ext
 
 De PM5544-bronbeelden staan in `assets/pm5544.jpg` en `assets/pm5544w.jpg`. Het 720×576-beeld wordt naar de gekozen 4:3-resolutie geschaald; het 1280×720-beeld naar de gekozen 16:9-resolutie. De bronpixels worden tijdens het bouwen verliesloos als RGB-runs ingebouwd. **Geen losse testbeelden, fontbestanden of Python nodig bij het gebruiken van het programma.** Verspreid alleen het programma voor het gewenste platform (Linux gebruikt wel de eerder genoemde systeembibliotheken).
 
+## DATV-proefbestand (Genius level 2)
+
+Kies **Config → Genius level 2**, stel het beeld in op maximaal **640 × 480** en
+kies **File → Exporteer TS-proefbestand...**. Vul de totale TS-bitrate uit Portsdown
+in, in **bit/s**, plus beeldduur, beelden/s en GOP-lengte (1 = alleen IDR-beelden).
+De export bevat H.264-video zonder audio; servicenaam en provider volgen de
+roepnaam, service-ID is 1. Het nummer verandert niet bij export.
+
+De encoder OpenH264 en de eigen TS-muxer zijn ingebouwd, zonder FFmpeg of losse
+codec-DLL. Via **Info → OpenH264-licentie** is de bibliotheeklicentie beschikbaar.
+**File → DATV UDP-uitvoer...** opent IP-adres, poort (standaard 10000), TS-bitrate,
+beelden/s en GOP met **Start/Stop**. Start zendt het huidige beeld doorlopend;
+sluiten stopt ook. Gebruik een numeriek unicast IPv4-adres. De UDP-instellingen
+starten met 10 beelden/s en GOP 2. Voor een ander beeld: Stop, venster sluiten,
+beeld aanpassen en opnieuw Start. Permanente nummeropslag per band volgt later.
+Zie [DATV-testinstructies en technische grenzen](docs/datv.md).
+
 ## Bouwen
 
-Op Linux met een C-compiler, MinGW-w64, `pkg-config`, Python 3 met Pillow en de ontwikkelpakketten voor GTK 3 en Pango/Cairo:
+De eerste build downloadt circa 58 MB OpenH264-broncode en controleert de vaste
+SHA-256. De download wordt bewaard in `build/downloads/`; volgende builds kunnen
+offline werken. `tools/prepare_openh264.py` bouwt de bronmappen voor Linux en Windows
+afzonderlijk op. De bibliotheek wordt statisch gelinkt. De applicatie blijft C;
+de encoder/muxer-module gebruikt C++17.
+
+Op Linux met C- en C++-compilers, MinGW-w64 (ook g++), NASM, `pkg-config`, Python 3.12+ met Pillow en de ontwikkelpakketten voor GTK 3 en Pango/Cairo:
 
 ```sh
 make
@@ -84,7 +107,7 @@ make
 
 `make` bouwt zowel `dist/atv-contestnummer` als `dist/atv-contestnummer.exe`. `make linux` en `make windows` zijn beschikbaar voor gerichte tussentijdse builds; lever bij afronding altijd beide bestanden. Op Fedora zijn de ontwikkelpakketten onder meer `gcc`, `make`, `pkgconf-pkg-config`, `gtk3-devel` en `mingw64-gcc`; op Debian/Ubuntu `build-essential`, `pkg-config`, `libgtk-3-dev` en `gcc-mingw-w64-x86-64`.
 
-Op Windows met MinGW-w64 (`gcc` en `windres` in `PATH`) en Python 3 met Pillow (`python` in `PATH`): `build-windows.bat` bouwt alleen de Windows-versie. Gebruik voor de volledige levering daarnaast `make` in een Linux-omgeving, bijvoorbeeld WSL met bovengenoemde afhankelijkheden. Alle dynamische imports van de Windows-exe zijn Windows-systeembibliotheken.
+Op Windows vanuit een MSYS2/MinGW-w64-omgeving (`make`, `sh`, `gcc`, `g++`, `ar`, `windres` en `nasm` in `PATH`) en Python 3.12+ met Pillow (`python` in `PATH`): `build-windows.bat` bouwt alleen de Windows-versie. Gebruik voor de volledige levering daarnaast `make` in een Linux-omgeving, bijvoorbeeld WSL met bovengenoemde afhankelijkheden. Alle dynamische imports van de Windows-exe zijn Windows-systeembibliotheken.
 
 De JPG-encoder gebruikt [Windows Imaging Component](https://learn.microsoft.com/en-us/windows/win32/wic/-wic-creating-encoder) met kwaliteit 98%. Het programma schrijft eerst een tijdelijk bestand in de uitvoermap en vervangt het doelbestand pas na geslaagde compressie.
 

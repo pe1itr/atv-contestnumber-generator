@@ -23,3 +23,23 @@
 #define IDM_QUIT 203
 
 #define IDM_EXPORT_AS 204
+#define IDM_LEVEL1 205
+#define IDM_LEVEL2 206
+#define IDM_EXPORT_TS 207
+#define IDM_CODEC_LICENSE 208
+#define IDM_UDP 209
+#define IDD_UDP 320
+#define IDC_UDP_IP 321
+#define IDC_UDP_PORT 322
+#define IDC_UDP_BITRATE 323
+#define IDC_UDP_FPS 324
+#define IDC_UDP_GOP 325
+#define IDC_UDP_STATUS 326
+#define IDC_UDP_START 327
+#define IDC_UDP_STOP 328
+#define IDD_TS 300
+#define IDC_TS_BITRATE 301
+#define IDC_TS_SECONDS 302
+#define IDC_TS_FPS 303
+#define IDC_TS_GOP 304
+#define IDD_TS_PROGRESS 310

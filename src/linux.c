@@ -8,11 +8,16 @@
 #include "core.h"
 #include "app_info.h"
 #include "pm5544.h"
+#include "datv.h"
 
 typedef struct {
     GtkWidget *window, *call, *locator, *show, *automatic, *code;
     GtkWidget *aspect, *resolution, *band, *preview, *status, *inverse, *blue_yellow, *show_sum, *top_code, *mode, *manual, *new_code;
     GtkWidget *export_menu, *export_as_menu, *about_menu, *quit_menu;
+    GtkWidget *ts_menu;
+    DatvSettings datv;
+    GtkWidget *udp_menu;
+    DatvUdpSettings udp;
     char *directory;
     wchar_t contest_square[7];
 } App;
@@ -285,6 +290,236 @@ static void notify_error(App *app, const char *message) {
     gtk_widget_destroy(dialog);
 }
 
+typedef struct {
+    App *app;
+    GtkWidget *progress;
+    cairo_surface_t *image;
+    char *path, *call;
+    gboolean overwrite;
+    DatvSettings settings;
+    DatvResult result;
+} TsJob;
+
+static void ts_worker(GTask *task, gpointer source, gpointer data, GCancellable *cancel) {
+    (void)source; (void)cancel;
+    TsJob *job=data;
+    char error[256]="";
+    char *temporary=g_strconcat(job->path,".XXXXXX",NULL);
+    int fd=g_mkstemp(temporary);
+    FILE *file=fd<0?NULL:fdopen(fd,"wb");
+    if (!file && fd>=0) close(fd);
+    gboolean ok=file && datv_write(file,(uint32_t *)cairo_image_surface_get_data(job->image),
+        cairo_image_surface_get_width(job->image),cairo_image_surface_get_height(job->image),
+        cairo_image_surface_get_stride(job->image),job->call,job->settings,&job->result,error);
+    if (file) {
+        if (ok && fsync(fileno(file))!=0) ok=FALSE;
+        if (fclose(file)!=0) ok=FALSE;
+    }
+    if (ok && (job->overwrite?rename(temporary,job->path):link(temporary,job->path))!=0) ok=FALSE;
+    unlink(temporary); g_free(temporary);
+    if (ok) g_task_return_boolean(task,TRUE);
+    else g_task_return_new_error(task,G_IO_ERROR,G_IO_ERROR_FAILED,"%s",
+        error[0]?error:"TS opslaan is mislukt. Controleer pad, vrije ruimte en schrijfrechten.");
+}
+static void ts_done(GObject *source, GAsyncResult *result, gpointer data) {
+    (void)source;
+    TsJob *job=data;
+    GError *error=NULL;
+    gboolean ok=g_task_propagate_boolean(G_TASK(result),&error);
+    gtk_widget_destroy(job->progress);
+    if (!ok) { notify_error(job->app,error->message); g_error_free(error); }
+    else {
+        char *message=g_strdup_printf("TS opgeslagen: %s (QP %d, %d beelden, grootste IDR %d bytes)",
+            job->path,job->result.qp,job->result.frames,job->result.largest_idr);
+        gtk_label_set_text(GTK_LABEL(job->app->status),message); g_free(message);
+    }
+    cairo_surface_destroy(job->image); g_free(job->path); g_free(job->call); g_free(job);
+}
+static gboolean keep_progress(GtkWidget *widget, GdkEvent *event, gpointer data) {
+    (void)widget; (void)event; (void)data; return TRUE;
+}
+
+typedef struct {
+    App *app;
+    GtkWidget *dialog, *fields[5], *status;
+    DatvStream *stream;
+} UdpDialog;
+static gboolean udp_poll(gpointer data) {
+    UdpDialog *d=data;
+    if (!d->stream) return G_SOURCE_CONTINUE;
+    DatvUdpStatus status; datv_udp_status(d->stream,&status);
+    char text[512]; datv_udp_status_text(d->app->udp,status,text,sizeof(text));
+    gtk_label_set_text(GTK_LABEL(d->status),text);
+    gboolean busy=status.state==DATV_PREPARING || status.state==DATV_RUNNING;
+    for (int i=0;i<5;++i) gtk_widget_set_sensitive(d->fields[i],!busy);
+    gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),1,!busy);
+    gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),2,busy);
+    return G_SOURCE_CONTINUE;
+}
+static void output_udp(GtkWidget *widget, gpointer data) {
+    (void)widget;
+    App *app=data;
+    char *call=entry_text(app->call), *locator=entry_text(app->locator);
+    gboolean show=pm_mode(app)||gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show));
+    if (!validate(call,valid_call) || ((show||*locator) && !validate(locator,valid_locator)) ||
+        (!pm_mode(app) && !validate(gtk_entry_get_text(GTK_ENTRY(app->code)),valid_code))) {
+        notify_error(app,"Vul eerst een geldige roepnaam, locator en contestcode in.");
+        g_free(call); g_free(locator); return;
+    }
+    g_free(locator);
+    Resolution r=selected_resolution(app);
+    const char *invalid=datv_validate(app->udp.video,r.width,r.height);
+    if (invalid) { notify_error(app,invalid); g_free(call); return; }
+    cairo_surface_t *im=current_image(app);
+    if (cairo_surface_status(im)!=CAIRO_STATUS_SUCCESS) {
+        notify_error(app,"Kan het beeld niet maken."); g_free(call); cairo_surface_destroy(im); return;
+    }
+    UdpDialog d={0}; d.app=app;
+    d.dialog=gtk_dialog_new_with_buttons("DATV: UDP-uitvoer",GTK_WINDOW(app->window),GTK_DIALOG_MODAL,
+        "_Start",1,"S_top",2,"_Sluiten",GTK_RESPONSE_CLOSE,NULL);
+    GtkWidget *grid=gtk_grid_new();
+    gtk_grid_set_row_spacing(GTK_GRID(grid),8); gtk_grid_set_column_spacing(GTK_GRID(grid),12);
+    gtk_container_set_border_width(GTK_CONTAINER(grid),16);
+    gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(d.dialog))),grid);
+    const char *labels[]={"IP-adres (IPv4)","Poort","TS-bitrate (bit/s, uit Portsdown)","Beelden per seconde","GOP (beelden; 1 = alleen IDR)"};
+    int values[]={0,app->udp.port,app->udp.video.bitrate,app->udp.video.fps,app->udp.video.gop};
+    int mins[]={0,1,48000,1,1}, maxs[]={0,65535,2000000,25,250};
+    for (int i=0;i<5;++i) {
+        GtkWidget *label=gtk_label_new(labels[i]); gtk_label_set_xalign(GTK_LABEL(label),0);
+        d.fields[i]=i?gtk_spin_button_new_with_range(mins[i],maxs[i],i==2?1000:1):gtk_entry_new();
+        if (i) gtk_spin_button_set_value(GTK_SPIN_BUTTON(d.fields[i]),values[i]);
+        else {
+            gtk_entry_set_max_length(GTK_ENTRY(d.fields[i]),15);
+            gtk_entry_set_text(GTK_ENTRY(d.fields[i]),app->udp.ip);
+            gtk_entry_set_placeholder_text(GTK_ENTRY(d.fields[i]),"192.168.1.50");
+        }
+        gtk_grid_attach(GTK_GRID(grid),label,0,i,1,1); gtk_grid_attach(GTK_GRID(grid),d.fields[i],1,i,1,1);
+    }
+    GtkWidget *note=gtk_label_new("Start zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.");
+    gtk_grid_attach(GTK_GRID(grid),note,0,5,2,1);
+    d.status=gtk_label_new("Vul het IP-adres van Portsdown in en kies Start.");
+    gtk_label_set_line_wrap(GTK_LABEL(d.status),TRUE); gtk_label_set_max_width_chars(GTK_LABEL(d.status),65);
+    gtk_label_set_xalign(GTK_LABEL(d.status),0); gtk_grid_attach(GTK_GRID(grid),d.status,0,6,2,1);
+    gtk_dialog_set_response_sensitive(GTK_DIALOG(d.dialog),2,FALSE);
+    gtk_widget_show_all(d.dialog);
+    guint timer=g_timeout_add(200,udp_poll,&d);
+    for (;;) {
+        int response=gtk_dialog_run(GTK_DIALOG(d.dialog));
+        if (response==2) { datv_udp_stop(d.stream); continue; }
+        if (response!=1) break;
+        if (d.stream) {
+            DatvUdpStatus status; datv_udp_status(d.stream,&status);
+            if (status.state==DATV_PREPARING || status.state==DATV_RUNNING) continue;
+            datv_udp_destroy(d.stream); d.stream=NULL;
+        }
+        DatvUdpSettings s=app->udp;
+        g_strlcpy(s.ip,gtk_entry_get_text(GTK_ENTRY(d.fields[0])),sizeof(s.ip));
+        for (int i=1;i<5;++i) gtk_spin_button_update(GTK_SPIN_BUTTON(d.fields[i]));
+        s.port=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[1]));
+        s.video.bitrate=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[2]));
+        s.video.fps=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[3]));
+        s.video.gop=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[4]));
+        invalid=datv_udp_validate(s,r.width,r.height);
+        if (invalid) { gtk_label_set_text(GTK_LABEL(d.status),invalid); continue; }
+        datv_udp_destroy(d.stream); d.stream=NULL;
+        char error[256];
+        d.stream=datv_udp_start((uint32_t *)cairo_image_surface_get_data(im),r.width,r.height,
+            cairo_image_surface_get_stride(im),call,s,error);
+        if (!d.stream) gtk_label_set_text(GTK_LABEL(d.status),error);
+        else { app->udp=s; udp_poll(&d); }
+    }
+    g_source_remove(timer); datv_udp_destroy(d.stream);
+    gtk_widget_destroy(d.dialog); cairo_surface_destroy(im); g_free(call);
+}
+static void export_ts(GtkWidget *widget, gpointer data) {
+    (void)widget;
+    App *app=data;
+    char *call=entry_text(app->call), *locator=entry_text(app->locator);
+    gboolean show=pm_mode(app)||gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show));
+    if (!validate(call,valid_call) || ((show||*locator) && !validate(locator,valid_locator)) ||
+        (!pm_mode(app) && !validate(gtk_entry_get_text(GTK_ENTRY(app->code)),valid_code))) {
+        notify_error(app,"Vul eerst een geldige roepnaam, locator en contestcode in.");
+        g_free(call); g_free(locator); return;
+    }
+    g_free(locator);
+    Resolution r=selected_resolution(app);
+    const char *invalid=datv_validate(app->datv,r.width,r.height);
+    if (invalid) { notify_error(app,invalid); g_free(call); return; }
+    GtkWidget *dialog=gtk_dialog_new_with_buttons("DATV: TS-proefbestand",GTK_WINDOW(app->window),
+        GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,"_Annuleren",GTK_RESPONSE_CANCEL,
+        "_Verder",GTK_RESPONSE_ACCEPT,NULL);
+    GtkWidget *grid=gtk_grid_new();
+    gtk_grid_set_row_spacing(GTK_GRID(grid),8); gtk_grid_set_column_spacing(GTK_GRID(grid),12);
+    gtk_container_set_border_width(GTK_CONTAINER(grid),16);
+    gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))),grid);
+    const char *labels[]={"TS-bitrate (bit/s, uit Portsdown)","Beeldduur (seconden)","Beelden per seconde","GOP (beelden; 1 = alleen IDR)"};
+    int values[]={app->datv.bitrate,app->datv.seconds,app->datv.fps,app->datv.gop};
+    int minimum[]={48000,1,1,1}, maximum[]={2000000,60,25,250};
+    GtkWidget *fields[4];
+    for (int i=0; i<4; ++i) {
+        GtkWidget *label=gtk_label_new(labels[i]); gtk_label_set_xalign(GTK_LABEL(label),0);
+        fields[i]=gtk_spin_button_new_with_range(minimum[i],maximum[i],i==0?1000:1);
+        gtk_spin_button_set_value(GTK_SPIN_BUTTON(fields[i]),values[i]);
+        gtk_grid_attach(GTK_GRID(grid),label,0,i,1,1); gtk_grid_attach(GTK_GRID(grid),fields[i],1,i,1,1);
+    }
+    GtkWidget *note=gtk_label_new("Huidig beeld, zonder audio. Service = roepnaam; ID = 1.\nHet bestand bevat ook 1 seconde aanloop voor de decoder.");
+    gtk_grid_attach(GTK_GRID(grid),note,0,4,2,1);
+    gtk_widget_show_all(dialog);
+    if (gtk_dialog_run(GTK_DIALOG(dialog))!=GTK_RESPONSE_ACCEPT) {
+        gtk_widget_destroy(dialog); g_free(call); return;
+    }
+    for (int i=0; i<4; ++i) gtk_spin_button_update(GTK_SPIN_BUTTON(fields[i]));
+    app->datv=(DatvSettings){gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[0])),
+        gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[1])),
+        gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[2])),
+        gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[3]))};
+    gtk_widget_destroy(dialog);
+    GtkWidget *picker=gtk_file_chooser_dialog_new("TS opslaan",GTK_WINDOW(app->window),GTK_FILE_CHOOSER_ACTION_SAVE,
+        "_Annuleren",GTK_RESPONSE_CANCEL,"_Opslaan",GTK_RESPONSE_ACCEPT,NULL);
+    GtkFileChooser *chooser=GTK_FILE_CHOOSER(picker);
+    gtk_file_chooser_set_local_only(chooser,TRUE);
+    gtk_file_chooser_set_current_folder(chooser,app->directory);
+    char *safe=g_strdup(call); for (char *p=safe; *p; ++p) if (*p=='/') *p='_';
+    char *name=g_strdup_printf("%s-%s-%dx%d-%dbps.ts",safe,pm_mode(app)?"PM5544":gtk_entry_get_text(GTK_ENTRY(app->code)),r.width,r.height,app->datv.bitrate);
+    gtk_file_chooser_set_current_name(chooser,name); g_free(safe); g_free(name);
+    GtkFileFilter *filter=gtk_file_filter_new(); gtk_file_filter_set_name(filter,"MPEG-TS (*.ts)");
+    gtk_file_filter_add_pattern(filter,"*.ts"); gtk_file_chooser_add_filter(chooser,filter);
+    char *path=gtk_dialog_run(GTK_DIALOG(picker))==GTK_RESPONSE_ACCEPT?gtk_file_chooser_get_filename(chooser):NULL;
+    gtk_widget_destroy(picker);
+    if (!path) { g_free(call); return; }
+    char *basename=g_path_get_basename(path);
+    if (!strchr(basename,'.')) {
+        char *extended=g_strconcat(path,".ts",NULL); g_free(path); path=extended;
+    }
+    g_free(basename);
+    gboolean overwrite=g_file_test(path,G_FILE_TEST_EXISTS);
+    if (overwrite) {
+        GtkWidget *confirm=gtk_message_dialog_new(GTK_WINDOW(app->window),GTK_DIALOG_MODAL,
+            GTK_MESSAGE_QUESTION,GTK_BUTTONS_YES_NO,"%s bestaat al. Wil je dit bestand vervangen?",path);
+        gtk_dialog_set_default_response(GTK_DIALOG(confirm),GTK_RESPONSE_NO);
+        int answer=gtk_dialog_run(GTK_DIALOG(confirm)); gtk_widget_destroy(confirm);
+        if (answer!=GTK_RESPONSE_YES) { g_free(call); g_free(path); return; }
+    }
+    cairo_surface_t *image=current_image(app);
+    if (cairo_surface_status(image)!=CAIRO_STATUS_SUCCESS) {
+        notify_error(app,"Kan het beeld niet maken."); cairo_surface_destroy(image); g_free(call); g_free(path); return;
+    }
+    TsJob *job=g_new0(TsJob,1);
+    job->app=app; job->call=call; job->path=path; job->image=image; job->settings=app->datv;
+    job->overwrite=overwrite;
+    job->progress=gtk_message_dialog_new(GTK_WINDOW(app->window),GTK_DIALOG_MODAL,
+        GTK_MESSAGE_INFO,GTK_BUTTONS_NONE,"TS maken en bitrate controleren...");
+    g_signal_connect(job->progress,"delete-event",G_CALLBACK(keep_progress),NULL);
+    gtk_widget_show(job->progress);
+    GTask *task=g_task_new(NULL,NULL,ts_done,job); g_task_set_task_data(task,job,NULL);
+    g_task_run_in_thread(task,ts_worker); g_object_unref(task);
+}
+static void genius_changed(GtkCheckMenuItem *item, gpointer data) {
+    App *app=data;
+    gtk_widget_set_visible(app->ts_menu,gtk_check_menu_item_get_active(item));
+    gtk_widget_set_visible(app->udp_menu,gtk_check_menu_item_get_active(item));
+}
+
 static void generate(GtkWidget *widget, gpointer data) {
     App *app = data;
     char *call = entry_text(app->call), *locator = entry_text(app->locator);
@@ -387,6 +622,13 @@ static void show_about(GtkWidget *widget, gpointer data) {
     gtk_dialog_run(GTK_DIALOG(dialog));
     gtk_widget_destroy(dialog);
 }
+static void show_codec_license(GtkWidget *widget, gpointer data) {
+    (void)widget; App *app=data;
+    GtkWidget *dialog=gtk_message_dialog_new(GTK_WINDOW(app->window),GTK_DIALOG_MODAL,
+        GTK_MESSAGE_INFO,GTK_BUTTONS_CLOSE,"%s",app_codec_license());
+    gtk_window_set_title(GTK_WINDOW(dialog),"OpenH264-licentie");
+    gtk_dialog_run(GTK_DIALOG(dialog)); gtk_widget_destroy(dialog);
+}
 
 static void create_ui(App *app) {
     app->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -397,18 +639,38 @@ static void create_ui(App *app) {
     GtkWidget *file = gtk_menu_item_new_with_mnemonic("_File");
     GtkWidget *info = gtk_menu_item_new_with_mnemonic("_Info");
     GtkWidget *file_menu = gtk_menu_new(), *info_menu = gtk_menu_new();
+    app->datv=datv_defaults();
+    app->udp=datv_udp_defaults();
+    GtkWidget *config=gtk_menu_item_new_with_label("Config"), *config_menu=gtk_menu_new();
+    GtkWidget *level1=gtk_radio_menu_item_new_with_label(NULL,"Genius level 1 (standaard)");
+    GtkWidget *level2=gtk_radio_menu_item_new_with_label_from_widget(GTK_RADIO_MENU_ITEM(level1),"Genius level 2");
+    gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),level1); gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),level2);
+    gtk_menu_item_set_submenu(GTK_MENU_ITEM(config),config_menu);
+    app->ts_menu=gtk_menu_item_new_with_label("Exporteer TS-proefbestand...");
+    gtk_widget_set_no_show_all(app->ts_menu,TRUE);
+    app->udp_menu=gtk_menu_item_new_with_label("DATV UDP-uitvoer...");
+    gtk_widget_set_no_show_all(app->udp_menu,TRUE);
+    g_signal_connect(app->udp_menu,"activate",G_CALLBACK(output_udp),app);
+    g_signal_connect(level2,"toggled",G_CALLBACK(genius_changed),app);
+    g_signal_connect(app->ts_menu,"activate",G_CALLBACK(export_ts),app);
     app->export_menu = gtk_menu_item_new_with_mnemonic("_Exporteer JPG");
     app->export_as_menu = gtk_menu_item_new_with_mnemonic("Exporteren _naar...");
     app->quit_menu = gtk_menu_item_new_with_mnemonic("_Quit");
     app->about_menu = gtk_menu_item_new_with_mnemonic("_Over dit programma");
     gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), app->export_menu);
     gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), app->export_as_menu);
+    gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), app->ts_menu);
+    gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), app->udp_menu);
     gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), gtk_separator_menu_item_new());
     gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), app->quit_menu);
     gtk_menu_shell_append(GTK_MENU_SHELL(info_menu), app->about_menu);
+    GtkWidget *license=gtk_menu_item_new_with_label("OpenH264-licentie");
+    gtk_menu_shell_append(GTK_MENU_SHELL(info_menu),license);
+    g_signal_connect(license,"activate",G_CALLBACK(show_codec_license),app);
     gtk_menu_item_set_submenu(GTK_MENU_ITEM(file), file_menu);
     gtk_menu_item_set_submenu(GTK_MENU_ITEM(info), info_menu);
     gtk_menu_shell_append(GTK_MENU_SHELL(menubar), file);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menubar), config);
     gtk_menu_shell_append(GTK_MENU_SHELL(menubar), info);
     gtk_container_add(GTK_CONTAINER(app->window), layout);
     gtk_box_pack_start(GTK_BOX(layout), menubar, FALSE, FALSE, 0);
@@ -545,8 +807,25 @@ static int smoke_test(const char *directory) {
 }
 
 int main(int argc, char **argv) {
+    if (argc>=3 && !strcmp(argv[1],"--ts-test")) {
+        DatvSettings s; int w,h;
+        if (!datv_test_options(argc-3,(const char *const *)(argv+3),&s,&w,&h)) {
+            g_printerr("Ongeldige TS-testinstellingen.\n"); return 1;
+        }
+        cairo_surface_t *im=render((Resolution){w,h},"PE1ITR","1957","JO21QK",TRUE,"436 MHz",FALSE,TRUE,TRUE,FALSE);
+        FILE *f=fopen(argv[2],"wbx"); char error[256]="Kan geen nieuw TS-bestand maken (bestaat het al?).";
+        DatvResult result;
+        int ok=f && cairo_surface_status(im)==CAIRO_STATUS_SUCCESS && datv_write(f,
+            (uint32_t *)cairo_image_surface_get_data(im),w,h,cairo_image_surface_get_stride(im),"PE1ITR",s,&result,error);
+        if (f && fclose(f)!=0) ok=0;
+        if (!ok && f) unlink(argv[2]);
+        cairo_surface_destroy(im);
+        if (!ok) { g_printerr("%s\n",error); return 1; }
+        g_print("TS: %d bit/s, QP %d, %d beelden, grootste IDR %d bytes\n",s.bitrate,result.qp,result.frames,result.largest_idr);
+        return 0;
+    }
     if (argc == 3 && !strcmp(argv[1], "--smoke-test")) return smoke_test(argv[2]);
-    if (argc != 1) { g_printerr("Gebruik: %s [--smoke-test uitvoermap]\n", argv[0]); return 1; }
+    if (argc != 1) { g_printerr("Gebruik: %s [--smoke-test uitvoermap | --ts-test bestand.ts [bitrate [duur [fps [gop [breedte [hoogte]]]]]]]\n", argv[0]); return 1; }
     if (!gtk_init_check(&argc, &argv)) {
         g_printerr("Kan geen grafische sessie openen. Start vanuit je Linux-desktop.\n"); return 1;
     }

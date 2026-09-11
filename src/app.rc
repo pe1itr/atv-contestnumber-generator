@@ -10,10 +10,61 @@ BEGIN
         MENUITEM SEPARATOR
         MENUITEM "&Quit", IDM_QUIT
     END
+    POPUP "&Config"
+    BEGIN
+        MENUITEM "Genius level &1 (standaard)", IDM_LEVEL1, CHECKED
+        MENUITEM "Genius level &2", IDM_LEVEL2
+    END
     POPUP "&Info"
     BEGIN
         MENUITEM "&Over dit programma", IDM_ABOUT
+        MENUITEM "OpenH264-licentie", IDM_CODEC_LICENSE
     END
+END
+IDD_TS DIALOGEX 0, 0, 290, 160
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "DATV: TS-proefbestand"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "TS-bitrate (bit/s, uit Portsdown)", -1, 12, 14, 185, 12
+    EDITTEXT IDC_TS_BITRATE, 208, 11, 68, 16, ES_NUMBER | ES_AUTOHSCROLL
+    LTEXT "Beeldduur (seconden, 1-60)", -1, 12, 38, 185, 12
+    EDITTEXT IDC_TS_SECONDS, 208, 35, 68, 16, ES_NUMBER | ES_AUTOHSCROLL
+    LTEXT "Beelden per seconde (1-25)", -1, 12, 62, 185, 12
+    EDITTEXT IDC_TS_FPS, 208, 59, 68, 16, ES_NUMBER | ES_AUTOHSCROLL
+    LTEXT "GOP (1-250 beelden; 1 = alleen IDR)", -1, 12, 86, 190, 12
+    EDITTEXT IDC_TS_GOP, 208, 83, 68, 16, ES_NUMBER | ES_AUTOHSCROLL
+    LTEXT "Zonder audio. Service = roepnaam; ID = 1.\nHet bestand bevat ook 1 seconde aanloop voor de decoder.", -1, 12, 105, 264, 24
+    DEFPUSHBUTTON "Verder", IDOK, 138, 136, 65, 16
+    PUSHBUTTON "Annuleren", IDCANCEL, 211, 136, 65, 16
+END
+IDD_TS_PROGRESS DIALOGEX 0, 0, 260, 45
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION
+CAPTION "DATV"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "TS maken en bitrate controleren...", -1, 12, 16, 236, 16
+END
+IDD_UDP DIALOGEX 0, 0, 335, 220
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "DATV: UDP-uitvoer"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "IP-adres (IPv4)", -1, 12, 14, 192, 12
+    EDITTEXT IDC_UDP_IP, 210, 11, 113, 16, ES_AUTOHSCROLL
+    LTEXT "Poort", -1, 12, 38, 192, 12
+    EDITTEXT IDC_UDP_PORT, 210, 35, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
+    LTEXT "TS-bitrate (bit/s, uit Portsdown)", -1, 12, 62, 192, 12
+    EDITTEXT IDC_UDP_BITRATE, 210, 59, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
+    LTEXT "Beelden per seconde (1-25)", -1, 12, 86, 192, 12
+    EDITTEXT IDC_UDP_FPS, 210, 83, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
+    LTEXT "GOP (1-250 beelden; 1 = alleen IDR)", -1, 12, 110, 192, 12
+    EDITTEXT IDC_UDP_GOP, 210, 107, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
+    LTEXT "Start zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.", -1, 12, 132, 311, 28
+    LTEXT "Vul het IP-adres van Portsdown in en kies Start.", IDC_UDP_STATUS, 12, 165, 311, 27
+    DEFPUSHBUTTON "Start", IDC_UDP_START, 105, 196, 66, 16
+    PUSHBUTTON "Stop", IDC_UDP_STOP, 181, 196, 66, 16
+    PUSHBUTTON "Sluiten", IDCANCEL, 257, 196, 66, 16
 END
 IDD_MAIN DIALOGEX 0, 0, 460, 327
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
