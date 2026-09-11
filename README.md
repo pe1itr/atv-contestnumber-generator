@@ -46,7 +46,7 @@ Kies bovenaan bij **Beeldtype** voor **Contest** (standaard).
 
 1. Plaats `atv-contestnummer.exe` in een map waarin je mag schrijven en start het programma.
 2. Vul je roepnaam en Maidenheadlocator in. Locators van 4, 6, 8, 10 en 12 tekens worden geaccepteerd. Zet **Locator in beeld** uit als je geen locator wilt tonen; het veld mag dan leeg blijven.
-3. Kies **Automatisch** of **Zelf intypen**. Bij automatisch staat er meteen na het openen een code in het voorbeeld. Met **Nieuw nummer** kies je een andere code. Ook bij omschakelen van zelf intypen naar automatisch verschijnt direct een nieuwe code. Exporteren bewaart precies de zichtbare code en maakt geen nieuwe code aan. Bij zelf intypen zijn precies vier cijfers vereist; voorloopnullen blijven behouden.
+3. Kies **Automatisch** of **Zelf intypen**. Bij automatisch staat er meteen na het openen een code in het voorbeeld. Met **Nieuw nummer** kies je een andere code. Ook bij omschakelen van zelf intypen naar automatisch verschijnt direct een nieuwe code. Exporteren bewaart precies de zichtbare code en maakt geen nieuwe code aan. Bij zelf intypen zijn precies vier cijfers vereist; vier gelijke cijfers en volledige oplopende of aflopende reeksen zijn niet toegestaan. Voorloopnullen blijven behouden.
 4. Kies beeldverhouding, resolutie en frequentieband. Het voorbeeld volgt de invoer; de automatische code is al vóór het exporteren zichtbaar.
 5. Klik op **Exporteer JPG**. Het bestand wordt naast de `.exe` opgeslagen als `roepnaam-locator-code-band-breedtexhoogte.jpg`, bijvoorbeeld `PE1ITR-JO21QK-1957-436MHz-1920x1440.jpg`. Bij een bestaand bestand vraagt het programma of je het wilt vervangen.
 
@@ -58,7 +58,7 @@ De volledige locator verschijnt in het beeld; de bestandsnaam gebruikt maximaal 
 
 Voor roverstations verandert bij **Automatisch** het contestnummer wanneer een andere geldige locator van minstens zes tekens wordt ingevoerd en de eerste zes tekens verschillen. Extra precisie binnen hetzelfde vak verandert het nummer niet. Onvolledige invoer tijdens het typen verandert het nummer evenmin. Bij **Zelf intypen** blijft het nummer ongewijzigd. Er wordt geen geschiedenis per locatie of band bewaard.
 
-Automatische codes volgen deze regels: eerste cijfer 1–9, vier verschillende cijfers, en geen naast elkaar staande cijfers die precies één verschillen. Handmatig ingevoerde codes hoeven alleen uit vier cijfers te bestaan. De generator bewaart geen codehistorie; een code kan bij een latere generatie opnieuw voorkomen.
+Automatische codes volgen deze regels: eerste cijfer 1–9, vier verschillende cijfers, en geen naast elkaar staande cijfers die precies één verschillen. Handmatig ingevoerde codes bestaan uit vier cijfers, maar mogen niet alle vier gelijk zijn (2222) of een volledige oplopende/aflopende reeks vormen (4567, 5432). Codes zoals 1122 en 0195 zijn toegestaan. Ongeldige codes blokkeren JPG-export, TS-export en het openen van de UDP-uitvoer. De generator bewaart geen codehistorie; een code kan bij een latere generatie opnieuw voorkomen.
 
 | 4:3 | 16:9 |
 | --- | --- |

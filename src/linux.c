@@ -367,7 +367,7 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     gboolean show=pm_mode(app)||gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show));
     if (!validate(call,valid_call) || ((show||*locator) && !validate(locator,valid_locator)) ||
         (!pm_mode(app) && !validate(gtk_entry_get_text(GTK_ENTRY(app->code)),valid_code))) {
-        notify_error(app,"Vul eerst een geldige roepnaam, locator en contestcode in.");
+        notify_error(app,"Vul eerst een geldige roepnaam en locator in. De contestcode moet vier cijfers bevatten, niet alle vier gelijk en geen oplopende of aflopende reeks.");
         g_free(call); g_free(locator); return;
     }
     g_free(locator);
@@ -446,7 +446,7 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     gboolean show=pm_mode(app)||gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show));
     if (!validate(call,valid_call) || ((show||*locator) && !validate(locator,valid_locator)) ||
         (!pm_mode(app) && !validate(gtk_entry_get_text(GTK_ENTRY(app->code)),valid_code))) {
-        notify_error(app,"Vul eerst een geldige roepnaam, locator en contestcode in.");
+        notify_error(app,"Vul eerst een geldige roepnaam en locator in. De contestcode moet vier cijfers bevatten, niet alle vier gelijk en geen oplopende of aflopende reeks.");
         g_free(call); g_free(locator); return;
     }
     g_free(locator);
@@ -541,7 +541,7 @@ static void generate(GtkWidget *widget, gpointer data) {
         goto cleanup;
     }
     if (!pm && !validate(gtk_entry_get_text(GTK_ENTRY(app->code)), valid_code)) {
-        notify_error(app, "Vul vier cijfers in of klik op Nieuw nummer."); goto cleanup;
+        notify_error(app, "Vul vier cijfers in; niet alle vier gelijk en geen oplopende of aflopende reeks (zoals 4567 of 5432)."); goto cleanup;
     }
     gtk_entry_set_text(GTK_ENTRY(app->call), call);
     gtk_entry_set_text(GTK_ENTRY(app->locator), locator);

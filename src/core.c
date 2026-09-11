@@ -97,11 +97,21 @@ int valid_locator(const wchar_t *s) {
     }
     return 1;
 }
-int valid_code(const wchar_t *s) {
+static int four_digits(const wchar_t *s) {
     return wcslen(s) == 4 && digit(s[0]) && digit(s[1]) && digit(s[2]) && digit(s[3]);
 }
+int valid_code(const wchar_t *s) {
+    if (!four_digits(s)) return 0;
+    int same = 1, ascending = 1, descending = 1;
+    for (int i=1; i<4; ++i) {
+        same &= s[i] == s[i-1];
+        ascending &= s[i] == s[i-1]+1;
+        descending &= s[i]+1 == s[i-1];
+    }
+    return !same && !ascending && !descending;
+}
 int code_digit_sum(const wchar_t *s) {
-    if (!valid_code(s)) return -1;
+    if (!four_digits(s)) return -1;
     return (s[0]-L'0') + (s[1]-L'0') + (s[2]-L'0') + (s[3]-L'0');
 }
 int generated_code_valid(unsigned code) {

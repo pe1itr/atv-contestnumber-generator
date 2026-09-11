@@ -323,7 +323,7 @@ static void output_udp(HWND window) {
     read_text(window,IDC_CALL,call,25); read_text(window,IDC_LOCATOR,locator,LOCATOR_MAX_LENGTH+1); read_text(window,IDC_CODE,code,5);
     BOOL pm=pm_mode(window), show=pm||IsDlgButtonChecked(window,IDC_SHOW_LOCATOR)==BST_CHECKED;
     if (!valid_call(call) || ((show||locator[0])&&!valid_locator(locator)) || (!pm&&!valid_code(code))) {
-        error(window,L"Vul eerst een geldige roepnaam, locator en contestcode in."); return;
+        error(window,L"Vul eerst een geldige roepnaam en locator in. De contestcode moet vier cijfers bevatten, niet alle vier gelijk en geen oplopende of aflopende reeks."); return;
     }
     UdpDialog d={0}; d.size=resolution(window);
     const char *invalid=datv_validate(udp_settings.video,d.size.width,d.size.height);
@@ -418,7 +418,7 @@ static void export_ts(HWND window) {
     read_text(window,IDC_CALL,call,25); read_text(window,IDC_LOCATOR,locator,LOCATOR_MAX_LENGTH+1); read_text(window,IDC_CODE,code,5);
     BOOL pm=pm_mode(window), show=pm||IsDlgButtonChecked(window,IDC_SHOW_LOCATOR)==BST_CHECKED;
     if (!valid_call(call) || ((show||locator[0])&&!valid_locator(locator)) || (!pm&&!valid_code(code))) {
-        error(window,L"Vul eerst een geldige roepnaam, locator en contestcode in."); return;
+        error(window,L"Vul eerst een geldige roepnaam en locator in. De contestcode moet vier cijfers bevatten, niet alle vier gelijk en geen oplopende of aflopende reeks."); return;
     }
     Resolution r=resolution(window);
     const char *invalid=datv_validate(ts_settings,r.width,r.height);
@@ -466,7 +466,7 @@ static void generate(HWND window, BOOL choose_path) {
     int blue_yellow = IsDlgButtonChecked(window, IDC_BLUE_YELLOW) == BST_CHECKED;
     if (!valid_call(call)) { error(window, L"Vul een roepnaam in met letters en cijfers, eventueel met / (3 tot 24 tekens)."); return; }
     if ((show || locator[0]) && !valid_locator(locator)) { error(window, L"Vul een geldige Maidenheadlocator in, bijvoorbeeld JO21QK (4, 6, 8, 10 of 12 tekens)."); return; }
-    if (!pm && !valid_code(code)) { error(window, L"Vul vier cijfers in of klik op Nieuw nummer."); return; }
+    if (!pm && !valid_code(code)) { error(window, L"Vul vier cijfers in; niet alle vier gelijk en geen oplopende of aflopende reeks (zoals 4567 of 5432)."); return; }
     int band = (int)SendDlgItemMessageW(window, IDC_BAND, CB_GETCURSEL, 0, 0);
     if (band < 0 || band > 10) return;
     filename_call(safe_call, call);

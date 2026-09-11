@@ -55,7 +55,17 @@ int main(void) {
     assert(!valid_locator(L"JO21Q"));
     assert(!valid_locator(L"JOAA"));
     assert(valid_code(L"0001"));
-    assert(valid_code(L"2222"));
+    assert(!valid_code(L"2222"));
+    assert(!valid_code(L"0000"));
+    assert(!valid_code(L"9999"));
+    assert(!valid_code(L"4567"));
+    assert(!valid_code(L"5432"));
+    assert(!valid_code(L"0123"));
+    assert(!valid_code(L"9876"));
+    assert(!valid_code(L"3210"));
+    assert(valid_code(L"1122"));
+    assert(valid_code(L"0195"));
+    assert(valid_code(L"1248"));
     assert(!valid_code(L"123"));
     assert(!valid_code(L"12345"));
     assert(!valid_code(L"12A4"));
@@ -77,6 +87,15 @@ int main(void) {
         ++count;
     }
     assert(count > 0);
+    for (unsigned code=0; code<10000; ++code) {
+        wchar_t text[5];
+        swprintf(text,5,L"%04u",code);
+        int prohibited = code % 1111 == 0;
+        for (unsigned start=0; start<=6; ++start)
+            prohibited |= code == start*1111+123 || code == (start+3)*1000+(start+2)*100+(start+1)*10+start;
+        assert(valid_code(text) == !prohibited);
+        if (generated_code_valid(code)) assert(valid_code(text));
+    }
     assert(!generated_code_valid(1234));
     assert(!generated_code_valid(2222));
     assert(generated_code_valid(1957));
