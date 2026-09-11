@@ -11,8 +11,8 @@
 
 typedef struct {
     GtkWidget *window, *call, *locator, *show, *automatic, *code;
-    GtkWidget *aspect, *resolution, *band, *preview, *status, *inverse, *show_sum, *top_code, *mode, *manual, *new_code;
-    GtkWidget *export_menu, *about_menu, *quit_menu;
+    GtkWidget *aspect, *resolution, *band, *preview, *status, *inverse, *blue_yellow, *show_sum, *top_code, *mode, *manual, *new_code;
+    GtkWidget *export_menu, *export_as_menu, *about_menu, *quit_menu;
     char *directory;
 } App;
 
@@ -72,13 +72,13 @@ static void draw_line(cairo_t *cr, const char *text, int left, int top,
 }
 
 static cairo_surface_t *render(Resolution r, const char *call, const char *code,
-                               const char *locator, gboolean show, const char *band, gboolean inverse, gboolean show_sum, gboolean top_code) {
+                               const char *locator, gboolean show, const char *band, gboolean inverse, gboolean show_sum, gboolean top_code, gboolean blue_yellow) {
     cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, r.width, r.height);
     cairo_t *cr = cairo_create(surface);
-    double background = inverse ? 1 : 0, foreground = inverse ? 0 : 1;
-    cairo_set_source_rgb(cr, background, background, background);
+    ContestPalette palette = contest_palette(blue_yellow, inverse);
+    cairo_set_source_rgb(cr, palette.background.red/255.0, palette.background.green/255.0, palette.background.blue/255.0);
     cairo_paint(cr);
-    cairo_set_source_rgb(cr, foreground, foreground, foreground);
+    cairo_set_source_rgb(cr, palette.foreground.red/255.0, palette.foreground.green/255.0, palette.foreground.blue/255.0);
     cairo_font_options_t *options = cairo_font_options_create();
     cairo_font_options_set_antialias(options, CAIRO_ANTIALIAS_GRAY);
     cairo_set_font_options(cr, options);
@@ -213,7 +213,7 @@ static void toggled(GtkWidget *widget, gpointer data) {
     App *app = data;
     gtk_editable_set_editable(GTK_EDITABLE(app->code), !gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->automatic)));
     gboolean pm = pm_mode(app);
-    GtkWidget *controls[] = {app->automatic, app->manual, app->code, app->inverse,
+    GtkWidget *controls[] = {app->automatic, app->manual, app->code, app->inverse, app->blue_yellow,
                              app->band, app->show_sum, app->top_code, app->show};
     for (size_t i=0; i<G_N_ELEMENTS(controls); ++i) gtk_widget_set_sensitive(controls[i], !pm);
     gtk_widget_set_sensitive(app->new_code, !pm && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->automatic)));
@@ -230,7 +230,8 @@ static cairo_surface_t *current_image(App *app) {
         gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show)), band ? band : "",
         gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->inverse)),
         gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show_sum)),
-        gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->top_code)));
+        gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->top_code)),
+        gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->blue_yellow)));
     g_free(call); g_free(locator); g_free(band);
     return surface;
 }
@@ -280,13 +281,39 @@ static void generate(GtkWidget *widget, gpointer data) {
     if (band < 0 || band > 10) goto cleanup;
     char *band_file = utf8(band_files[band]);
     gboolean inverse = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->inverse));
+    char *color_suffix = utf8(contest_color_suffix(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->blue_yellow))));
     Resolution r = selected_resolution(app);
-    char *name = pm ? g_strdup_printf("%s-PM5544-%dx%d.jpg", call, r.width, r.height) : g_strdup_printf("%s-%s-%s-%dx%d%s.jpg", call, gtk_entry_get_text(GTK_ENTRY(app->code)), band_file, r.width, r.height, inverse ? "-inverse" : "");
+    char *name = pm ? g_strdup_printf("%s-PM5544-%dx%d.jpg", call, r.width, r.height) : g_strdup_printf("%s-%s-%s-%dx%d%s%s.jpg", call, gtk_entry_get_text(GTK_ENTRY(app->code)), band_file, r.width, r.height, color_suffix, inverse ? "-inverse" : "");
     char *path = g_build_filename(app->directory, name, NULL);
+    if (widget == app->export_as_menu) {
+        GtkWidget *picker = gtk_file_chooser_dialog_new("Exporteren naar...", GTK_WINDOW(app->window),
+            GTK_FILE_CHOOSER_ACTION_SAVE, "_Annuleren", GTK_RESPONSE_CANCEL,
+            "_Opslaan", GTK_RESPONSE_ACCEPT, NULL);
+        GtkFileChooser *chooser = GTK_FILE_CHOOSER(picker);
+        gtk_file_chooser_set_local_only(chooser, TRUE);
+        gtk_file_chooser_set_current_folder(chooser, app->directory);
+        gtk_file_chooser_set_current_name(chooser, name);
+        GtkFileFilter *filter = gtk_file_filter_new();
+        gtk_file_filter_set_name(filter, "JPG-afbeeldingen (*.jpg;*.jpeg)");
+        gtk_file_filter_add_mime_type(filter, "image/jpeg");
+        gtk_file_chooser_add_filter(chooser, filter);
+        int answer = gtk_dialog_run(GTK_DIALOG(picker));
+        g_free(path);
+        path = answer == GTK_RESPONSE_ACCEPT ? gtk_file_chooser_get_filename(chooser) : NULL;
+        gtk_widget_destroy(picker);
+        if (!path) goto saved;
+        char *basename = g_path_get_basename(path);
+        if (!strchr(basename, '.')) {
+            char *with_extension = g_strconcat(path, ".jpg", NULL);
+            g_free(path);
+            path = with_extension;
+        }
+        g_free(basename);
+    }
     gboolean overwrite = g_file_test(path, G_FILE_TEST_EXISTS);
     if (overwrite) {
         GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(app->window), GTK_DIALOG_MODAL,
-            GTK_MESSAGE_QUESTION, GTK_BUTTONS_YES_NO, "%s bestaat al. Wil je dit bestand vervangen?", name);
+            GTK_MESSAGE_QUESTION, GTK_BUTTONS_YES_NO, "%s bestaat al. Wil je dit bestand vervangen?", path);
         gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_NO);
         int answer = gtk_dialog_run(GTK_DIALOG(dialog));
         gtk_widget_destroy(dialog);
@@ -304,7 +331,7 @@ static void generate(GtkWidget *widget, gpointer data) {
     }
     cairo_surface_destroy(surface);
 saved:
-    g_free(band_file); g_free(name); g_free(path);
+    g_free(color_suffix); g_free(band_file); g_free(name); g_free(path);
 cleanup:
     g_free(call); g_free(locator);
     changed(widget, app);
@@ -338,9 +365,11 @@ static void create_ui(App *app) {
     GtkWidget *info = gtk_menu_item_new_with_mnemonic("_Info");
     GtkWidget *file_menu = gtk_menu_new(), *info_menu = gtk_menu_new();
     app->export_menu = gtk_menu_item_new_with_mnemonic("_Exporteer JPG");
+    app->export_as_menu = gtk_menu_item_new_with_mnemonic("Exporteren _naar...");
     app->quit_menu = gtk_menu_item_new_with_mnemonic("_Quit");
     app->about_menu = gtk_menu_item_new_with_mnemonic("_Over dit programma");
     gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), app->export_menu);
+    gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), app->export_as_menu);
     gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), gtk_separator_menu_item_new());
     gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), app->quit_menu);
     gtk_menu_shell_append(GTK_MENU_SHELL(info_menu), app->about_menu);
@@ -405,12 +434,14 @@ static void create_ui(App *app) {
     }
     gtk_combo_box_set_active(GTK_COMBO_BOX(app->band), 3);
     attach_field(fields, "_Frequentieband", app->band, 12);
-    app->inverse = gtk_check_button_new_with_mnemonic("In_verse (zwart op wit)");
+    app->inverse = gtk_check_button_new_with_mnemonic("In_verse (kleuren omwisselen)");
     gtk_grid_attach(GTK_GRID(fields), app->inverse, 0, 14, 1, 1);
     app->show_sum = gtk_check_button_new_with_mnemonic("Cijfer_som in beeld");
     gtk_grid_attach(GTK_GRID(fields), app->show_sum, 0, 15, 1, 1);
     app->top_code = gtk_check_button_new_with_mnemonic("Code rechts_boven (DATV)");
     gtk_grid_attach(GTK_GRID(fields), app->top_code, 0, 16, 1, 1);
+    app->blue_yellow = gtk_check_button_new_with_mnemonic("Blauw/_geel");
+    gtk_grid_attach(GTK_GRID(fields), app->blue_yellow, 0, 17, 1, 1);
     GtkWidget *frame = gtk_frame_new("Voorbeeld");
     app->preview = gtk_drawing_area_new();
     gtk_widget_set_size_request(app->preview, 480, 360);
@@ -433,12 +464,14 @@ static void create_ui(App *app) {
     g_signal_connect(app->mode, "changed", G_CALLBACK(toggled), app);
     g_signal_connect(app->automatic, "toggled", G_CALLBACK(toggled), app);
     g_signal_connect(app->show, "toggled", G_CALLBACK(toggled), app);
+    g_signal_connect(app->blue_yellow, "toggled", G_CALLBACK(changed), app);
     g_signal_connect(app->inverse, "toggled", G_CALLBACK(changed), app);
     g_signal_connect(app->show_sum, "toggled", G_CALLBACK(changed), app);
     g_signal_connect(app->top_code, "toggled", G_CALLBACK(changed), app);
     g_signal_connect(app->new_code, "clicked", G_CALLBACK(new_code), app);
     g_signal_connect(button, "clicked", G_CALLBACK(generate), app);
     g_signal_connect(app->export_menu, "activate", G_CALLBACK(generate), app);
+    g_signal_connect(app->export_as_menu, "activate", G_CALLBACK(generate), app);
     g_signal_connect_swapped(app->quit_menu, "activate", G_CALLBACK(gtk_widget_destroy), app->window);
     g_signal_connect(app->about_menu, "activate", G_CALLBACK(show_about), app);
     GtkWidget *inputs[] = {app->call, app->locator, app->code, app->band, app->resolution};
@@ -451,13 +484,14 @@ static int smoke_test(const char *directory) {
         char code[5];
         if (!random_code(code) || !validate(code, valid_code) || !generated_code_valid((unsigned)atoi(code))) return 2;
     }
+    for (int blue_yellow=0; blue_yellow<2; ++blue_yellow)
     for (int top_code=0; top_code<2; ++top_code)
     for (int show_sum=0; show_sum<2; ++show_sum)
     for (int inverse=0; inverse<2; ++inverse)
     for (int aspect=0; aspect<2; ++aspect) for (int i=0; i<RESOLUTION_COUNT; ++i) for (int show=0; show<2; ++show) {
         Resolution r = (aspect ? resolutions169 : resolutions43)[i];
-        char *path = g_strdup_printf("%s/test-%dx%d-locator%d%s%s%s.jpg", directory, r.width, r.height, show, inverse ? "-inverse" : "", show_sum ? "-sum" : "", top_code ? "-top" : "");
-        cairo_surface_t *surface = render(r, "PE1ITR/P", "1957", "JO21QK86DV", show, "436 MHz", inverse, show_sum, top_code);
+        char *path = g_strdup_printf("%s/test-%dx%d-locator%d%s%s%s%s.jpg", directory, r.width, r.height, show, blue_yellow ? "-blauw-geel" : "", inverse ? "-inverse" : "", show_sum ? "-sum" : "", top_code ? "-top" : "");
+        cairo_surface_t *surface = render(r, "PE1ITR/P", "1957", "JO21QK86DV", show, "436 MHz", inverse, show_sum, top_code, blue_yellow);
         GError *error = NULL;
         gboolean ok = save_jpeg(surface, path, TRUE, &error);
         cairo_surface_destroy(surface); g_free(path);
@@ -472,7 +506,7 @@ static int smoke_test(const char *directory) {
         cairo_surface_destroy(surface); g_free(path);
         if (!ok) { g_printerr("%s\n", error->message); g_error_free(error); return 4; }
     }
-    g_print("360 JPEGs generated; 1000 random codes checked.\n");
+    g_print("680 JPEGs generated; 1000 random codes checked.\n");
     return 0;
 }
 

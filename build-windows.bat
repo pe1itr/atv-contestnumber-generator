@@ -13,6 +13,6 @@ gcc -std=c11 -O2 -Wall -Wextra -Werror -Ibuild -c src/pm5544.c -o build/pm5544-w
 if errorlevel 1 exit /b 1
 windres -Isrc src/app.rc build/app.o
 if errorlevel 1 exit /b 1
-gcc -std=c11 -O2 -Wall -Wextra -Werror -municode -mwindows -static -s src/main.c src/core.c src/app_info.c build/app.o build/pm5544-windows.o -o dist/atv-contestnummer.exe -lwindowscodecs -lole32 -loleaut32 -luuid -lgdi32 -lcomctl32 -lbcrypt
+gcc -std=c11 -O2 -Wall -Wextra -Werror -municode -mwindows -static -s src/main.c src/core.c src/app_info.c build/app.o build/pm5544-windows.o -o dist/atv-contestnummer.exe -lwindowscodecs -lole32 -loleaut32 -luuid -lgdi32 -lcomctl32 -lcomdlg32 -lbcrypt
 if errorlevel 1 exit /b 1
 echo Gereed: dist\atv-contestnummer.exe

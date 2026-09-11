@@ -6,6 +6,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <commctrl.h>
+#include <commdlg.h>
 #include <wincodec.h>
 #include <bcrypt.h>
 #include <stdio.h>
@@ -92,7 +93,7 @@ static int draw_line(HDC dc, const wchar_t *text, RECT box, int height, UINT ali
     return result != 0;
 }
 static HBITMAP render(int width, int height, const wchar_t *call, const wchar_t *code,
-                      const wchar_t *locator, int show_locator, const wchar_t *band, int inverse, int show_sum, int top_code) {
+                      const wchar_t *locator, int show_locator, const wchar_t *band, int inverse, int show_sum, int top_code, int blue_yellow) {
     BITMAPINFO info = {0};
     void *pixels;
     info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -106,9 +107,12 @@ static HBITMAP render(int width, int height, const wchar_t *call, const wchar_t 
     HBITMAP bitmap = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &pixels, NULL, 0);
     if (!bitmap) { DeleteDC(dc); return NULL; }
     HGDIOBJ old = SelectObject(dc, bitmap);
-    PatBlt(dc, 0, 0, width, height, inverse ? WHITENESS : BLACKNESS);
+    ContestPalette palette = contest_palette(blue_yellow, inverse);
+    SetDCBrushColor(dc, RGB(palette.background.red, palette.background.green, palette.background.blue));
+    RECT background = {0, 0, width, height};
+    FillRect(dc, &background, (HBRUSH)GetStockObject(DC_BRUSH));
     SetBkMode(dc, TRANSPARENT);
-    SetTextColor(dc, inverse ? RGB(0,0,0) : RGB(255,255,255));
+    SetTextColor(dc, RGB(palette.foreground.red, palette.foreground.green, palette.foreground.blue));
     int margin = width / 40;
     int small_size = height*6/100;
     if (small_size < 7) small_size = 7;
@@ -145,7 +149,7 @@ static int pm_mode(HWND window) {
 }
 static void update_mode(HWND window) {
     int pm = pm_mode(window);
-    const int controls[] = {IDC_AUTO, IDC_MANUAL, IDC_CODE, IDC_INVERSE, IDC_BAND,
+    const int controls[] = {IDC_AUTO, IDC_MANUAL, IDC_CODE, IDC_INVERSE, IDC_BLUE_YELLOW, IDC_BAND,
                             IDC_SHOW_SUM, IDC_TOP_CODE, IDC_SHOW_LOCATOR};
     for (size_t i=0; i<sizeof(controls)/sizeof(controls[0]); ++i)
         EnableWindow(GetDlgItem(window, controls[i]), !pm);
@@ -213,7 +217,7 @@ cleanup:
 static void error(HWND window, const wchar_t *message) {
     MessageBoxW(window, message, L"ATV contestnummer", MB_OK | MB_ICONERROR);
 }
-static void generate(HWND window) {
+static void generate(HWND window, BOOL choose_path) {
     wchar_t call[25], locator[11], code[5], safe_call[25];
     wchar_t path[MAX_PATH], temporary[MAX_PATH], filename[100], message[400];
     read_text(window, IDC_CALL, call, 25);
@@ -222,6 +226,7 @@ static void generate(HWND window) {
     int pm = pm_mode(window);
     int show = pm || IsDlgButtonChecked(window, IDC_SHOW_LOCATOR) == BST_CHECKED;
     int inverse = IsDlgButtonChecked(window, IDC_INVERSE) == BST_CHECKED;
+    int blue_yellow = IsDlgButtonChecked(window, IDC_BLUE_YELLOW) == BST_CHECKED;
     if (!valid_call(call)) { error(window, L"Vul een roepnaam in met letters en cijfers, eventueel met / (3 tot 24 tekens)."); return; }
     if (show && !valid_locator(locator)) { error(window, L"Vul een geldige Maidenheadlocator in, bijvoorbeeld JO21QK (4, 6, 8 of 10 tekens)."); return; }
     if (!pm && !valid_code(code)) { error(window, L"Vul vier cijfers in of klik op Nieuw nummer."); return; }
@@ -230,28 +235,52 @@ static void generate(HWND window) {
     filename_call(safe_call, call);
     Resolution r = resolution(window);
     if (pm) swprintf(filename, 100, L"%ls-PM5544-%dx%d.jpg", safe_call, r.width, r.height);
-    else swprintf(filename, 100, L"%ls-%ls-%ls-%dx%d%ls.jpg", safe_call, code, band_files[band], r.width, r.height, inverse ? L"-inverse" : L"");
+    else swprintf(filename, 100, L"%ls-%ls-%ls-%dx%d%ls%ls.jpg", safe_call, code, band_files[band], r.width, r.height, contest_color_suffix(blue_yellow), inverse ? L"-inverse" : L"");
     DWORD length = GetModuleFileNameW(NULL, path, MAX_PATH);
     if (!length || length >= MAX_PATH) { error(window, L"Het pad naar het programma is te lang."); return; }
     wchar_t *last = wcsrchr(path, L'\\');
     if (!last) { error(window, L"De programmamap is niet gevonden."); return; }
     last[1] = 0;
-    if (wcslen(path) + wcslen(filename) >= MAX_PATH) { error(window, L"De bestandsnaam is te lang. Zet het programma in een korter pad."); return; }
-    /* Encode to a temporary file first, so a failed save cannot damage existing images. */
-    if (!GetTempFileNameW(path, L"atv", 0, temporary)) {
-        error(window, L"Kan niet schrijven in de programmamap. Zet de .exe in een eigen beschrijfbare map."); return;
+    if (choose_path) {
+        wchar_t directory[MAX_PATH];
+        wcscpy(directory, path);
+        wcscpy(path, filename);
+        OPENFILENAMEW picker = {0};
+        picker.lStructSize = sizeof(picker);
+        picker.hwndOwner = window;
+        picker.lpstrFilter = L"JPG-afbeeldingen (*.jpg;*.jpeg)\0*.jpg;*.jpeg\0\0";
+        picker.lpstrFile = path;
+        picker.nMaxFile = MAX_PATH;
+        picker.lpstrInitialDir = directory;
+        picker.lpstrTitle = L"Exporteren naar...";
+        picker.lpstrDefExt = L"jpg";
+        picker.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+        if (!GetSaveFileNameW(&picker)) {
+            if (CommDlgExtendedError()) error(window, L"Het opslagvenster kon niet worden geopend of het gekozen pad is te lang.");
+            return;
+        }
+    } else {
+        if (wcslen(path) + wcslen(filename) >= MAX_PATH) { error(window, L"De bestandsnaam is te lang. Gebruik Exporteren naar... voor een korter pad."); return; }
+        wcscat(path, filename);
     }
-    wcscat(path, filename);
     BOOL overwrite = GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES;
     if (overwrite) {
-        swprintf(message, 400, L"%ls bestaat al. Wil je dit bestand vervangen?", filename);
-        if (MessageBoxW(window, message, L"Bestand bestaat al", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES) {
-            DeleteFileW(temporary); return;
-        }
+        swprintf(message, 400, L"%ls bestaat al. Wil je dit bestand vervangen?", path);
+        if (MessageBoxW(window, message, L"Bestand bestaat al", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES) return;
+    }
+    /* Encode in the destination directory before publishing the complete image. */
+    wchar_t directory[MAX_PATH];
+    wcscpy(directory, path);
+    last = wcsrchr(directory, L'\\');
+    if (!last) { error(window, L"De uitvoermap is niet gevonden."); return; }
+    last[1] = 0;
+    if (!GetTempFileNameW(directory, L"atv", 0, temporary)) {
+        error(window, L"Kan niet schrijven in de gekozen map. Controleer de schrijfrechten of kies een andere map via Exporteren naar..."); return;
     }
     HBITMAP bitmap = pm ? render_pm(r, call, locator) : render(r.width, r.height, call, code, locator, show, bands[band], inverse,
         IsDlgButtonChecked(window, IDC_SHOW_SUM) == BST_CHECKED,
-        IsDlgButtonChecked(window, IDC_TOP_CODE) == BST_CHECKED);
+        IsDlgButtonChecked(window, IDC_TOP_CODE) == BST_CHECKED,
+        IsDlgButtonChecked(window, IDC_BLUE_YELLOW) == BST_CHECKED);
     HRESULT hr = bitmap ? save_jpeg(bitmap, temporary) : E_OUTOFMEMORY;
     if (bitmap) DeleteObject(bitmap);
     if (SUCCEEDED(hr) && !MoveFileExW(temporary, path, overwrite ? MOVEFILE_REPLACE_EXISTING : 0)) hr = HRESULT_FROM_WIN32(GetLastError());
@@ -260,7 +289,7 @@ static void generate(HWND window) {
         swprintf(message, 400, L"Opslaan is mislukt (0x%08lX). Controleer vrije ruimte en schrijfrechten.", (unsigned long)hr);
         error(window, message); return;
     }
-    swprintf(message, 400, L"Opgeslagen: %ls (%d x %d), naast de .exe", filename, r.width, r.height);
+    swprintf(message, 400, L"Opgeslagen: %ls (%d x %d)", path, r.width, r.height);
     SetDlgItemTextW(window, IDC_STATUS, message);
 }
 static void preview(HWND window, DRAWITEMSTRUCT *item) {
@@ -276,7 +305,8 @@ static void preview(HWND window, DRAWITEMSTRUCT *item) {
         IsDlgButtonChecked(window, IDC_SHOW_LOCATOR) == BST_CHECKED, bands[band],
         IsDlgButtonChecked(window, IDC_INVERSE) == BST_CHECKED,
         IsDlgButtonChecked(window, IDC_SHOW_SUM) == BST_CHECKED,
-        IsDlgButtonChecked(window, IDC_TOP_CODE) == BST_CHECKED);
+        IsDlgButtonChecked(window, IDC_TOP_CODE) == BST_CHECKED,
+        IsDlgButtonChecked(window, IDC_BLUE_YELLOW) == BST_CHECKED);
     if (!bitmap) return;
     HDC dc = CreateCompatibleDC(item->hDC);
     if (!dc) { DeleteObject(bitmap); return; }
@@ -328,10 +358,11 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
         if (LOWORD(wp) == IDCANCEL) { EndDialog(window, 0); return TRUE; }
         if (!ready) break;
         if (LOWORD(wp) == IDM_QUIT) { EndDialog(window, 0); return TRUE; }
-        if (LOWORD(wp) == IDM_EXPORT) { generate(window); return TRUE; }
+        if (LOWORD(wp) == IDM_EXPORT) { generate(window, FALSE); return TRUE; }
+        if (LOWORD(wp) == IDM_EXPORT_AS) { generate(window, TRUE); return TRUE; }
         if (LOWORD(wp) == IDM_ABOUT) { show_about(window); return TRUE; }
         if (LOWORD(wp) == IDC_NEW_CODE && HIWORD(wp) == BN_CLICKED) new_code(window);
-        if (LOWORD(wp) == IDC_GENERATE && HIWORD(wp) == BN_CLICKED) generate(window);
+        if (LOWORD(wp) == IDC_GENERATE && HIWORD(wp) == BN_CLICKED) generate(window, FALSE);
         if (LOWORD(wp) == IDC_MODE && HIWORD(wp) == CBN_SELCHANGE) update_mode(window);
         if (LOWORD(wp) == IDC_ASPECT && HIWORD(wp) == CBN_SELCHANGE) update_resolutions(window);
         if ((LOWORD(wp) == IDC_AUTO || LOWORD(wp) == IDC_MANUAL) && HIWORD(wp) == BN_CLICKED) {
@@ -356,13 +387,14 @@ static int smoke_test(const wchar_t *directory) {
         wchar_t code[5];
         if (!random_code(code) || !valid_code(code) || !generated_code_valid((unsigned)wcstoul(code, NULL, 10))) return 5;
     }
+    for (int blue_yellow=0; blue_yellow<2; ++blue_yellow)
     for (int top_code=0; top_code<2; ++top_code)
     for (int show_sum=0; show_sum<2; ++show_sum)
     for (int inverse=0; inverse<2; ++inverse)
     for (int aspect=0; aspect<2; ++aspect) for (int i=0; i<RESOLUTION_COUNT; ++i) for (int show=0; show<2; ++show) {
         Resolution r = (aspect ? resolutions169 : resolutions43)[i];
-        if (swprintf(path, MAX_PATH, L"%ls\\test-%dx%d-locator%d%ls%ls%ls.jpg", directory, r.width, r.height, show, inverse ? L"-inverse" : L"", show_sum ? L"-sum" : L"", top_code ? L"-top" : L"") < 0) return 2;
-        HBITMAP bitmap = render(r.width, r.height, L"PE1ITR/P", L"1957", L"JO21QK86DV", show, L"436 MHz", inverse, show_sum, top_code);
+        if (swprintf(path, MAX_PATH, L"%ls\\test-%dx%d-locator%d%ls%ls%ls%ls.jpg", directory, r.width, r.height, show, contest_color_suffix(blue_yellow), inverse ? L"-inverse" : L"", show_sum ? L"-sum" : L"", top_code ? L"-top" : L"") < 0) return 2;
+        HBITMAP bitmap = render(r.width, r.height, L"PE1ITR/P", L"1957", L"JO21QK86DV", show, L"436 MHz", inverse, show_sum, top_code, blue_yellow);
         if (!bitmap) return 3;
         HRESULT hr = save_jpeg(bitmap, path);
         DeleteObject(bitmap);

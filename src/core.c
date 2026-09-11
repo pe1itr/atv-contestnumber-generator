@@ -60,3 +60,19 @@ int generated_code_valid(unsigned code) {
 void filename_call(wchar_t *out, const wchar_t *in) {
     do { *out++ = *in == L'/' ? L'_' : *in; } while (*in++);
 }
+
+ContestPalette contest_palette(int blue_yellow, int inverse) {
+    ContestPalette palette = blue_yellow
+        ? (ContestPalette){{0, 0, 128}, {255, 255, 0}}
+        : (ContestPalette){{0, 0, 0}, {255, 255, 255}};
+    if (inverse) {
+        ContestColor swap = palette.background;
+        palette.background = palette.foreground;
+        palette.foreground = swap;
+    }
+    return palette;
+}
+
+const wchar_t *contest_color_suffix(int blue_yellow) {
+    return blue_yellow ? L"-blauw-geel" : L"";
+}

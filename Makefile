@@ -1,7 +1,7 @@
 CC = x86_64-w64-mingw32-gcc
 WINDRES = x86_64-w64-mingw32-windres
 CFLAGS = -std=c11 -O2 -Wall -Wextra -Werror
-LDLIBS = -lwindowscodecs -lole32 -loleaut32 -luuid -lgdi32 -lcomctl32 -lbcrypt
+LDLIBS = -lwindowscodecs -lole32 -loleaut32 -luuid -lgdi32 -lcomctl32 -lcomdlg32 -lbcrypt
 
 .PHONY: all windows linux
 all: linux windows

@@ -16,7 +16,10 @@
 #define IDC_TOP_CODE 115
 #define IDC_MODE 116
 #define IDC_NEW_CODE 117
+#define IDC_BLUE_YELLOW 118
 #define IDR_MENU 200
 #define IDM_EXPORT 201
 #define IDM_ABOUT 202
 #define IDM_QUIT 203
+
+#define IDM_EXPORT_AS 204

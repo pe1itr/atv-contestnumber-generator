@@ -22,12 +22,13 @@ const char *app_info_text(void) {
         "Kies daarna de beeldverhouding en resolutie (standaard 320 x 240).\n\n"
         "In Contest staat een automatisch nummer meteen in beeld. "
         "Klik op Nieuw nummer voor een andere code, of kies Zelf intypen. "
-        "Je kunt de band, inverse weergave, locator, cijfersom en extra code "
+        "Je kunt de band, inverse weergave, blauw/geel, locator, cijfersom en extra code "
         "rechtsboven instellen. Export bewaart precies de zichtbare code.\n\n"
         "In PM5544 verschijnen de roepnaam en locator in de zwarte vlakken "
         "van het ingebouwde testbeeld. Contestopties zijn dan uitgeschakeld.\n\n"
         "Gebruik File > Exporteer JPG of de exportknop. Het JPG-bestand "
         "wordt naast het programma opgeslagen, met de resolutie in de naam. "
+        "Kies File > Exporteren naar... om zelf een map en bestandsnaam te kiezen. "
         "Bij een bestaand bestand wordt gevraagd of je het wilt vervangen.",
         APP_VERSION, year, number, day, APP_AUTHOR);
     return text;
