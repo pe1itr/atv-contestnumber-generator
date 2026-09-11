@@ -32,7 +32,7 @@ int valid_call(const wchar_t *s) {
 }
 int valid_locator(const wchar_t *s) {
     size_t n = wcslen(s);
-    if (n < 4 || n > 10 || n % 2) return 0;
+    if (n < 4 || n > LOCATOR_MAX_LENGTH || n % 2) return 0;
     for (size_t i=0; i<n; ++i) {
         if (i < 2) { if (s[i] < L'A' || s[i] > L'R') return 0; }
         else if ((i/2)%2) { if (!digit(s[i])) return 0; }
@@ -75,4 +75,22 @@ ContestPalette contest_palette(int blue_yellow, int inverse) {
 
 const wchar_t *contest_color_suffix(int blue_yellow) {
     return blue_yellow ? L"-blauw-geel" : L"";
+}
+
+void filename_locator(wchar_t out[7], const wchar_t *locator) {
+    out[0] = 0;
+    if (!valid_locator(locator)) return;
+    size_t n = wcslen(locator);
+    if (n > 6) n = 6;
+    wmemcpy(out, locator, n);
+    out[n] = 0;
+}
+
+int locator_square_changed(wchar_t previous[7], const wchar_t *locator) {
+    if (!valid_locator(locator) || wcslen(locator) < 6) return 0;
+    wchar_t square[7];
+    filename_locator(square, locator);
+    int changed = previous[0] && wcscmp(previous, square);
+    wcscpy(previous, square);
+    return changed != 0;
 }

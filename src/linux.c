@@ -14,6 +14,7 @@ typedef struct {
     GtkWidget *aspect, *resolution, *band, *preview, *status, *inverse, *blue_yellow, *show_sum, *top_code, *mode, *manual, *new_code;
     GtkWidget *export_menu, *export_as_menu, *about_menu, *quit_menu;
     char *directory;
+    wchar_t contest_square[7];
 } App;
 
 static char *utf8(const wchar_t *s) {
@@ -35,6 +36,18 @@ static gboolean validate(const char *s, int (*validator)(const wchar_t *)) {
     }
     buffer[n] = 0;
     return !*s && validator(buffer);
+}
+
+static void read_locator(App *app, wchar_t out[LOCATOR_MAX_LENGTH+1]) {
+    char *text = entry_text(app->locator);
+    const char *p = text;
+    int n = 0;
+    while (*p && n < LOCATOR_MAX_LENGTH) {
+        out[n++] = (wchar_t)g_utf8_get_char(p);
+        p = g_utf8_next_char(p);
+    }
+    out[n] = 0;
+    g_free(text);
 }
 
 static gboolean random_code(char code[5]) {
@@ -105,11 +118,11 @@ static cairo_surface_t *render(Resolution r, const char *call, const char *code,
 }
 
 static cairo_surface_t *render_pm(Resolution r, const char *call, const char *locator) {
-    wchar_t wc[25] = {0}, wl[11] = {0};
+    wchar_t wc[25] = {0}, wl[LOCATOR_MAX_LENGTH+1] = {0};
     const char *p = call;
     for (int i=0; i<24 && *p; ++i, p=g_utf8_next_char(p)) wc[i] = (wchar_t)g_utf8_get_char(p);
     p = locator;
-    for (int i=0; i<10 && *p; ++i, p=g_utf8_next_char(p)) wl[i] = (wchar_t)g_utf8_get_char(p);
+    for (int i=0; i<LOCATOR_MAX_LENGTH && *p; ++i, p=g_utf8_next_char(p)) wl[i] = (wchar_t)g_utf8_get_char(p);
     cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, r.width, r.height);
     if (cairo_surface_status(surface) == CAIRO_STATUS_SUCCESS) {
         cairo_surface_flush(surface);
@@ -206,13 +219,26 @@ static void new_code(GtkWidget *widget, gpointer data) {
         }
     } while (!strcmp(code, gtk_entry_get_text(GTK_ENTRY(app->code))));
     gtk_entry_set_text(GTK_ENTRY(app->code), code);
+    wchar_t locator[LOCATOR_MAX_LENGTH+1];
+    read_locator(app, locator);
+    locator_square_changed(app->contest_square, locator);
     changed(NULL, app);
+}
+
+static void locator_changed(GtkWidget *widget, gpointer data) {
+    (void)widget;
+    App *app = data;
+    if (pm_mode(app) || !gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->automatic))) return;
+    wchar_t locator[LOCATOR_MAX_LENGTH+1];
+    read_locator(app, locator);
+    if (locator_square_changed(app->contest_square, locator)) new_code(NULL, app);
 }
 
 static void toggled(GtkWidget *widget, gpointer data) {
     App *app = data;
     gtk_editable_set_editable(GTK_EDITABLE(app->code), !gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->automatic)));
     gboolean pm = pm_mode(app);
+    locator_changed(NULL, app);
     GtkWidget *controls[] = {app->automatic, app->manual, app->code, app->inverse, app->blue_yellow,
                              app->band, app->show_sum, app->top_code, app->show};
     for (size_t i=0; i<G_N_ELEMENTS(controls); ++i) gtk_widget_set_sensitive(controls[i], !pm);
@@ -267,8 +293,8 @@ static void generate(GtkWidget *widget, gpointer data) {
         goto cleanup;
     }
     gboolean pm = pm_mode(app);
-    if ((pm || gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show))) && !validate(locator, valid_locator)) {
-        notify_error(app, "Vul een geldige Maidenheadlocator in (4, 6, 8 of 10 tekens), bijvoorbeeld JO21QK.");
+    if ((pm || locator[0] || gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show))) && !validate(locator, valid_locator)) {
+        notify_error(app, "Vul een geldige Maidenheadlocator in (4, 6, 8, 10 of 12 tekens), bijvoorbeeld JO21QK.");
         goto cleanup;
     }
     if (!pm && !validate(gtk_entry_get_text(GTK_ENTRY(app->code)), valid_code)) {
@@ -283,7 +309,14 @@ static void generate(GtkWidget *widget, gpointer data) {
     gboolean inverse = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->inverse));
     char *color_suffix = utf8(contest_color_suffix(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->blue_yellow))));
     Resolution r = selected_resolution(app);
-    char *name = pm ? g_strdup_printf("%s-PM5544-%dx%d.jpg", call, r.width, r.height) : g_strdup_printf("%s-%s-%s-%dx%d%s%s.jpg", call, gtk_entry_get_text(GTK_ENTRY(app->code)), band_file, r.width, r.height, color_suffix, inverse ? "-inverse" : "");
+    wchar_t wide_locator[LOCATOR_MAX_LENGTH+1], short_locator[7];
+    read_locator(app, wide_locator);
+    filename_locator(short_locator, wide_locator);
+    char *locator_name = utf8(short_locator);
+    char *locator_suffix = *locator_name ? g_strconcat("-", locator_name, NULL) : g_strdup("");
+    g_free(locator_name);
+    char *name = pm ? g_strdup_printf("%s%s-PM5544-%dx%d.jpg", call, locator_suffix, r.width, r.height) : g_strdup_printf("%s%s-%s-%s-%dx%d%s%s.jpg", call, locator_suffix, gtk_entry_get_text(GTK_ENTRY(app->code)), band_file, r.width, r.height, color_suffix, inverse ? "-inverse" : "");
+    g_free(locator_suffix);
     char *path = g_build_filename(app->directory, name, NULL);
     if (widget == app->export_as_menu) {
         GtkWidget *picker = gtk_file_chooser_dialog_new("Exporteren naar...", GTK_WINDOW(app->window),
@@ -398,7 +431,7 @@ static void create_ui(App *app) {
     gtk_grid_attach(GTK_GRID(grid), fields, 0, 1, 1, 1);
     app->call = gtk_entry_new(); app->locator = gtk_entry_new(); app->code = gtk_entry_new();
     gtk_entry_set_max_length(GTK_ENTRY(app->call), 24);
-    gtk_entry_set_max_length(GTK_ENTRY(app->locator), 10);
+    gtk_entry_set_max_length(GTK_ENTRY(app->locator), LOCATOR_MAX_LENGTH);
     gtk_entry_set_max_length(GTK_ENTRY(app->code), 4);
     gtk_entry_set_placeholder_text(GTK_ENTRY(app->call), "PE1ITR");
     gtk_entry_set_placeholder_text(GTK_ENTRY(app->locator), "JO21QK");
@@ -474,6 +507,7 @@ static void create_ui(App *app) {
     g_signal_connect(app->export_as_menu, "activate", G_CALLBACK(generate), app);
     g_signal_connect_swapped(app->quit_menu, "activate", G_CALLBACK(gtk_widget_destroy), app->window);
     g_signal_connect(app->about_menu, "activate", G_CALLBACK(show_about), app);
+    g_signal_connect(app->locator, "changed", G_CALLBACK(locator_changed), app);
     GtkWidget *inputs[] = {app->call, app->locator, app->code, app->band, app->resolution};
     for (size_t i=0; i<G_N_ELEMENTS(inputs); ++i) g_signal_connect(inputs[i], "changed", G_CALLBACK(changed), app);
 }

@@ -18,6 +18,7 @@
 
 static IWICImagingFactory *factory;
 static int ready;
+static wchar_t contest_square[7];
 
 static void read_text(HWND window, int id, wchar_t *text, int capacity) {
     GetDlgItemTextW(window, id, text, capacity);
@@ -64,6 +65,9 @@ static int new_code(HWND window) {
         }
     } while (!wcscmp(code, previous));
     SetDlgItemTextW(window, IDC_CODE, code);
+    wchar_t locator[LOCATOR_MAX_LENGTH+1];
+    read_text(window, IDC_LOCATOR, locator, LOCATOR_MAX_LENGTH+1);
+    locator_square_changed(contest_square, locator);
     return 1;
 }
 
@@ -147,8 +151,15 @@ static HBITMAP render(int width, int height, const wchar_t *call, const wchar_t 
 static int pm_mode(HWND window) {
     return SendDlgItemMessageW(window, IDC_MODE, CB_GETCURSEL, 0, 0) == 1;
 }
+static void locator_changed(HWND window) {
+    if (pm_mode(window) || IsDlgButtonChecked(window, IDC_AUTO) != BST_CHECKED) return;
+    wchar_t locator[LOCATOR_MAX_LENGTH+1];
+    read_text(window, IDC_LOCATOR, locator, LOCATOR_MAX_LENGTH+1);
+    if (locator_square_changed(contest_square, locator)) new_code(window);
+}
 static void update_mode(HWND window) {
     int pm = pm_mode(window);
+    locator_changed(window);
     const int controls[] = {IDC_AUTO, IDC_MANUAL, IDC_CODE, IDC_INVERSE, IDC_BLUE_YELLOW, IDC_BAND,
                             IDC_SHOW_SUM, IDC_TOP_CODE, IDC_SHOW_LOCATOR};
     for (size_t i=0; i<sizeof(controls)/sizeof(controls[0]); ++i)
@@ -218,24 +229,27 @@ static void error(HWND window, const wchar_t *message) {
     MessageBoxW(window, message, L"ATV contestnummer", MB_OK | MB_ICONERROR);
 }
 static void generate(HWND window, BOOL choose_path) {
-    wchar_t call[25], locator[11], code[5], safe_call[25];
+    wchar_t call[25], locator[LOCATOR_MAX_LENGTH+1], code[5], safe_call[25];
     wchar_t path[MAX_PATH], temporary[MAX_PATH], filename[100], message[400];
     read_text(window, IDC_CALL, call, 25);
-    read_text(window, IDC_LOCATOR, locator, 11);
+    read_text(window, IDC_LOCATOR, locator, LOCATOR_MAX_LENGTH+1);
     read_text(window, IDC_CODE, code, 5);
     int pm = pm_mode(window);
     int show = pm || IsDlgButtonChecked(window, IDC_SHOW_LOCATOR) == BST_CHECKED;
     int inverse = IsDlgButtonChecked(window, IDC_INVERSE) == BST_CHECKED;
     int blue_yellow = IsDlgButtonChecked(window, IDC_BLUE_YELLOW) == BST_CHECKED;
     if (!valid_call(call)) { error(window, L"Vul een roepnaam in met letters en cijfers, eventueel met / (3 tot 24 tekens)."); return; }
-    if (show && !valid_locator(locator)) { error(window, L"Vul een geldige Maidenheadlocator in, bijvoorbeeld JO21QK (4, 6, 8 of 10 tekens)."); return; }
+    if ((show || locator[0]) && !valid_locator(locator)) { error(window, L"Vul een geldige Maidenheadlocator in, bijvoorbeeld JO21QK (4, 6, 8, 10 of 12 tekens)."); return; }
     if (!pm && !valid_code(code)) { error(window, L"Vul vier cijfers in of klik op Nieuw nummer."); return; }
     int band = (int)SendDlgItemMessageW(window, IDC_BAND, CB_GETCURSEL, 0, 0);
     if (band < 0 || band > 10) return;
     filename_call(safe_call, call);
     Resolution r = resolution(window);
-    if (pm) swprintf(filename, 100, L"%ls-PM5544-%dx%d.jpg", safe_call, r.width, r.height);
-    else swprintf(filename, 100, L"%ls-%ls-%ls-%dx%d%ls%ls.jpg", safe_call, code, band_files[band], r.width, r.height, contest_color_suffix(blue_yellow), inverse ? L"-inverse" : L"");
+    wchar_t short_locator[7], locator_suffix[8] = L"";
+    filename_locator(short_locator, locator);
+    if (short_locator[0]) swprintf(locator_suffix, 8, L"-%ls", short_locator);
+    if (pm) swprintf(filename, 100, L"%ls%ls-PM5544-%dx%d.jpg", safe_call, locator_suffix, r.width, r.height);
+    else swprintf(filename, 100, L"%ls%ls-%ls-%ls-%dx%d%ls%ls.jpg", safe_call, locator_suffix, code, band_files[band], r.width, r.height, contest_color_suffix(blue_yellow), inverse ? L"-inverse" : L"");
     DWORD length = GetModuleFileNameW(NULL, path, MAX_PATH);
     if (!length || length >= MAX_PATH) { error(window, L"Het pad naar het programma is te lang."); return; }
     wchar_t *last = wcsrchr(path, L'\\');
@@ -293,9 +307,9 @@ static void generate(HWND window, BOOL choose_path) {
     SetDlgItemTextW(window, IDC_STATUS, message);
 }
 static void preview(HWND window, DRAWITEMSTRUCT *item) {
-    wchar_t call[25], locator[11], code[5];
+    wchar_t call[25], locator[LOCATOR_MAX_LENGTH+1], code[5];
     read_text(window, IDC_CALL, call, 25);
-    read_text(window, IDC_LOCATOR, locator, 11);
+    read_text(window, IDC_LOCATOR, locator, LOCATOR_MAX_LENGTH+1);
     read_text(window, IDC_CODE, code, 5);
     FillRect(item->hDC, &item->rcItem, GetSysColorBrush(COLOR_3DFACE));
     Resolution r = resolution(window);
@@ -331,11 +345,13 @@ static void show_about(HWND window) {
 static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) {
     switch (message) {
     case WM_INITDIALOG: {
+        ready = 0;
+        contest_square[0] = 0;
         SendDlgItemMessageW(window, IDC_MODE, CB_ADDSTRING, 0, (LPARAM)L"Contest");
         SendDlgItemMessageW(window, IDC_MODE, CB_ADDSTRING, 0, (LPARAM)L"PM5544");
         SendDlgItemMessageW(window, IDC_MODE, CB_SETCURSEL, 0, 0);
         SendDlgItemMessageW(window, IDC_CALL, EM_SETLIMITTEXT, 24, 0);
-        SendDlgItemMessageW(window, IDC_LOCATOR, EM_SETLIMITTEXT, 10, 0);
+        SendDlgItemMessageW(window, IDC_LOCATOR, EM_SETLIMITTEXT, LOCATOR_MAX_LENGTH, 0);
         SendDlgItemMessageW(window, IDC_CODE, EM_SETLIMITTEXT, 4, 0);
         CheckDlgButton(window, IDC_SHOW_LOCATOR, BST_CHECKED);
         CheckRadioButton(window, IDC_AUTO, IDC_MANUAL, IDC_AUTO);
@@ -361,6 +377,7 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
         if (LOWORD(wp) == IDM_EXPORT) { generate(window, FALSE); return TRUE; }
         if (LOWORD(wp) == IDM_EXPORT_AS) { generate(window, TRUE); return TRUE; }
         if (LOWORD(wp) == IDM_ABOUT) { show_about(window); return TRUE; }
+        if (LOWORD(wp) == IDC_LOCATOR && HIWORD(wp) == EN_CHANGE) locator_changed(window);
         if (LOWORD(wp) == IDC_NEW_CODE && HIWORD(wp) == BN_CLICKED) new_code(window);
         if (LOWORD(wp) == IDC_GENERATE && HIWORD(wp) == BN_CLICKED) generate(window, FALSE);
         if (LOWORD(wp) == IDC_MODE && HIWORD(wp) == CBN_SELCHANGE) update_mode(window);
