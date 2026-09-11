@@ -2,9 +2,23 @@
 #define ATV_CORE_H
 #include <stddef.h>
 #include <wchar.h>
+#include "datv.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
+#define CONFIG_FILENAME "atv-contestnummer.conf"
+typedef struct {
+    char call[97], locator[49], code[17]; /* UTF-8 */
+    int mode, automatic, aspect, resolution, band;
+    int show, inverse, blue_yellow, show_sum, top_code, genius;
+    DatvSettings ts;
+    DatvUdpSettings udp;
+} AppConfig;
+AppConfig config_defaults(void);
+/* UTF-8 absolute path. Load: 1 success, 0 absent, -1 invalid/unreadable.
+ * Failure leaves the caller's settings and any existing saved file intact. */
+int config_load(const char *path, AppConfig *out);
+int config_save(const char *path, const AppConfig *settings);
 typedef struct { int width, height; } Resolution;
 #define LOCATOR_MAX_LENGTH 12
 #define RESOLUTION_COUNT 10

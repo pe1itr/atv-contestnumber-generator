@@ -14,6 +14,8 @@ BEGIN
     BEGIN
         MENUITEM "Genius level &1 (standaard)", IDM_LEVEL1, CHECKED
         MENUITEM "Genius level &2", IDM_LEVEL2
+        MENUITEM SEPARATOR
+        MENUITEM "Huidige instellingen &opslaan", IDM_SAVE_CONFIG
     END
     POPUP "&Info"
     BEGIN
@@ -62,8 +64,9 @@ BEGIN
     EDITTEXT IDC_UDP_GOP, 210, 107, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT "Start zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.", -1, 12, 132, 311, 28
     LTEXT "Vul het IP-adres van Portsdown in en kies Start.", IDC_UDP_STATUS, 12, 165, 311, 27
-    DEFPUSHBUTTON "Start", IDC_UDP_START, 105, 196, 66, 16
-    PUSHBUTTON "Stop", IDC_UDP_STOP, 181, 196, 66, 16
+    DEFPUSHBUTTON "Start", IDC_UDP_START, 12, 196, 50, 16
+    PUSHBUTTON "Stop", IDC_UDP_STOP, 68, 196, 50, 16
+    PUSHBUTTON "Toepassen en sluiten", IDC_UDP_APPLY, 124, 196, 123, 16
     PUSHBUTTON "Sluiten", IDCANCEL, 257, 196, 66, 16
 END
 IDD_MAIN DIALOGEX 0, 0, 460, 327

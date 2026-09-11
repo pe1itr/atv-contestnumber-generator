@@ -14,7 +14,8 @@ typedef struct {
     GtkWidget *window, *call, *locator, *show, *automatic, *code;
     GtkWidget *aspect, *resolution, *band, *preview, *status, *inverse, *blue_yellow, *show_sum, *top_code, *mode, *manual, *new_code;
     GtkWidget *export_menu, *export_as_menu, *about_menu, *quit_menu;
-    GtkWidget *ts_menu;
+    GtkWidget *ts_menu, *level1, *level2;
+    gboolean restoring;
     DatvSettings datv;
     GtkWidget *udp_menu;
     DatvUdpSettings udp;
@@ -233,6 +234,7 @@ static void new_code(GtkWidget *widget, gpointer data) {
 static void locator_changed(GtkWidget *widget, gpointer data) {
     (void)widget;
     App *app = data;
+    if (app->restoring) return;
     if (pm_mode(app) || !gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->automatic))) return;
     wchar_t locator[LOCATOR_MAX_LENGTH+1];
     read_locator(app, locator);
@@ -241,6 +243,7 @@ static void locator_changed(GtkWidget *widget, gpointer data) {
 
 static void toggled(GtkWidget *widget, gpointer data) {
     App *app = data;
+    if (app->restoring) return;
     gtk_editable_set_editable(GTK_EDITABLE(app->code), !gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->automatic)));
     gboolean pm = pm_mode(app);
     locator_changed(NULL, app);
@@ -353,6 +356,7 @@ static gboolean udp_poll(gpointer data) {
     gboolean busy=status.state==DATV_PREPARING || status.state==DATV_RUNNING;
     for (int i=0;i<5;++i) gtk_widget_set_sensitive(d->fields[i],!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),1,!busy);
+    gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),3,!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),2,busy);
     return G_SOURCE_CONTINUE;
 }
@@ -376,7 +380,7 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     }
     UdpDialog d={0}; d.app=app;
     d.dialog=gtk_dialog_new_with_buttons("DATV: UDP-uitvoer",GTK_WINDOW(app->window),GTK_DIALOG_MODAL,
-        "_Start",1,"S_top",2,"_Sluiten",GTK_RESPONSE_CLOSE,NULL);
+        "_Start",1,"S_top",2,"_Toepassen en sluiten",3,"_Sluiten",GTK_RESPONSE_CLOSE,NULL);
     GtkWidget *grid=gtk_grid_new();
     gtk_grid_set_row_spacing(GTK_GRID(grid),8); gtk_grid_set_column_spacing(GTK_GRID(grid),12);
     gtk_container_set_border_width(GTK_CONTAINER(grid),16);
@@ -406,7 +410,7 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     for (;;) {
         int response=gtk_dialog_run(GTK_DIALOG(d.dialog));
         if (response==2) { datv_udp_stop(d.stream); continue; }
-        if (response!=1) break;
+        if (response!=1 && response!=3) break;
         if (d.stream) {
             DatvUdpStatus status; datv_udp_status(d.stream,&status);
             if (status.state==DATV_PREPARING || status.state==DATV_RUNNING) continue;
@@ -419,8 +423,12 @@ static void output_udp(GtkWidget *widget, gpointer data) {
         s.video.bitrate=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[2]));
         s.video.fps=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[3]));
         s.video.gop=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[4]));
-        invalid=datv_udp_validate(s,r.width,r.height);
+        DatvUdpSettings check=s;
+        if (response==3 && !check.ip[0]) g_strlcpy(check.ip,"127.0.0.1",sizeof(check.ip));
+        invalid=datv_udp_validate(check,r.width,r.height);
         if (invalid) { gtk_label_set_text(GTK_LABEL(d.status),invalid); continue; }
+        app->udp=s;
+        if (response==3) break;
         datv_udp_destroy(d.stream); d.stream=NULL;
         char error[256];
         d.stream=datv_udp_start((uint32_t *)cairo_image_surface_get_data(im),r.width,r.height,
@@ -630,6 +638,67 @@ static void show_codec_license(GtkWidget *widget, gpointer data) {
     gtk_dialog_run(GTK_DIALOG(dialog)); gtk_widget_destroy(dialog);
 }
 
+static AppConfig capture_config(App *app) {
+    AppConfig s=config_defaults();
+    g_strlcpy(s.call,gtk_entry_get_text(GTK_ENTRY(app->call)),sizeof(s.call));
+    g_strlcpy(s.locator,gtk_entry_get_text(GTK_ENTRY(app->locator)),sizeof(s.locator));
+    g_strlcpy(s.code,gtk_entry_get_text(GTK_ENTRY(app->code)),sizeof(s.code));
+    s.mode=gtk_combo_box_get_active(GTK_COMBO_BOX(app->mode));
+    s.aspect=gtk_combo_box_get_active(GTK_COMBO_BOX(app->aspect));
+    s.resolution=gtk_combo_box_get_active(GTK_COMBO_BOX(app->resolution));
+    s.band=gtk_combo_box_get_active(GTK_COMBO_BOX(app->band));
+    s.automatic=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->automatic));
+    s.show=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show));
+    s.inverse=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->inverse));
+    s.blue_yellow=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->blue_yellow));
+    s.show_sum=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show_sum));
+    s.top_code=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->top_code));
+    s.genius=gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level2))?2:1;
+    s.ts=app->datv; s.udp=app->udp; return s;
+}
+static void apply_config(App *app, const AppConfig *s) {
+    app->restoring=TRUE;
+    gtk_entry_set_text(GTK_ENTRY(app->call),s->call);
+    gtk_entry_set_text(GTK_ENTRY(app->locator),s->locator);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(app->mode),s->mode);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(app->aspect),s->aspect);
+    aspect_changed(app->aspect,app);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(app->resolution),s->resolution);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(app->band),s->band);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(s->automatic?app->automatic:app->manual),TRUE);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->show),s->show);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->inverse),s->inverse);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->blue_yellow),s->blue_yellow);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->show_sum),s->show_sum);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->top_code),s->top_code);
+    gtk_entry_set_text(GTK_ENTRY(app->code),s->code);
+    app->contest_square[0]=0;
+    wchar_t locator[LOCATOR_MAX_LENGTH+1]; read_locator(app,locator);
+    locator_square_changed(app->contest_square,locator);
+    app->datv=s->ts; app->udp=s->udp;
+    gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(s->genius==2?app->level2:app->level1),TRUE);
+    app->restoring=FALSE; toggled(NULL,app);
+}
+static void save_config(GtkWidget *widget, gpointer data) {
+    (void)widget; App *app=data; AppConfig s=capture_config(app);
+    char *path=g_build_filename(app->directory,CONFIG_FILENAME,NULL);
+    if (config_save(path,&s)) {
+        char *message=g_strdup_printf("Instellingen opgeslagen in %s",path);
+        gtk_label_set_text(GTK_LABEL(app->status),message); g_free(message);
+    } else notify_error(app,"Instellingen opslaan mislukt. Controleer de invoer en schrijfrechten naast het programma.");
+    g_free(path);
+}
+static void load_config(App *app) {
+    AppConfig s; char *path=g_build_filename(app->directory,CONFIG_FILENAME,NULL);
+    int result=config_load(path,&s); g_free(path);
+    if (result==1) {
+        apply_config(app,&s);
+        gtk_label_set_text(GTK_LABEL(app->status),"Opgeslagen instellingen geladen. UDP-uitvoer staat uit.");
+    } else if (result<0) {
+        notify_error(app,"Het configuratiebestand is ongeldig of onleesbaar. De standaardinstellingen worden gebruikt.");
+    }
+}
+
 static void create_ui(App *app) {
     app->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(app->window), "ATV contestnummer generator");
@@ -644,7 +713,12 @@ static void create_ui(App *app) {
     GtkWidget *config=gtk_menu_item_new_with_label("Config"), *config_menu=gtk_menu_new();
     GtkWidget *level1=gtk_radio_menu_item_new_with_label(NULL,"Genius level 1 (standaard)");
     GtkWidget *level2=gtk_radio_menu_item_new_with_label_from_widget(GTK_RADIO_MENU_ITEM(level1),"Genius level 2");
+    app->level1=level1; app->level2=level2;
+    GtkWidget *save=gtk_menu_item_new_with_label("Huidige instellingen opslaan");
+    g_signal_connect(save,"activate",G_CALLBACK(save_config),app);
     gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),level1); gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),level2);
+    gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),gtk_separator_menu_item_new());
+    gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),save);
     gtk_menu_item_set_submenu(GTK_MENU_ITEM(config),config_menu);
     app->ts_menu=gtk_menu_item_new_with_label("Exporteer TS-proefbestand...");
     gtk_widget_set_no_show_all(app->ts_menu,TRUE);
@@ -837,6 +911,7 @@ int main(int argc, char **argv) {
     g_free(executable);
     create_ui(&app);
     gtk_widget_show_all(app.window);
+    load_config(&app);
     gtk_main();
     pm5544_cleanup();
     g_free(app.directory);

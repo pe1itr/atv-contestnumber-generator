@@ -22,7 +22,23 @@ Beide versies hebben dezelfde invoer, resoluties, coderegels, bandkeuzes en beel
 
 **File → Quit** sluit het programma af.
 
-**Info → Over dit programma** toont het doel, uitleg over het gebruik, de auteur, het versienummer en de compilatiedatum. De huidige versie is **1.4.0**. Versie en auteur staan centraal in `src/app_info.h`; de datum wordt tijdens compilatie vastgelegd en is niet de datum waarop je het programma start.
+**Config → Huidige instellingen opslaan** bewaart de huidige invoer, het contestnummer,
+beeldtype, beeldverhouding, resolutie, band, beeldopties, Genius-level en alle TS- en
+UDP-instellingen in `atv-contestnummer.conf`, naast het uitvoerbare bestand.
+Bij de volgende start wordt dit bestand automatisch ingelezen, ook als je het
+programma vanuit een andere werkmap start. Zonder bestand gelden de normale
+standaardinstellingen. Bij een ongeldig of onleesbaar bestand volgt een melding en
+blijven de standaardinstellingen actief. Opnieuw opslaan vervangt het eerdere bestand;
+de map moet beschrijfbaar zijn. Linux en Windows gebruiken hetzelfde bestandsformaat.
+
+In het UDP-venster bewaart **Toepassen en sluiten** de ingevoerde instellingen voor
+de huidige sessie zonder te zenden. Kies daarna **Config → Huidige instellingen
+opslaan** om ze ook voor een volgende start te bewaren. **Sluiten** annuleert nog niet
+toegepaste wijzigingen en stopt een eventuele stream. Na opstarten staat UDP altijd
+uit; je start het uitzenden zelf. Ook een automatisch contestnummer wordt bij laden
+behouden. Alleen de huidige kaart wordt opgeslagen, geen afzonderlijke nummers per band.
+
+**Info → Over dit programma** toont het doel, uitleg over het gebruik, de auteur, het versienummer en de compilatiedatum. De huidige versie is **1.5.0**. Versie en auteur staan centraal in `src/app_info.h`; de datum wordt tijdens compilatie vastgelegd en is niet de datum waarop je het programma start.
 
 ## Gebruik: Contest
 
@@ -112,3 +128,17 @@ Op Windows vanuit een MSYS2/MinGW-w64-omgeving (`make`, `sh`, `gcc`, `g++`, `ar`
 De JPG-encoder gebruikt [Windows Imaging Component](https://learn.microsoft.com/en-us/windows/win32/wic/-wic-creating-encoder) met kwaliteit 98%. Het programma schrijft eerst een tijdelijk bestand in de uitvoermap en vervangt het doelbestand pas na geslaagde compressie.
 
 Linux gebruikt GdkPixbuf voor JPG-compressie, eveneens met kwaliteit 98%, en schrijft ook eerst naar een tijdelijk bestand voordat de definitieve naam wordt geplaatst.
+
+De configuratiebestandscontroles draaien mee met `make test-linux`. De venstertests
+voor opslaan/heropenen en UDP-instellingen toepassen zonder uitzending bouw je met:
+
+```sh
+make build/test-config-linux-ui build/test-config-windows-ui.exe build/test-config.exe
+build/test-config-linux-ui
+wine build/test-config.exe
+wine build/test-config-windows-ui.exe
+```
+
+Voer de venstertests uit in een grafische sessie. Ze gebruiken tijdelijke bestanden;
+de Windows-venstertest gebruikt een configuratie naast het testprogramma in `build/`
+en weigert een reeds aanwezig configuratiebestand te overschrijven.

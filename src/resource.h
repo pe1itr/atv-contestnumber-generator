@@ -43,3 +43,6 @@
 #define IDC_TS_FPS 303
 #define IDC_TS_GOP 304
 #define IDD_TS_PROGRESS 310
+
+#define IDM_SAVE_CONFIG 210
+#define IDC_UDP_APPLY 329

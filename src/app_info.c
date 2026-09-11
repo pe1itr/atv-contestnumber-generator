@@ -9,7 +9,7 @@ const char *app_codec_license(void) {
 }
 
 const char *app_info_text(void) {
-    static char text[2048];
+    static char text[4096];
     const char *months = "JanFebMarAprMayJunJulAugSepOctNovDec";
     char month[4] = {0};
     int day, year, number = 1;
@@ -44,7 +44,9 @@ const char *app_info_text(void) {
         "Dit maakt H.264-video zonder audio met ingebouwde OpenH264. "
         "File > DATV UDP-uitvoer zendt het huidige beeld naar een IP-adres en poort. "
         "Start/Stop bedienen de uitzending; sluiten stopt ook. "
-        "Zie Info > OpenH264-licentie voor de bibliotheeklicentie.",
+        "Zie Info > OpenH264-licentie voor de bibliotheeklicentie.\n\n"
+        "Config > Huidige instellingen opslaan bewaart alles in atv-contestnummer.conf "
+        "naast het programma. Bij opstarten worden de instellingen geladen; UDP blijft uit.",
         APP_VERSION, year, number, day, APP_AUTHOR);
     return text;
 }

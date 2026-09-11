@@ -58,8 +58,9 @@ build/test-core: checks/test_core.c src/core.c src/core.h src/datv.h
 	mkdir -p build
 	$(HOSTCC) $(CFLAGS) -Isrc checks/test_core.c src/core.c -o $@
 
-test-linux: linux build/test-core
+test-linux: linux build/test-core build/test-config
 	build/test-core
+	build/test-config
 	$(PYTHON) tools/test_linux_images.py
 
 test-ts: linux
@@ -82,3 +83,13 @@ build/udp-sender.exe: checks/udp_sender.cpp src/datv.h build/core-windows.o buil
 .PHONY: test-udp
 test-udp: build/udp-sender
 	$(PYTHON) checks/check_udp.py
+
+build/test-config: checks/test_config.c src/core.c src/core.h src/datv.h
+	$(HOSTCC) $(CFLAGS) -Isrc checks/test_config.c src/core.c -o $@
+build/test-config.exe: checks/test_config.c src/core.c src/core.h src/datv.h
+	$(CC) $(CFLAGS) -static -Isrc checks/test_config.c src/core.c -o $@
+
+build/test-config-linux-ui: checks/test_config_linux_ui.c src/linux.c src/core.c src/app_info.c src/datv.h build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
+	$(HOSTCC) $(CFLAGS) -Isrc checks/test_config_linux_ui.c src/core.c src/app_info.c build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -o $@ $(shell pkg-config --cflags --libs gtk+-3.0 pangocairo) -lstdc++ -lpthread -lm
+build/test-config-windows-ui.exe: checks/test_config_windows_ui.c src/main.c src/core.c src/app_info.c src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
+	$(CC) $(CFLAGS) -municode -static -Isrc checks/test_config_windows_ui.c src/core.c src/app_info.c build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a -o $@ $(LDLIBS) -lstdc++ -lwinpthread -lssp -lshell32

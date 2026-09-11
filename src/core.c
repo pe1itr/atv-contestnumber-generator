@@ -151,3 +151,147 @@ int locator_square_changed(wchar_t previous[7], const wchar_t *locator) {
     wcscpy(previous, square);
     return changed != 0;
 }
+
+
+/* Shared, versioned configuration. All known fields are required, so a partial
+ * or damaged file is never applied to the GUI. Unknown keys are rejected. */
+#include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+typedef struct { const char *key; size_t offset, size; int min, max; } ConfigField;
+#define CONFIG_INT_FIELD(field, low, high) {#field, offsetof(AppConfig, field), 0, low, high}
+#define CONFIG_TEXT_FIELD(field) {#field, offsetof(AppConfig, field), sizeof(((AppConfig *)0)->field), 0, 0}
+static const ConfigField config_fields[]={
+    CONFIG_TEXT_FIELD(call), CONFIG_TEXT_FIELD(locator), CONFIG_TEXT_FIELD(code),
+    CONFIG_INT_FIELD(mode,0,1), CONFIG_INT_FIELD(automatic,0,1), CONFIG_INT_FIELD(aspect,0,1),
+    CONFIG_INT_FIELD(resolution,0,RESOLUTION_COUNT-1), CONFIG_INT_FIELD(band,0,10),
+    CONFIG_INT_FIELD(show,0,1), CONFIG_INT_FIELD(inverse,0,1), CONFIG_INT_FIELD(blue_yellow,0,1),
+    CONFIG_INT_FIELD(show_sum,0,1), CONFIG_INT_FIELD(top_code,0,1), CONFIG_INT_FIELD(genius,1,2),
+    CONFIG_INT_FIELD(ts.bitrate,48000,2000000), CONFIG_INT_FIELD(ts.seconds,1,60),
+    CONFIG_INT_FIELD(ts.fps,1,25), CONFIG_INT_FIELD(ts.gop,1,250),
+    CONFIG_TEXT_FIELD(udp.ip), CONFIG_INT_FIELD(udp.port,1,65535),
+    CONFIG_INT_FIELD(udp.video.bitrate,48000,2000000), CONFIG_INT_FIELD(udp.video.fps,1,25),
+    CONFIG_INT_FIELD(udp.video.gop,1,250)
+};
+#define CONFIG_FIELDS (sizeof(config_fields)/sizeof(config_fields[0]))
+AppConfig config_defaults(void) {
+    AppConfig s={0}; s.automatic=1; s.resolution=DEFAULT_RESOLUTION_INDEX;
+    s.band=3; s.show=1; s.genius=1; s.ts=datv_defaults(); s.udp=datv_udp_defaults();
+    return s;
+}
+static int config_text_valid(const char *s, size_t capacity) {
+    size_t i=0;
+    while (i<capacity && s[i]) {
+        unsigned c=(unsigned char)s[i++];
+        if (c<32 || c==127) return 0;
+        if (c<128) continue;
+        unsigned n, value, minimum;
+        if (c>=0xc2 && c<=0xdf) { n=1; value=c&31; minimum=128; }
+        else if (c>=0xe0 && c<=0xef) { n=2; value=c&15; minimum=2048; }
+        else if (c>=0xf0 && c<=0xf4) { n=3; value=c&7; minimum=65536; }
+        else return 0;
+        while (n--) {
+            if (i>=capacity || ((unsigned char)s[i]&0xc0)!=0x80) return 0;
+            value=(value<<6)|((unsigned char)s[i++]&63);
+        }
+        if (value<minimum || value>0x10ffff || (value>=0xd800 && value<=0xdfff)) return 0;
+    }
+    return i<capacity;
+}
+static int config_valid(const AppConfig *s) {
+    for (size_t i=0;i<CONFIG_FIELDS;++i) {
+        const ConfigField *f=&config_fields[i]; const char *value=(const char *)s+f->offset;
+        if (f->size) {
+            if (!config_text_valid(value,f->size)) return 0;
+            size_t characters=0;
+            for (const unsigned char *p=(const unsigned char *)value; *p; ++p)
+                if ((*p&0xc0)!=0x80) ++characters;
+            size_t limit=f->size==16?15:(f->size-1)/4;
+            if (characters>limit) return 0;
+        }
+        else if (*(const int *)value<f->min || *(const int *)value>f->max) return 0;
+    }
+    DatvUdpSettings udp=s->udp;
+    if (!udp.ip[0]) strcpy(udp.ip,"127.0.0.1"); /* An unused destination may be empty. */
+    return !datv_udp_validate(udp,160,120);
+}
+#ifdef _WIN32
+static wchar_t *config_wide(const char *path) {
+    int n=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,path,-1,NULL,0);
+    wchar_t *w=n?malloc((size_t)n*sizeof(*w)):NULL;
+    if (w) MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,path,-1,w,n);
+    return w;
+}
+#endif
+static FILE *config_open(const char *path, int writing) {
+#ifdef _WIN32
+    wchar_t *w=config_wide(path);
+    if (!w) { errno=EINVAL; return NULL; }
+    FILE *f=_wfopen(w,writing?L"wb":L"rb"); free(w); return f;
+#else
+    return fopen(path,writing?"wb":"rb");
+#endif
+}
+int config_load(const char *path, AppConfig *out) {
+    FILE *f=config_open(path,0);
+    if (!f) return errno==ENOENT?0:-1;
+    AppConfig s=config_defaults(); unsigned long seen=0;
+    int version=0, ok=1; char line[256];
+    while (fgets(line,sizeof(line),f)) {
+        size_t n=strlen(line);
+        if (!n || (line[n-1]!='\n' && !feof(f))) { ok=0; break; }
+        while (n && (line[n-1]=='\n' || line[n-1]=='\r')) line[--n]=0;
+        if (!n || line[0]=='#') continue;
+        char *value=strchr(line,'=');
+        if (!value) { ok=0; break; } *value++=0;
+        if (!strcmp(line,"version")) {
+            if (version || strcmp(value,"1")) { ok=0; break; }
+            version=1; continue;
+        }
+        size_t i;
+        for (i=0;i<CONFIG_FIELDS;++i) if (!strcmp(line,config_fields[i].key)) break;
+        if (i==CONFIG_FIELDS || (seen&(1UL<<i))) { ok=0; break; }
+        seen|=1UL<<i;
+        const ConfigField *field=&config_fields[i]; char *target=(char *)&s+field->offset;
+        if (field->size) {
+            if (strlen(value)>=field->size) { ok=0; break; }
+            strcpy(target,value);
+        } else {
+            char *end; errno=0; long v=strtol(value,&end,10);
+            if (errno || !*value || *end || v<field->min || v>field->max) { ok=0; break; }
+            *(int *)target=(int)v;
+        }
+    }
+    if (ferror(f)) ok=0;
+    if (fclose(f)) ok=0;
+    if (!ok || !version || seen!=(1UL<<CONFIG_FIELDS)-1 || !config_valid(&s)) return -1;
+    *out=s; return 1;
+}
+int config_save(const char *path, const AppConfig *s) {
+    if (!config_valid(s)) return 0;
+    size_t n=strlen(path)+5; char *temporary=malloc(n);
+    if (!temporary) return 0;
+    snprintf(temporary,n,"%s.tmp",path);
+    FILE *f=config_open(temporary,1);
+    if (!f) { free(temporary); return 0; }
+    int ok=fprintf(f,"# ATV contestnummer generator\nversion=1\n")>=0;
+    for (size_t i=0;i<CONFIG_FIELDS && ok;++i) {
+        const ConfigField *field=&config_fields[i]; const char *value=(const char *)s+field->offset;
+        ok=(field->size?fprintf(f,"%s=%s\n",field->key,value):
+            fprintf(f,"%s=%d\n",field->key,*(const int *)value))>=0;
+    }
+    if (fflush(f)) ok=0;
+    if (fclose(f)) ok=0;
+#ifdef _WIN32
+    wchar_t *a=config_wide(temporary), *b=config_wide(path);
+    if (!a || !b || !ok || !MoveFileExW(a,b,MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)) ok=0;
+    if (!ok && a) DeleteFileW(a);
+    free(a); free(b);
+#else
+    if (ok && rename(temporary,path)) ok=0;
+    if (!ok) remove(temporary);
+#endif
+    free(temporary); return ok;
+}

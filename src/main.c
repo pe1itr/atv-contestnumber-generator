@@ -11,6 +11,7 @@
 #include <bcrypt.h>
 #include <shellapi.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <wchar.h>
 #include "resource.h"
 #include "core.h"
@@ -252,8 +253,8 @@ static void udp_poll(HWND window,UdpDialog *d) {
     char text[512]; datv_udp_status_text(udp_settings,status,text,sizeof(text));
     udp_status_message(window,text);
     BOOL busy=status.state==DATV_PREPARING || status.state==DATV_RUNNING;
-    const int fields[]={IDC_UDP_IP,IDC_UDP_PORT,IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP,IDC_UDP_START};
-    for (int i=0;i<6;++i) EnableWindow(GetDlgItem(window,fields[i]),!busy);
+    const int fields[]={IDC_UDP_IP,IDC_UDP_PORT,IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP,IDC_UDP_START,IDC_UDP_APPLY};
+    for (int i=0;i<7;++i) EnableWindow(GetDlgItem(window,fields[i]),!busy);
     EnableWindow(GetDlgItem(window,IDC_UDP_STOP),busy);
 }
 static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp) {
@@ -278,7 +279,7 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
     if (message==WM_COMMAND && LOWORD(wp)==IDC_UDP_STOP) {
         datv_udp_stop(d->stream); return TRUE;
     }
-    if (message==WM_COMMAND && LOWORD(wp)==IDC_UDP_START) {
+    if (message==WM_COMMAND && (LOWORD(wp)==IDC_UDP_START || LOWORD(wp)==IDC_UDP_APPLY)) {
         if (d->stream) {
             DatvUdpStatus status; datv_udp_status(d->stream,&status);
             if (status.state==DATV_PREPARING || status.state==DATV_RUNNING) return TRUE;
@@ -295,8 +296,14 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         if (!valid || !datv_test_options(4,values,&s.video,&w,&h)) {
             udp_status_message(window,"Gebruik poort 1-65535, bitrate 48000-2000000 bit/s, 1-25 beelden/s en GOP 1-250."); return TRUE;
         }
-        const char *error=datv_udp_validate(s,d->size.width,d->size.height);
+        DatvUdpSettings check=s;
+        if (LOWORD(wp)==IDC_UDP_APPLY && !check.ip[0]) strcpy(check.ip,"127.0.0.1");
+        const char *error=datv_udp_validate(check,d->size.width,d->size.height);
         if (error) { udp_status_message(window,error); return TRUE; }
+        udp_settings=s;
+        if (LOWORD(wp)==IDC_UDP_APPLY) {
+            KillTimer(window,1); EndDialog(window,0); return TRUE;
+        }
         DIBSECTION dib={0};
         if (GetObjectW(d->bitmap,sizeof(dib),&dib)!=sizeof(dib) || !dib.dsBm.bmBits) {
             udp_status_message(window,"Kan het beeld niet lezen."); return TRUE;
@@ -557,9 +564,84 @@ static void preview(HWND window, DRAWITEMSTRUCT *item) {
     DeleteObject(bitmap);
 }
 static void show_about(HWND window) {
-    wchar_t text[2048];
-    MultiByteToWideChar(CP_UTF8, 0, app_info_text(), -1, text, 2048);
+    wchar_t text[4096];
+    MultiByteToWideChar(CP_UTF8, 0, app_info_text(), -1, text, 4096);
     MessageBoxW(window, text, L"Over dit programma", MB_OK | MB_ICONINFORMATION);
+}
+static char *config_path(void) {
+    wchar_t path[32768];
+    DWORD n=GetModuleFileNameW(NULL,path,32768);
+    if (!n || n>=32768) return NULL;
+    wchar_t *slash=wcsrchr(path,L'\\'); if (!slash) return NULL;
+    slash[1]=0;
+    int length=WideCharToMultiByte(CP_UTF8,0,path,-1,NULL,0,NULL,NULL);
+    char *result=malloc((size_t)length+sizeof(CONFIG_FILENAME));
+    if (result) {
+        WideCharToMultiByte(CP_UTF8,0,path,-1,result,length,NULL,NULL);
+        strcat(result,CONFIG_FILENAME);
+    }
+    return result;
+}
+static AppConfig capture_config(HWND window) {
+    AppConfig s=config_defaults(); wchar_t text[97];
+    GetDlgItemTextW(window,IDC_CALL,text,97);
+    WideCharToMultiByte(CP_UTF8,0,text,-1,s.call,sizeof(s.call),NULL,NULL);
+    GetDlgItemTextW(window,IDC_LOCATOR,text,97);
+    WideCharToMultiByte(CP_UTF8,0,text,-1,s.locator,sizeof(s.locator),NULL,NULL);
+    GetDlgItemTextW(window,IDC_CODE,text,97);
+    WideCharToMultiByte(CP_UTF8,0,text,-1,s.code,sizeof(s.code),NULL,NULL);
+    s.mode=(int)SendDlgItemMessageW(window,IDC_MODE,CB_GETCURSEL,0,0);
+    s.aspect=(int)SendDlgItemMessageW(window,IDC_ASPECT,CB_GETCURSEL,0,0);
+    s.resolution=(int)SendDlgItemMessageW(window,IDC_RESOLUTION,CB_GETCURSEL,0,0);
+    s.band=(int)SendDlgItemMessageW(window,IDC_BAND,CB_GETCURSEL,0,0);
+    s.automatic=IsDlgButtonChecked(window,IDC_AUTO)==BST_CHECKED;
+    s.show=IsDlgButtonChecked(window,IDC_SHOW_LOCATOR)==BST_CHECKED;
+    s.inverse=IsDlgButtonChecked(window,IDC_INVERSE)==BST_CHECKED;
+    s.blue_yellow=IsDlgButtonChecked(window,IDC_BLUE_YELLOW)==BST_CHECKED;
+    s.show_sum=IsDlgButtonChecked(window,IDC_SHOW_SUM)==BST_CHECKED;
+    s.top_code=IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED;
+    s.genius=genius_level; s.ts=ts_settings; s.udp=udp_settings; return s;
+}
+static void apply_config(HWND window,const AppConfig *s) {
+    ready=0; wchar_t text[97];
+    MultiByteToWideChar(CP_UTF8,0,s->call,-1,text,97); SetDlgItemTextW(window,IDC_CALL,text);
+    MultiByteToWideChar(CP_UTF8,0,s->locator,-1,text,97); SetDlgItemTextW(window,IDC_LOCATOR,text);
+    MultiByteToWideChar(CP_UTF8,0,s->code,-1,text,97); SetDlgItemTextW(window,IDC_CODE,text);
+    SendDlgItemMessageW(window,IDC_MODE,CB_SETCURSEL,s->mode,0);
+    SendDlgItemMessageW(window,IDC_ASPECT,CB_SETCURSEL,s->aspect,0);
+    update_resolutions(window);
+    SendDlgItemMessageW(window,IDC_RESOLUTION,CB_SETCURSEL,s->resolution,0);
+    SendDlgItemMessageW(window,IDC_BAND,CB_SETCURSEL,s->band,0);
+    CheckRadioButton(window,IDC_AUTO,IDC_MANUAL,s->automatic?IDC_AUTO:IDC_MANUAL);
+    CheckDlgButton(window,IDC_SHOW_LOCATOR,s->show?BST_CHECKED:BST_UNCHECKED);
+    CheckDlgButton(window,IDC_INVERSE,s->inverse?BST_CHECKED:BST_UNCHECKED);
+    CheckDlgButton(window,IDC_BLUE_YELLOW,s->blue_yellow?BST_CHECKED:BST_UNCHECKED);
+    CheckDlgButton(window,IDC_SHOW_SUM,s->show_sum?BST_CHECKED:BST_UNCHECKED);
+    CheckDlgButton(window,IDC_TOP_CODE,s->top_code?BST_CHECKED:BST_UNCHECKED);
+    contest_square[0]=0;
+    read_text(window,IDC_LOCATOR,text,LOCATOR_MAX_LENGTH+1);
+    locator_square_changed(contest_square,text);
+    ts_settings=s->ts; udp_settings=s->udp;
+    SendDlgItemMessageW(window,IDC_CODE,EM_SETREADONLY,s->automatic,0);
+    update_mode(window); ready=1;
+    SendMessageW(window,WM_COMMAND,s->genius==2?IDM_LEVEL2:IDM_LEVEL1,0);
+    InvalidateRect(GetDlgItem(window,IDC_PREVIEW),NULL,FALSE);
+}
+static void save_config(HWND window) {
+    AppConfig s=capture_config(window); char *path=config_path();
+    if (path && config_save(path,&s))
+        SetDlgItemTextW(window,IDC_STATUS,L"Instellingen opgeslagen in atv-contestnummer.conf naast het programma.");
+    else error(window,L"Instellingen opslaan mislukt. Controleer de invoer en schrijfrechten naast het programma.");
+    free(path);
+}
+static void load_config(HWND window) {
+    AppConfig s; char *path=config_path();
+    int result=path?config_load(path,&s):-1; free(path);
+    if (result==1) {
+        apply_config(window,&s);
+        SetDlgItemTextW(window,IDC_STATUS,L"Opgeslagen instellingen geladen. UDP-uitvoer staat uit.");
+    } else if (result<0)
+        error(window,L"Het configuratiebestand is ongeldig of onleesbaar. De standaardinstellingen worden gebruikt.");
 }
 static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) {
     switch (message) {
@@ -585,6 +667,7 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
         SendDlgItemMessageW(window, IDC_BAND, CB_SETCURSEL, 3, 0);
         SetDlgItemTextW(window, IDC_STATUS, L"Vul je gegevens in. Exporteer JPG slaat het beeld naast de .exe op.");
         ready = 1;
+        load_config(window);
         return TRUE;
     }
     case WM_DRAWITEM:
@@ -608,6 +691,7 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
             CheckMenuRadioItem(GetSubMenu(menu,1),IDM_LEVEL1,IDM_LEVEL2,level==2?IDM_LEVEL2:IDM_LEVEL1,MF_BYCOMMAND);
             DrawMenuBar(window); return TRUE;
         }
+        if (LOWORD(wp)==IDM_SAVE_CONFIG) { save_config(window); return TRUE; }
         if (LOWORD(wp)==IDM_EXPORT_TS) { export_ts(window); return TRUE; }
         if (LOWORD(wp)==IDM_UDP) { output_udp(window); return TRUE; }
         if (LOWORD(wp)==IDM_CODEC_LICENSE) {

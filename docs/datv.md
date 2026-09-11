@@ -14,8 +14,10 @@
 
 De export gebruikt het huidige beeld, inclusief kleuren, band, cijfersom en extra
 code rechtsboven. PM5544 is ook beschikbaar, maar vraagt mogelijk meer bitrate.
-Het nummer verandert niet bij export. Instellingen worden in deze eerste versie
-alleen gedurende de huidige programmasessie onthouden.
+Het nummer verandert niet bij export. **Config → Huidige instellingen opslaan**
+bewaart de huidige kaart en TS-/UDP-instellingen in `atv-contestnummer.conf` naast
+het programma. Bij opstarten wordt dit bestand automatisch geladen, zonder UDP
+te starten. Zonder bestand blijven de normale standaardinstellingen gelden.
 
 Grenzen: bitrate 48000–2000000 bit/s, beeldduur 1–60 s, 1–25 beelden/s, GOP 1–250
 beelden. Het gekozen beeld moet even afmetingen hebben, maximaal 640 × 480.
@@ -117,6 +119,9 @@ ze ontvangt: UDP geeft daar geen ontvangstbevestiging voor.
 
 Om de code, band of andere beeldinhoud te wijzigen: Stop, sluit het UDP-venster,
 pas het beeld aan en kies opnieuw Start. Instellingen blijven deze sessie bewaard.
+Met **Toepassen en sluiten** kun je UDP-instellingen overnemen zonder te zenden.
+Kies daarna **Config → Huidige instellingen opslaan** voor bewaren na herstart.
+**Sluiten** annuleert nog niet toegepaste wijzigingen.
 Er is geen automatische start bij openen van het programma. TS-exportduur heeft
 geen invloed op UDP: de stream loopt door zolang je hem aan laat staan.
 
