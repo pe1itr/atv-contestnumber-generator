@@ -174,6 +174,7 @@ def recovery(windows, reference_hashes):
                 assert status["refusals"] > 0, status
             assert status["packets"] > len(packets), status
             assert status["stop_ms"] < 500, status
+            assert not status["recent_warning"], "Historical refusal remained visible after RX recovered"
             assert len(packets) > 40
             deltas = [b-a for a,b in zip(times,times[1:])]
             interval = 1316*8/120000
@@ -215,4 +216,6 @@ if __name__=="__main__":
     reference_hashes = capture(windows,13,120000,10,2)
     capture(windows,5,60000,2,1)
     capture(windows,5,240000,10,1)
+    capture(windows,5,115196,10,2)
+    capture(windows,5,123607,10,2)
     recovery(windows, reference_hashes)

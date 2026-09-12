@@ -53,6 +53,24 @@ int main(void) {
     /* Blank inputs and an unused UDP address can be saved before setup. */
     original=config_defaults(); assert(config_save(TEST_PATH,&original));
     assert(config_load(TEST_PATH,&loaded)==1); assert(!memcmp(&original,&loaded,sizeof(original)));
+    /* Every old index, including appended 240px, retains its physical size. */
+    const int legacy_width43[]={120,160,320,640,800,1024,1080,1280,1600,1920,240};
+    const int legacy_width169[]={120,160,320,640,800,960,1024,1280,1600,1920,240};
+    for (int aspect=0;aspect<2;++aspect) for (int index=0;index<11;++index) {
+        original.aspect=aspect; original.resolution=index;
+        original.ts.bitrate=115196; original.udp.video.bitrate=123607;
+        assert(config_save(TEST_PATH,&original));
+        FILE *legacy=fopen(TEST_PATH,"r+b"); assert(legacy);
+        assert(!fseek(legacy,(long)strlen("# ATV contestnummer generator\nversion="),SEEK_SET));
+        assert(fputc('1',legacy)!=EOF); assert(!fclose(legacy));
+        assert(config_load(TEST_PATH,&loaded)==1);
+        const Resolution *list=aspect?resolutions169:resolutions43;
+        assert(list[loaded.resolution].width==(aspect?legacy_width169:legacy_width43)[index]);
+        assert(loaded.ts.bitrate==115196 && loaded.udp.video.bitrate==123607);
+        AppConfig migrated=loaded;
+        assert(config_save(TEST_PATH,&migrated)); assert(config_load(TEST_PATH,&loaded)==1);
+        assert(!memcmp(&loaded,&migrated,sizeof(loaded))); /* No second migration. */
+    }
     assert(!remove(TEST_PATH));
     puts("Config: roundtrip, defaults, ranges, malformed files and protected previous settings OK.");
     return 0;

@@ -6,6 +6,7 @@
 #include <limits.h>
 
 DatvSettings datv_defaults(void) { return (DatvSettings){120000, 10, 5, 5}; }
+const int datv_bitrate_presets[DATV_BITRATE_PRESET_COUNT]={115196,123607};
 DatvUdpSettings datv_udp_defaults(void) {
     DatvUdpSettings s={"",10000,{120000,10,10,2}};
     return s;
@@ -16,11 +17,11 @@ void datv_udp_status_text(DatvUdpSettings s, DatvUdpStatus status, char *text, s
     else if (status.state==DATV_STOPPED) snprintf(text,size,"UDP gestopt (%llu pakketten).",(unsigned long long)status.packets);
     else snprintf(text,size,"UDP-uitvoer actief naar %s:%d\n%d bit/s, %llu pakketten van 1316 bytes, QP %d.",
         s.ip,s.port,s.video.bitrate,(unsigned long long)status.packets,status.qp);
-    if (size && (status.state==DATV_RUNNING || status.state==DATV_STOPPED) && status.refusals) {
+    if (size && status.state==DATV_RUNNING && status.refusals &&
+        status.seconds-status.last_refusal_seconds<3.0) {
         size_t used=strlen(text);
         if (used<size) snprintf(text+used,size-used,
-            "\nPoortweigeringen gemeld: %llu. Controleer IPTS-ingang/poort; UDP bevestigt geen ontvangst.",
-            (unsigned long long)status.refusals);
+            "\nOntvanger meldde zojuist een gesloten UDP-poort.\nVerzending gaat door; controleer of IPTS actief is.");
     }
 }
 const char *datv_udp_validate(DatvUdpSettings s, int width, int height) {
@@ -65,16 +66,14 @@ const char *datv_validate(DatvSettings s, int width, int height) {
     return NULL;
 }
 const Resolution resolutions43[RESOLUTION_COUNT] = {
-    {120,90},{160,120},
+    {120,90},{160,120},{240,180},
     {320,240},{640,480},{800,600},{1024,768},
-    {1080,810},{1280,960},{1600,1200},{1920,1440},
-    {240,180} /* Append to preserve resolution indices in saved settings. */
+    {1080,810},{1280,960},{1600,1200},{1920,1440}
 };
 const Resolution resolutions169[RESOLUTION_COUNT] = {
-    {120,68},{160,90},
+    {120,68},{160,90},{240,136}, /* Even heights for H.264. */
     {320,180},{640,360},{800,450},{960,540},
-    {1024,576},{1280,720},{1600,900},{1920,1080},
-    {240,136} /* Even height required by the shared H.264 encoder. */
+    {1024,576},{1280,720},{1600,900},{1920,1080}
 };
 const wchar_t *const bands[12] = {
     L"50 MHz",L"70 MHz",L"144 MHz",L"436 MHz",L"1152 MHz",L"2330 MHz",
@@ -273,8 +272,8 @@ int config_load(const char *path, AppConfig *out) {
         char *value=strchr(line,'=');
         if (!value) { ok=0; break; } *value++=0;
         if (!strcmp(line,"version")) {
-            if (version || strcmp(value,"1")) { ok=0; break; }
-            version=1; continue;
+            if (version || (strcmp(value,"1") && strcmp(value,"2"))) { ok=0; break; }
+            version=value[0]-'0'; continue;
         }
         size_t i;
         for (i=0;i<CONFIG_FIELDS;++i) if (!strcmp(line,config_fields[i].key)) break;
@@ -298,6 +297,11 @@ int config_load(const char *path, AppConfig *out) {
         if (config_fields[i].offset==offsetof(AppConfig,ebu_top) ||
             config_fields[i].offset==offsetof(AppConfig,ebu_bottom)) required &= ~(1UL<<i);
     if (!ok || !version || (seen&required)!=required || !config_valid(&s)) return -1;
+    /* Version 1 stored 240px at index 10; version 2 sorts by width. */
+    if (version==1) {
+        if (s.resolution==10) s.resolution=2;
+        else if (s.resolution>=2) ++s.resolution;
+    }
     *out=s; return 1;
 }
 int config_save(const char *path, const AppConfig *s) {
@@ -307,7 +311,7 @@ int config_save(const char *path, const AppConfig *s) {
     snprintf(temporary,n,"%s.tmp",path);
     FILE *f=config_open(temporary,1);
     if (!f) { free(temporary); return 0; }
-    int ok=fprintf(f,"# ATV contestnummer generator\nversion=1\n")>=0;
+    int ok=fprintf(f,"# ATV contestnummer generator\nversion=2\n")>=0;
     for (size_t i=0;i<CONFIG_FIELDS && ok;++i) {
         const ConfigField *field=&config_fields[i]; const char *value=(const char *)s+field->offset;
         ok=(field->size?fprintf(f,"%s=%s\n",field->key,value):

@@ -8,9 +8,22 @@ int main(void) {
     assert(udp.port==10000 && udp.video.fps==10 && udp.video.gop==2);
     DatvUdpStatus status={0}; char message[512];
     status.state=DATV_RUNNING; status.refusals=3;
+    status.last_refusal_seconds=10; status.seconds=12;
     datv_udp_status_text(udp,status,message,sizeof(message));
-    assert(strstr(message,"Poortweigeringen gemeld: 3"));
-    assert(strstr(message,"UDP bevestigt geen ontvangst"));
+    assert(strstr(message,"gesloten UDP-poort"));
+    assert(!strstr(message,"Poortweigeringen gemeld:"));
+    status.seconds=13;
+    datv_udp_status_text(udp,status,message,sizeof(message));
+    assert(strstr(message,"UDP-uitvoer actief") && !strstr(message,"gesloten UDP-poort"));
+    status.last_refusal_seconds=13;
+    datv_udp_status_text(udp,status,message,sizeof(message));
+    assert(strstr(message,"gesloten UDP-poort"));
+    status.state=DATV_STOPPED;
+    datv_udp_status_text(udp,status,message,sizeof(message));
+    assert(!strstr(message,"gesloten UDP-poort"));
+    status.state=DATV_FAILED; strcpy(status.error,"test netwerkfout");
+    datv_udp_status_text(udp,status,message,sizeof(message));
+    assert(!strcmp(message,"test netwerkfout"));
     datv_udp_status_text(udp,status,NULL,0);
     assert(datv_udp_validate(udp,160,120));
     const char *bad_ips[]={"", "1.2.3", "1.2.3.256", "01.2.3.4", "1.2.3.4x", "0.0.0.0", "224.0.0.1", "255.255.255.255", "host.local"};
@@ -107,6 +120,10 @@ int main(void) {
     assert(!generated_code_valid(2222));
     assert(generated_code_valid(1957));
     for (int i=0; i<RESOLUTION_COUNT; ++i) {
+        if (i) {
+            assert(resolutions43[i-1].width<resolutions43[i].width);
+            assert(resolutions169[i-1].width<resolutions169[i].width);
+        }
         assert(resolutions43[i].width*3 == resolutions43[i].height*4);
         /* H.264 needs even heights, including 120x68 and 240x136. */
         assert(resolutions169[i].height == (resolutions169[i].width*9+16)/32*2);

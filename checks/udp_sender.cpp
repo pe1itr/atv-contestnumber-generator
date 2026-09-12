@@ -29,6 +29,8 @@ int main(int argc,char **argv) {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
+    char status_text[512]; datv_udp_status_text(s,status,status_text,sizeof(status_text));
+    bool recent_warning=std::strstr(status_text,"gesloten UDP-poort")!=nullptr;
     auto stop=std::chrono::steady_clock::now();
     datv_udp_stop(stream);
     for (;;) {
@@ -39,7 +41,7 @@ int main(int argc,char **argv) {
     }
     datv_udp_destroy(stream);
     double stop_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-stop).count();
-    std::printf("{\"packets\":%llu,\"refusals\":%llu,\"stop_ms\":%.3f,\"qp\":%d}\n",(unsigned long long)status.packets,(unsigned long long)status.refusals,stop_ms,status.qp);
+    std::printf("{\"packets\":%llu,\"refusals\":%llu,\"stop_ms\":%.3f,\"qp\":%d,\"recent_warning\":%s}\n",(unsigned long long)status.packets,(unsigned long long)status.refusals,stop_ms,status.qp,recent_warning?"true":"false");
     // Cancellation while preparing and repeated destruction must not hang.
     for (int n=0;n<3;++n) {
         s.video.gop=250;

@@ -156,7 +156,7 @@ static HBITMAP render(int width, int height, const wchar_t *call, const wchar_t 
     int sum = code_digit_sum(code);
     if (show_sum && sum >= 0) {
         wchar_t label[32];
-        swprintf(label, 32, L"de som is %d", sum);
+        swprintf(label, 32, L"Som=%d", sum);
         ok = ok && draw_line(dc, label, sum_box, small_size, DT_LEFT);
     }
     GdiFlush();
@@ -249,6 +249,17 @@ static void error(HWND window, const wchar_t *message) {
 static void ts_error(HWND window, const char *message) {
     wchar_t text[256]; MultiByteToWideChar(CP_UTF8,0,message,-1,text,256); error(window,text);
 }
+static void bitrate_presets_init(HWND window) {
+    for (int i=0;i<DATV_BITRATE_PRESET_COUNT;++i)
+        SetDlgItemInt(window,IDC_BITRATE_PRESET1+i,datv_bitrate_presets[i],FALSE);
+}
+static BOOL bitrate_preset_apply(HWND window,int id,int field) {
+    int index=id-IDC_BITRATE_PRESET1;
+    if (index<0 || index>=DATV_BITRATE_PRESET_COUNT) return FALSE;
+    if (IsWindowEnabled(GetDlgItem(window,field)))
+        SetDlgItemInt(window,field,datv_bitrate_presets[index],FALSE);
+    return TRUE;
+}
 typedef struct {
     HBITMAP bitmap;
     Resolution size;
@@ -267,6 +278,8 @@ static void udp_poll(HWND window,UdpDialog *d) {
     BOOL busy=status.state==DATV_PREPARING || status.state==DATV_RUNNING;
     const int fields[]={IDC_UDP_IP,IDC_UDP_PORT,IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP,IDC_UDP_START,IDC_UDP_APPLY};
     for (int i=0;i<7;++i) EnableWindow(GetDlgItem(window,fields[i]),!busy);
+    for (int i=0;i<DATV_BITRATE_PRESET_COUNT;++i)
+        EnableWindow(GetDlgItem(window,IDC_BITRATE_PRESET1+i),!busy);
     EnableWindow(GetDlgItem(window,IDC_UDP_STOP),busy);
 }
 static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp) {
@@ -277,6 +290,7 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         SendDlgItemMessageW(window,IDC_UDP_IP,EM_SETLIMITTEXT,15,0);
         SetDlgItemInt(window,IDC_UDP_PORT,udp_settings.port,FALSE);
         SetDlgItemInt(window,IDC_UDP_BITRATE,udp_settings.video.bitrate,FALSE);
+        bitrate_presets_init(window);
         SetDlgItemInt(window,IDC_UDP_FPS,udp_settings.video.fps,FALSE);
         SetDlgItemInt(window,IDC_UDP_GOP,udp_settings.video.gop,FALSE);
         EnableWindow(GetDlgItem(window,IDC_UDP_STOP),FALSE);
@@ -284,6 +298,7 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         return TRUE;
     }
     if (message==WM_TIMER) { udp_poll(window,d); return TRUE; }
+    if (message==WM_COMMAND && bitrate_preset_apply(window,LOWORD(wp),IDC_UDP_BITRATE)) return TRUE;
     if (message==WM_CLOSE || (message==WM_COMMAND && LOWORD(wp)==IDCANCEL)) {
         KillTimer(window,1); datv_udp_destroy(d->stream); d->stream=NULL;
         EndDialog(window,0); return TRUE;
@@ -406,7 +421,9 @@ static INT_PTR CALLBACK ts_progress(HWND window, UINT message, WPARAM wp, LPARAM
 }
 static INT_PTR CALLBACK ts_options(HWND window, UINT message, WPARAM wp, LPARAM lp) {
     (void)lp;
+    if (message==WM_COMMAND && bitrate_preset_apply(window,LOWORD(wp),IDC_TS_BITRATE)) return TRUE;
     if (message==WM_INITDIALOG) {
+        bitrate_presets_init(window);
         SetDlgItemInt(window,IDC_TS_BITRATE,ts_settings.bitrate,FALSE);
         SetDlgItemInt(window,IDC_TS_SECONDS,ts_settings.seconds,FALSE);
         SetDlgItemInt(window,IDC_TS_FPS,ts_settings.fps,FALSE);

@@ -392,9 +392,12 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
                 bool sent=socket.packet(datagram);
                 std::lock_guard<std::mutex> lock(stream->mutex);
                 stream->status.state=DATV_RUNNING;
-                if (sent) ++stream->status.packets;
-                else ++stream->status.refusals;
                 stream->status.seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-origin).count();
+                if (sent) ++stream->status.packets;
+                else {
+                    ++stream->status.refusals;
+                    stream->status.last_refusal_seconds=stream->status.seconds;
+                }
             }
         }
         std::lock_guard<std::mutex> lock(stream->mutex);

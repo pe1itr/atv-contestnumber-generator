@@ -133,7 +133,7 @@ static cairo_surface_t *render(Resolution r, const char *call, const char *code,
         draw_line(cr, code, w/2, h/100, w-m, h*9/100, small_size, PANGO_ALIGN_RIGHT, ebu_top ? &palette : NULL);
     if (show_sum && sum >= 0) {
         char label[32];
-        g_snprintf(label, sizeof(label), "de som is %d", sum);
+        g_snprintf(label, sizeof(label), "Som=%d", sum);
         draw_line(cr, label, m, h*91/100, w/2, h*99/100, small_size, PANGO_ALIGN_LEFT, ebu_bottom ? &palette : NULL);
     }
     cairo_destroy(cr);
@@ -364,9 +364,24 @@ static gboolean keep_progress(GtkWidget *widget, GdkEvent *event, gpointer data)
 
 typedef struct {
     App *app;
-    GtkWidget *dialog, *fields[5], *status;
+    GtkWidget *dialog, *fields[5], *status, *presets;
     DatvStream *stream;
 } UdpDialog;
+static void bitrate_preset_clicked(GtkButton *button, gpointer field) {
+    int value=GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button),"bitrate-preset"));
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(field),value);
+}
+static GtkWidget *bitrate_presets(GtkWidget *field) {
+    GtkWidget *box=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,6);
+    for (int i=0;i<DATV_BITRATE_PRESET_COUNT;++i) {
+        char label[24]; g_snprintf(label,sizeof(label),"%d",datv_bitrate_presets[i]);
+        GtkWidget *button=gtk_button_new_with_label(label);
+        g_object_set_data(G_OBJECT(button),"bitrate-preset",GINT_TO_POINTER(datv_bitrate_presets[i]));
+        g_signal_connect(button,"clicked",G_CALLBACK(bitrate_preset_clicked),field);
+        gtk_box_pack_start(GTK_BOX(box),button,FALSE,FALSE,0);
+    }
+    return box;
+}
 static gboolean udp_poll(gpointer data) {
     UdpDialog *d=data;
     if (!d->stream) return G_SOURCE_CONTINUE;
@@ -375,6 +390,7 @@ static gboolean udp_poll(gpointer data) {
     gtk_label_set_text(GTK_LABEL(d->status),text);
     gboolean busy=status.state==DATV_PREPARING || status.state==DATV_RUNNING;
     for (int i=0;i<5;++i) gtk_widget_set_sensitive(d->fields[i],!busy);
+    gtk_widget_set_sensitive(d->presets,!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),1,!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),3,!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),2,busy);
@@ -419,11 +435,13 @@ static void output_udp(GtkWidget *widget, gpointer data) {
         }
         gtk_grid_attach(GTK_GRID(grid),label,0,i,1,1); gtk_grid_attach(GTK_GRID(grid),d.fields[i],1,i,1,1);
     }
+    d.presets=bitrate_presets(d.fields[2]);
+    gtk_grid_attach(GTK_GRID(grid),d.presets,2,2,1,1);
     GtkWidget *note=gtk_label_new("Start zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.");
-    gtk_grid_attach(GTK_GRID(grid),note,0,5,2,1);
+    gtk_grid_attach(GTK_GRID(grid),note,0,5,3,1);
     d.status=gtk_label_new("Vul het IP-adres van Portsdown in en kies Start.");
     gtk_label_set_line_wrap(GTK_LABEL(d.status),TRUE); gtk_label_set_max_width_chars(GTK_LABEL(d.status),65);
-    gtk_label_set_xalign(GTK_LABEL(d.status),0); gtk_grid_attach(GTK_GRID(grid),d.status,0,6,2,1);
+    gtk_label_set_xalign(GTK_LABEL(d.status),0); gtk_grid_attach(GTK_GRID(grid),d.status,0,6,3,1);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d.dialog),2,FALSE);
     gtk_widget_show_all(d.dialog);
     guint timer=g_timeout_add(200,udp_poll,&d);
@@ -490,8 +508,9 @@ static void export_ts(GtkWidget *widget, gpointer data) {
         gtk_spin_button_set_value(GTK_SPIN_BUTTON(fields[i]),values[i]);
         gtk_grid_attach(GTK_GRID(grid),label,0,i,1,1); gtk_grid_attach(GTK_GRID(grid),fields[i],1,i,1,1);
     }
+    gtk_grid_attach(GTK_GRID(grid),bitrate_presets(fields[0]),2,0,1,1);
     GtkWidget *note=gtk_label_new("Huidig beeld, zonder audio. Service = roepnaam; ID = 1.\nHet bestand bevat ook 1 seconde aanloop voor de decoder.");
-    gtk_grid_attach(GTK_GRID(grid),note,0,4,2,1);
+    gtk_grid_attach(GTK_GRID(grid),note,0,4,3,1);
     gtk_widget_show_all(dialog);
     if (gtk_dialog_run(GTK_DIALOG(dialog))!=GTK_RESPONSE_ACCEPT) {
         gtk_widget_destroy(dialog); g_free(call); return;

@@ -8,6 +8,20 @@ static char *directory;
 static GSocket *receiver;
 static int port, received;
 static gint64 udp_deadline;
+static void check_presets(GtkGrid *grid,int row) {
+    GtkWidget *field=gtk_grid_get_child_at(grid,1,row);
+    GList *buttons=gtk_container_get_children(GTK_CONTAINER(gtk_grid_get_child_at(grid,2,row)));
+    const int expected[]={115196,123607};
+    assert(g_list_length(buttons)==2);
+    for (int i=0;i<2;++i) {
+        gtk_button_clicked(GTK_BUTTON(g_list_nth_data(buttons,i)));
+        assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(field))==expected[i]);
+    }
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(field),119999);
+    assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(field))==119999);
+    gtk_button_clicked(GTK_BUTTON(g_list_nth_data(buttons,row==0?1:0)));
+    g_list_free(buttons);
+}
 static void receive_udp(void) {
     char bytes[2048]; GError *error=NULL; gssize n;
     while ((n=g_socket_receive(receiver,bytes,sizeof(bytes),NULL,&error))>=0) { assert(n==1316); ++received; }
@@ -30,6 +44,7 @@ static gboolean drive_dialogs(gpointer unused) {
             GtkWidget *ip=gtk_grid_get_child_at(grid,1,0), *port_field=gtk_grid_get_child_at(grid,1,1);
             const char *status=gtk_label_get_text(GTK_LABEL(gtk_grid_get_child_at(grid,0,6)));
             if (stage==10) {
+                check_presets(grid,2);
                 assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(port_field))==10000);
                 gtk_entry_set_text(GTK_ENTRY(ip),"999.1.2.3"); stage=11; gtk_dialog_response(GTK_DIALOG(w),1);
             } else if (stage==11) {
@@ -41,6 +56,7 @@ static gboolean drive_dialogs(gpointer unused) {
                 receive_udp();
                 if (received>=4) {
                     assert(strstr(status,"UDP-uitvoer actief")); assert(!gtk_widget_get_sensitive(ip));
+                    assert(!gtk_widget_get_sensitive(gtk_grid_get_child_at(grid,2,2)));
                     stage=13; gtk_dialog_response(GTK_DIALOG(w),2);
                 }
             } else if (stage==13 && strstr(status,"UDP gestopt")) {
@@ -55,6 +71,7 @@ static gboolean drive_dialogs(gpointer unused) {
             GtkGrid *grid=GTK_GRID(children->data);
             int values[]={60000,3,2,1};
             for (int i=0;i<4;++i) gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,i)),values[i]);
+            check_presets(grid,0);
             g_list_free(children); stage=1; gtk_dialog_response(GTK_DIALOG(w),GTK_RESPONSE_ACCEPT);
         } else if (stage==1 && GTK_IS_FILE_CHOOSER(w)) {
             gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(w),directory);
@@ -94,7 +111,7 @@ int main(int argc,char **argv) {
         g_main_context_iteration(NULL,FALSE); g_usleep(1000);
     }
     g_source_remove(timer);
-    assert(stage==2 && app.datv.bitrate==60000 && app.datv.gop==1);
+    assert(stage==2 && app.datv.bitrate==123607 && app.datv.gop==1);
     char *path=g_build_filename(directory,"kaart-é.ts",NULL);
     assert(g_file_test(path,G_FILE_TEST_IS_REGULAR));
     assert(!strcmp(gtk_entry_get_text(GTK_ENTRY(app.code)),"1957"));
@@ -110,6 +127,7 @@ int main(int argc,char **argv) {
     timer=g_timeout_add(50,drive_dialogs,NULL);
     g_signal_emit_by_name(app.udp_menu,"activate"); g_source_remove(timer);
     assert(stage==15 && received>=8 && app.udp.port==port);
+    assert(app.udp.video.bitrate==115196);
     g_object_unref(receiver);
     g_print("Linux UDP UI: adresvalidatie, Start/Stop, opnieuw starten en sluiten tijdens uitzending OK.\n");
     g_signal_handlers_disconnect_by_func(app.window,gtk_main_quit,NULL);

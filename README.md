@@ -30,6 +30,8 @@ programma vanuit een andere werkmap start. Zonder bestand gelden de normale
 standaardinstellingen. Bij een ongeldig of onleesbaar bestand volgt een melding en
 blijven de standaardinstellingen actief. Opnieuw opslaan vervangt het eerdere bestand;
 de map moet beschrijfbaar zijn. Linux en Windows gebruiken hetzelfde bestandsformaat.
+Oudere configuraties worden bij laden omgezet naar de nieuwe resolutievolgorde;
+de gekozen beeldafmetingen blijven behouden. Opslaan gebruikt formaatversie 2.
 
 In het UDP-venster bewaart **Toepassen en sluiten** de ingevoerde instellingen voor
 de huidige sessie zonder te zenden. Kies daarna **Config → Huidige instellingen
@@ -50,7 +52,7 @@ Kies bovenaan bij **Beeldtype** voor **Contest** (standaard).
 4. Kies beeldverhouding, resolutie en frequentieband. Het voorbeeld volgt de invoer; de automatische code is al vóór het exporteren zichtbaar.
 5. Klik op **Exporteer JPG**. Het bestand wordt naast de `.exe` opgeslagen als `roepnaam-locator-code-band-breedtexhoogte.jpg`, bijvoorbeeld `PE1ITR-JO21QK-1957-436MHz-1920x1440.jpg`. Bij een bestaand bestand vraagt het programma of je het wilt vervangen.
 
-Een `/` in een roepnaam wordt uitsluitend in de bestandsnaam vervangen door `_`. Op het beeld blijft de slash staan. De uitvoer is witte, vetgedrukte tekst op zwart: roepnaam bovenaan, de vier cijfers groot in het midden en de optionele locator eronder. **De gekozen band staat altijd rechtsonder**, ook zonder locator. Met **Inverse (kleuren omwisselen)** worden alle letters, inclusief de band, zwart op een witte achtergrond. Het voorbeeld past zich direct aan. Inverse bestanden krijgen het achtervoegsel `-inverse`, bijvoorbeeld `PE1ITR-JO21QK-1957-436MHz-1920x1440-inverse.jpg`, zodat beide versies naast elkaar kunnen bestaan. Met **Cijfersom in beeld** verschijnt linksonder `de som is 22` bij code `1957` (1 + 9 + 5 + 7). Deze optie staat standaard uit en werkt ook zonder locator. Bij een onvolledige of ongeldige code blijft de som in het voorbeeld verborgen. De band en de som gebruiken dezelfde lettergrootte: 6% van de beeldhoogte. Op de kleinste resoluties wordt de beschikbare regelhoogte benut voor leesbaarheid. De bestandsnaam blijft bij deze optie hetzelfde; bij opnieuw opslaan vraagt het programma of het bestaande bestand vervangen mag worden. Met **Code rechtsboven (DATV)** verschijnt dezelfde viercijferige code ook klein rechtsboven, zodat die zichtbaar blijft wanneer alleen de bovenkant van het beeld wordt ontvangen. De optie staat standaard uit en volgt de inverse-instelling. De kleine code gebruikt dezelfde lettergrootte als band en som. De roepnaam krijgt bij deze optie ruimte onder de extra regel om overlap te voorkomen. Voorloopnullen blijven behouden; bij een ongeldige of onvolledige code blijft de extra code verborgen. De bestandsnaam verandert niet door deze optie. De letters schalen met de resolutie en worden bij lange tekst passend gemaakt.
+Een `/` in een roepnaam wordt uitsluitend in de bestandsnaam vervangen door `_`. Op het beeld blijft de slash staan. De uitvoer is witte, vetgedrukte tekst op zwart: roepnaam bovenaan, de vier cijfers groot in het midden en de optionele locator eronder. **De gekozen band staat altijd rechtsonder**, ook zonder locator. Met **Inverse (kleuren omwisselen)** worden alle letters, inclusief de band, zwart op een witte achtergrond. Het voorbeeld past zich direct aan. Inverse bestanden krijgen het achtervoegsel `-inverse`, bijvoorbeeld `PE1ITR-JO21QK-1957-436MHz-1920x1440-inverse.jpg`, zodat beide versies naast elkaar kunnen bestaan. Met **Cijfersom in beeld** verschijnt linksonder `Som=22` bij code `1957` (1 + 9 + 5 + 7). Deze optie staat standaard uit en werkt ook zonder locator. Bij een onvolledige of ongeldige code blijft de som in het voorbeeld verborgen. De band en de som gebruiken dezelfde lettergrootte: 6% van de beeldhoogte. Op de kleinste resoluties wordt de beschikbare regelhoogte benut voor leesbaarheid. De bestandsnaam blijft bij deze optie hetzelfde; bij opnieuw opslaan vraagt het programma of het bestaande bestand vervangen mag worden. Met **Code rechtsboven (DATV)** verschijnt dezelfde viercijferige code ook klein rechtsboven, zodat die zichtbaar blijft wanneer alleen de bovenkant van het beeld wordt ontvangen. De optie staat standaard uit en volgt de inverse-instelling. De kleine code gebruikt dezelfde lettergrootte als band en som. De roepnaam krijgt bij deze optie ruimte onder de extra regel om overlap te voorkomen. Voorloopnullen blijven behouden; bij een ongeldige of onvolledige code blijft de extra code verborgen. De bestandsnaam verandert niet door deze optie. De letters schalen met de resolutie en worden bij lange tekst passend gemaakt.
 
 Met **Blauw/geel** krijgt het contestbeeld een donkerblauwe achtergrond (`#000080`) en helder gele tekst (`#FFFF00`). De kleuren hebben een groot helderheidsverschil voor zwart-witontvangst. **Inverse** wisselt ze om: donkerblauwe tekst op geel. Dit geldt ook voor locator, band, cijfersom en de extra DATV-code; het voorbeeld volgt direct. De optie staat standaard uit en is niet beschikbaar bij PM5544. Gekleurde bestanden krijgen `-blauw-geel` vóór het eventuele `-inverse`, bijvoorbeeld `PE1ITR-JO21QK-1957-436MHz-1920x1440-blauw-geel-inverse.jpg`.
 
@@ -109,14 +111,19 @@ Zie [DATV-testinstructies en technische grenzen](docs/datv.md).
 
 De UDP-stream blijft doorlopen als de doelpoort tijdelijk weigert (Linux-code
 111), bijvoorbeeld wanneer de Portsdown-IPTS-ingang nog niet gestart is.
-Gemelde poortweigeringen blijven zichtbaar in de status. Start de IPTS-ingang
+Een recente poortweigering verschijnt kort als uitleg, zonder foutcode of teller.
+Na drie seconden zonder nieuwe weigering verdwijnt die melding. Start de IPTS-ingang
 of IPTS Viewer op de Portsdown om het actuele beeld op te pakken; oude pakketten
 worden niet opnieuw verstuurd. De pakketteller telt lokaal geslaagde verzendingen,
 geen bevestigde ontvangst. Andere netwerkfouten stoppen de stream nog steeds.
 
 De resolutielijst bevat ook 240 pixels breed: 240 × 180 (4:3) en 240 × 136
-(16:9, afgerond op een even hoogte voor H.264). Deze keuzes staan onderaan,
-zodat eerder opgeslagen resolutiekeuzes dezelfde betekenis houden.
+(16:9, afgerond op een even hoogte voor H.264). Ze staan in de oplopende lijst
+tussen 160 en 320 pixels breed.
+
+Naast de handmatige TS-bitrate staan knoppen voor **115196** en **123607 bit/s**,
+zowel bij TS-export als bij UDP-uitvoer. Je kunt de gekozen waarde daarna ook
+handmatig wijzigen. Tijdens uitzending zijn de bitrate-instellingen geblokkeerd.
 
 ## Bouwen
 

@@ -7,6 +7,17 @@ static wchar_t target[MAX_PATH];
 static SOCKET receiver;
 static int port, received;
 static ULONGLONG udp_deadline;
+static void check_presets(HWND window,int field) {
+    const int expected[]={115196,123607};
+    for (int i=0;i<2;++i) {
+        assert(GetDlgItemInt(window,IDC_BITRATE_PRESET1+i,NULL,FALSE)==(UINT)expected[i]);
+        SendMessageW(window,WM_COMMAND,IDC_BITRATE_PRESET1+i,0);
+        assert(GetDlgItemInt(window,field,NULL,FALSE)==(UINT)expected[i]);
+    }
+    SetDlgItemInt(window,field,119999,FALSE);
+    assert(GetDlgItemInt(window,field,NULL,FALSE)==119999);
+    SendMessageW(window,WM_COMMAND,field==IDC_TS_BITRATE?IDC_BITRATE_PRESET2:IDC_BITRATE_PRESET1,0);
+}
 static void receive_udp(void) {
     char bytes[2048]; int n;
     while ((n=recv(receiver,bytes,sizeof(bytes),0))>=0) { assert(n==1316); ++received; }
@@ -19,6 +30,7 @@ static BOOL CALLBACK drive_window(HWND window,LPARAM unused) {
         assert(GetTickCount64()<udp_deadline);
         wchar_t status[512]; GetDlgItemTextW(window,IDC_UDP_STATUS,status,512);
         if (stage==10) {
+            check_presets(window,IDC_UDP_BITRATE);
             assert(GetDlgItemInt(window,IDC_UDP_PORT,NULL,FALSE)==10000);
             SetDlgItemTextW(window,IDC_UDP_IP,L"999.1.2.3"); stage=11; PostMessageW(window,WM_COMMAND,IDC_UDP_START,0);
         } else if (stage==11) {
@@ -28,6 +40,8 @@ static BOOL CALLBACK drive_window(HWND window,LPARAM unused) {
             receive_udp();
             if (received>=4) {
                 assert(wcsstr(status,L"UDP-uitvoer actief")); assert(!IsWindowEnabled(GetDlgItem(window,IDC_UDP_IP)));
+                assert(!IsWindowEnabled(GetDlgItem(window,IDC_BITRATE_PRESET1)));
+                assert(!IsWindowEnabled(GetDlgItem(window,IDC_BITRATE_PRESET2)));
                 stage=13; PostMessageW(window,WM_COMMAND,IDC_UDP_STOP,0);
             }
         } else if (stage==13 && wcsstr(status,L"UDP gestopt")) {
@@ -39,6 +53,7 @@ static BOOL CALLBACK drive_window(HWND window,LPARAM unused) {
     }
     if (stage==0 && !wcscmp(title,L"DATV: TS-proefbestand")) {
         SetDlgItemInt(window,IDC_TS_BITRATE,60000,FALSE);
+        check_presets(window,IDC_TS_BITRATE);
         SetDlgItemInt(window,IDC_TS_SECONDS,3,FALSE);
         SetDlgItemInt(window,IDC_TS_FPS,2,FALSE);
         SetDlgItemInt(window,IDC_TS_GOP,1,FALSE);
@@ -78,7 +93,7 @@ int wmain(void) {
     assert(GetFileAttributesW(target)==INVALID_FILE_ATTRIBUTES);
     UINT_PTR timer=SetTimer(NULL,0,100,drive_timer); assert(timer);
     SendMessageW(window,WM_COMMAND,IDM_EXPORT_TS,0); KillTimer(NULL,timer);
-    assert(stage==2 && ts_settings.bitrate==60000 && ts_settings.gop==1);
+    assert(stage==2 && ts_settings.bitrate==123607 && ts_settings.gop==1);
     wchar_t status[512],code[5];
     GetDlgItemTextW(window,IDC_STATUS,status,512); assert(wcsstr(status,L"TS opgeslagen:"));
     GetDlgItemTextW(window,IDC_CODE,code,5); assert(!wcscmp(code,L"1957"));
@@ -93,6 +108,7 @@ int wmain(void) {
     timer=SetTimer(NULL,0,100,drive_timer); assert(timer);
     SendMessageW(window,WM_COMMAND,IDM_UDP,0); KillTimer(NULL,timer);
     assert(stage==15 && received>=8 && udp_settings.port==port);
+    assert(udp_settings.video.bitrate==115196);
     closesocket(receiver); WSACleanup();
     puts("Windows UDP UI: adresvalidatie, Start/Stop, opnieuw starten en sluiten tijdens uitzending OK.");
     DestroyWindow(window); pm5544_cleanup(); CoUninitialize();

@@ -143,10 +143,13 @@ uitvoer een timerresolutie van 1 ms en geeft die bij stoppen weer vrij.
 Voorbereiding controleert meerdere herhalingen en minimaal 30 seconden transport;
 een onhaalbare bitrate wordt vóór de eerste verzending geweigerd. Ook tijdens
 uitvoer bewaakt de muxer de beelddeadlines. Poortweigeringen (Linux ECONNREFUSED,
-Windows WSAECONNREFUSED/WSAECONNRESET) worden geteld en getoond; de stream loopt
+Windows WSAECONNREFUSED/WSAECONNRESET) worden intern geteld; de stream loopt
 door zodat een later gestarte IPTS-ontvanger kan instappen. Het geweigerde datagram
 wordt overgeslagen, zonder hertransmissie. Windows opent hiervoor de socket opnieuw.
 De pakketteller telt lokaal geslaagde verzendingen, geen bevestigde ontvangst.
+De status toont alleen een korte uitleg bij een recente poortweigering, zonder
+historische foutteller. Na drie seconden zonder nieuwe weigering verdwijnt de
+waarschuwing; dit betekent niet dat de ontvanger ontvangst heeft bevestigd.
 Andere socketfouten, volle verzendbuffers en
 een achterstand van meer dan één datagramperiode stoppen met een melding.
 Na slaapstand worden achterstallige pakketten dus niet in een grote reeks ingehaald.
@@ -162,7 +165,8 @@ python3 checks/check_udp.py --windows
 ```
 
 De tests gebruiken uitsluitend `127.0.0.1` en een vrije lokale poort. Ze meten de
-werkelijke aankomsttijden en pakketgroottes bij 60, 120 en 240 kbit/s, controleren
+werkelijke aankomsttijden en pakketgroottes bij 60, 120 en 240 kbit/s en bij de
+vaste keuzes 115196 en 123607 bit/s, controleren
 doorlopende TS-timing over meerdere GOP's en meer dan tien seconden, en testen
 Stop en annuleren tijdens voorbereiding. FFmpeg verifieert de gedecodeerde beelden,
 TSDuck controleert continuïteit en PCR. Voor GOP 1 worden ook de wisselende
