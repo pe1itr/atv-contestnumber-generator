@@ -185,3 +185,29 @@ worden tijdens bouwen ingebouwd, zonder losse runtime-bestanden. De plaatsing
 volgt het [WDR-voorbeeld](https://pe1itr.com/tv-dx/vhf-h/VHFCHE11_WDR1%20teutoburger%20wald.htm).
 Met `--ts-fubk-test` en dezelfde argumenten als `--ts-test` maak je een TS-test
 met het FUBK-beeld.
+
+## Leesbaarheid vóór het uitzenden beoordelen
+
+Open **DATV: UDP-uitvoer** (via Genius level 2), stel bitrate, beelden per seconde
+en GOP in en klik **Beeld controleren**. Je hoeft hiervoor geen IP-adres of
+poort in te vullen. Links staat het originele beeld; rechts hetzelfde beeld na
+H.264-compressie en decodering. Beide beelden gebruiken dezelfde vergroting;
+met **2× vergroten** en de gekoppelde schuifbalken vergelijk je kleine letters.
+Sluit de vergelijking om de instellingen te veranderen en opnieuw te controleren.
+
+De controle verstuurt niets en wijzigt geen opgeslagen instellingen. Ze gebruikt
+precies dezelfde kwaliteitskeuze en controle van de beschikbare bitrate als de
+UDP-uitzending. De getoonde QP is extra informatie, geen oordeel over leesbaarheid:
+resolutie, lettergrootte, beeldinhoud, bitrate, beeldfrequentie en GOP tellen mee.
+
+Rechts zie je het eerste volledige videobeeld. Andere videobeelden kunnen
+verschillen; ontvangstverliezen en beeldbewerking door de ontvanger worden niet
+nagebootst. De ingebouwde OpenH264-decoder vereist geen extra installatie.
+
+De vergelijkingstests zijn beschikbaar met:
+
+```sh
+make build/test-quality-linux-ui build/test-quality-windows-ui.exe
+build/test-quality-linux-ui
+wine build/test-quality-windows-ui.exe
+```

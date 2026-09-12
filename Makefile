@@ -13,7 +13,7 @@ all: linux windows
 windows: dist/atv-contestnummer.exe
 linux: dist/atv-contestnummer
 
-dist/atv-contestnummer: src/linux.c src/core.c src/core.h src/app_info.c src/app_info.h third_party/openh264/license_text.inc src/pm5544.h src/datv.h build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
+dist/atv-contestnummer: src/linux.c src/quality_linux.h src/core.c src/core.h src/app_info.c src/app_info.h third_party/openh264/license_text.inc src/pm5544.h src/datv.h build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
 	mkdir -p dist
 	$(HOSTCC) $(CFLAGS) src/linux.c src/core.c src/app_info.c build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -o $@ $(shell pkg-config --cflags --libs gtk+-3.0 pangocairo) -lstdc++ -lpthread -lm
 
@@ -32,7 +32,7 @@ build/app.o: src/app.rc src/resource.h src/app.manifest
 	mkdir -p build
 	$(WINDRES) -Isrc src/app.rc $@
 
-dist/atv-contestnummer.exe: src/main.c src/core.c src/core.h src/resource.h src/app_info.c src/app_info.h third_party/openh264/license_text.inc src/pm5544.h src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
+dist/atv-contestnummer.exe: src/main.c src/quality_windows.h src/core.c src/core.h src/resource.h src/app_info.c src/app_info.h third_party/openh264/license_text.inc src/pm5544.h src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
 	mkdir -p dist
 	$(CC) $(CFLAGS) -municode -mwindows -static -s src/main.c src/core.c src/app_info.c build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a -o $@ $(LDLIBS) -lstdc++ -lwinpthread -lssp -lshell32
 
@@ -66,10 +66,10 @@ test-linux: linux build/test-core build/test-config
 test-ts: linux
 	$(PYTHON) checks/check_ts.py
 
-build/test-datv-linux-ui: checks/test_datv_linux_ui.c src/linux.c src/core.c src/app_info.c src/datv.h build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
+build/test-datv-linux-ui: checks/test_datv_linux_ui.c src/linux.c src/quality_linux.h src/core.c src/app_info.c src/datv.h build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
 	$(HOSTCC) $(CFLAGS) -Isrc checks/test_datv_linux_ui.c src/core.c src/app_info.c build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -o $@ $(shell pkg-config --cflags --libs gtk+-3.0 pangocairo) -lstdc++ -lpthread -lm
 
-build/test-datv-windows-ui.exe: checks/test_datv_windows_ui.c src/main.c src/core.c src/app_info.c src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
+build/test-datv-windows-ui.exe: checks/test_datv_windows_ui.c src/main.c src/quality_windows.h src/core.c src/app_info.c src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
 	$(CC) $(CFLAGS) -municode -static -Isrc checks/test_datv_windows_ui.c src/core.c src/app_info.c build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a -o $@ $(LDLIBS) -lstdc++ -lwinpthread -lssp -lshell32
 
 build/core-linux.o: src/core.c src/core.h src/datv.h
@@ -95,7 +95,13 @@ build/test-config: checks/test_config.c src/core.c src/core.h src/datv.h
 build/test-config.exe: checks/test_config.c src/core.c src/core.h src/datv.h
 	$(CC) $(CFLAGS) -static -Isrc checks/test_config.c src/core.c -o $@
 
-build/test-config-linux-ui: checks/test_config_linux_ui.c src/linux.c src/core.c src/app_info.c src/datv.h build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
+build/test-config-linux-ui: checks/test_config_linux_ui.c src/linux.c src/quality_linux.h src/core.c src/app_info.c src/datv.h build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
 	$(HOSTCC) $(CFLAGS) -Isrc checks/test_config_linux_ui.c src/core.c src/app_info.c build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -o $@ $(shell pkg-config --cflags --libs gtk+-3.0 pangocairo) -lstdc++ -lpthread -lm
-build/test-config-windows-ui.exe: checks/test_config_windows_ui.c src/main.c src/core.c src/app_info.c src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
+build/test-config-windows-ui.exe: checks/test_config_windows_ui.c src/main.c src/quality_windows.h src/core.c src/app_info.c src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
 	$(CC) $(CFLAGS) -municode -static -Isrc checks/test_config_windows_ui.c src/core.c src/app_info.c build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a -o $@ $(LDLIBS) -lstdc++ -lwinpthread -lssp -lshell32
+
+build/test-quality-linux-ui: checks/test_quality_linux_ui.c src/linux.c src/quality_linux.h src/core.c src/app_info.c src/datv.h build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
+	$(HOSTCC) $(CFLAGS) -Isrc checks/test_quality_linux_ui.c src/core.c src/app_info.c build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -o $@ $(shell pkg-config --cflags --libs gtk+-3.0 pangocairo) -lstdc++ -lpthread -lm
+
+build/test-quality-windows-ui.exe: checks/test_quality_windows_ui.c src/main.c src/quality_windows.h src/core.c src/app_info.c src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
+	$(CC) $(CFLAGS) -municode -static -Isrc checks/test_quality_windows_ui.c src/core.c src/app_info.c build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a -o $@ $(LDLIBS) -lstdc++ -lwinpthread -lssp -lshell32

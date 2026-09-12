@@ -32,6 +32,13 @@ void datv_udp_status_text(DatvUdpSettings s, DatvUdpStatus status, char *text, s
  * Caller must serialize start/status/stop/destroy on its UI thread. */
 DatvStream *datv_udp_start(const uint32_t *rgb, int width, int height, int stride,
                           const char *call, DatvUdpSettings settings, char error[256]);
+/* Local preview only: same quality selection as continuous UDP, no network.
+ * Poll with datv_udp_status; STOPPED means the first IDR image is ready.
+ * Reuse stop/destroy for cancellation/cleanup. Decoder errors report FAILED. */
+DatvStream *datv_preview_start(const uint32_t *rgb, int width, int height, int stride,
+                              const char *call, DatvSettings settings, char error[256]);
+/* Copy the decoded image after completion. Returns 0 until available or on bad dimensions. */
+int datv_preview_image(DatvStream *job, uint32_t *rgb, int width, int height, int stride);
 void datv_udp_status(DatvStream *stream, DatvUdpStatus *status);
 void datv_udp_stop(DatvStream *stream);
 void datv_udp_destroy(DatvStream *stream);

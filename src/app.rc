@@ -71,6 +71,7 @@ BEGIN
     DEFPUSHBUTTON "Start", IDC_UDP_START, 12, 216, 50, 16
     PUSHBUTTON "Stop", IDC_UDP_STOP, 68, 216, 50, 16
     PUSHBUTTON "Toepassen en sluiten", IDC_UDP_APPLY, 124, 216, 123, 16
+    PUSHBUTTON "Beeld &controleren", IDC_UDP_PREVIEW, 253, 216, 110, 16
     PUSHBUTTON "Sluiten", IDCANCEL, 369, 216, 66, 16
 END
 IDD_MAIN DIALOGEX 0, 0, 460, 327
@@ -106,4 +107,19 @@ BEGIN
     COMBOBOX IDC_BAND, 160, 272, 130, 155, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     DEFPUSHBUTTON "&Exporteer JPG", IDC_GENERATE, 314, 267, 134, 24
     LTEXT "", IDC_STATUS, 12, 302, 436, 20
+END
+
+IDD_QUALITY DIALOGEX 0, 0, 600, 370
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "DATV: Beeld controleren"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "Origineel", -1, 12, 10, 280, 12
+    LTEXT "Na compressie", -1, 306, 10, 280, 12
+    CONTROL "", IDC_QUALITY_BEFORE, "Static", SS_BLACKRECT | WS_HSCROLL | WS_VSCROLL | WS_TABSTOP, 12, 26, 282, 235
+    CONTROL "", IDC_QUALITY_AFTER, "Static", SS_BLACKRECT | WS_HSCROLL | WS_VSCROLL | WS_TABSTOP, 306, 26, 282, 235
+    CONTROL "2x vergroten (beide beelden)", IDC_QUALITY_ZOOM, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 268, 260, 14
+    LTEXT "Beeld voorbereiden en decoderen... Er wordt niets uitgezonden.", IDC_QUALITY_STATUS, 12, 288, 576, 26
+    LTEXT "Eerste volledige videobeeld na H.264-compressie. Andere videobeelden kunnen verschillen.\nZonder ontvangstverliezen of beeldbewerking van je ontvanger. Scroll om details te bekijken.", -1, 12, 319, 576, 26
+    DEFPUSHBUTTON "Sluiten", IDCANCEL, 518, 350, 70, 16
 END

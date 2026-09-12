@@ -121,6 +121,40 @@ bool encode(Bytes &yuv, int w, int h, DatvSettings s, int qp,
     }
     return true;
 }
+struct DecoderDelete {
+    void operator()(ISVCDecoder *p) const { if (p) { p->Uninitialize(); WelsDestroyDecoder(p); } }
+};
+std::vector<uint32_t> decode_preview(const Frame &frame, int width, int height) {
+    ISVCDecoder *raw=nullptr;
+    if (WelsCreateDecoder(&raw)!=0) throw std::runtime_error("Kan de voorbeelddecoder niet starten.");
+    std::unique_ptr<ISVCDecoder,DecoderDelete> decoder(raw);
+    int log=WELS_LOG_QUIET; decoder->SetOption(DECODER_OPTION_TRACE_LEVEL,&log);
+    SDecodingParam params{};
+    params.sVideoProperty.size=sizeof(params.sVideoProperty);
+    params.sVideoProperty.eVideoBsType=VIDEO_BITSTREAM_AVC;
+    params.eEcActiveIdc=ERROR_CON_DISABLE;
+    if (decoder->Initialize(&params)!=0) throw std::runtime_error("Kan de voorbeelddecoder niet initialiseren.");
+    unsigned char *planes[3]={}; SBufferInfo info{};
+    // Our encoder prepends a fixed 14-byte PES header to each Annex B access unit.
+    if (frame.pes.size()<=14 || decoder->DecodeFrameNoDelay(frame.pes.data()+14,
+            static_cast<int>(frame.pes.size()-14),planes,&info)!=dsErrorFree ||
+            info.iBufferStatus!=1 || info.UsrData.sSystemBuffer.iWidth!=width ||
+            info.UsrData.sSystemBuffer.iHeight!=height)
+        throw std::runtime_error("Kan het gecomprimeerde voorbeeld niet decoderen.");
+    const auto &format=info.UsrData.sSystemBuffer;
+    std::vector<uint32_t> rgb(width*height);
+    // Match the limited-range BT.601 signal produced by yuv420().
+    for (int y=0;y<height;++y) for (int x=0;x<width;++x) {
+        int c=planes[0][y*format.iStride[0]+x]-16;
+        int d=planes[1][(y/2)*format.iStride[1]+x/2]-128;
+        int e=planes[2][(y/2)*format.iStride[1]+x/2]-128;
+        unsigned r=clip((298*c+409*e+128)>>8);
+        unsigned g=clip((298*c-100*d-208*e+128)>>8);
+        unsigned b=clip((298*c+516*d+128)>>8);
+        rgb[y*width+x]=(r<<16)|(g<<8)|b;
+    }
+    return rgb;
+}
 void crc(Bytes &b) {
     uint32_t value=0xffffffff;
     for (unsigned char v:b) {
@@ -267,6 +301,9 @@ struct DatvStream {
     std::condition_variable wake;
     std::thread worker;
     DatvUdpStatus status{};
+    bool preview_only=false;
+    int width=0, height=0;
+    std::vector<uint32_t> preview;
     std::chrono::steady_clock::time_point started;
 };
 
@@ -340,7 +377,7 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
                    std::string call, DatvUdpSettings settings) {
     try {
         UdpSocket socket;
-        socket.open(settings);
+        if (!stream->preview_only) socket.open(settings);
         DatvSettings s=settings.video;
         Bytes yuv=yuv420(rgb.data(),w,h,w*4);
         std::vector<Frame> frames;
@@ -368,6 +405,13 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
         }
         if (!stream->stop && !selected)
             throw std::runtime_error("Beeld past niet in de doorlopende TS. Kies een lagere resolutie, lagere beeldfrequentie of langere GOP.");
+        if (!stream->stop && stream->preview_only) {
+            auto pixels=decode_preview(frames.front(),w,h);
+            std::lock_guard<std::mutex> lock(stream->mutex);
+            if (!stream->stop) { stream->preview=std::move(pixels); stream->status.qp=selected; }
+            stream->status.state=DATV_STOPPED;
+            return;
+        }
         if (!stream->stop) {
             Mux mux(frames,s,call.c_str(),true);
             const auto origin=std::chrono::steady_clock::now();
@@ -410,10 +454,10 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
 }
 }
 
-DatvStream *datv_udp_start(const uint32_t *rgb, int width, int height, int stride,
-                          const char *call, DatvUdpSettings settings, char error[256]) {
+static DatvStream *start_job(const uint32_t *rgb, int width, int height, int stride,
+                          const char *call, DatvUdpSettings settings, char error[256], bool preview_only) {
     error[0]=0;
-    const char *invalid=datv_udp_validate(settings,width,height);
+    const char *invalid=preview_only ? datv_validate(settings.video,width,height) : datv_udp_validate(settings,width,height);
     if (invalid) { std::snprintf(error,256,"%s",invalid); return nullptr; }
     if (!rgb || !call || stride<width*4 || stride%4 || std::strlen(call)>24) {
         std::snprintf(error,256,"Ongeldig beeld of roepnaam."); return nullptr;
@@ -426,9 +470,27 @@ DatvStream *datv_udp_start(const uint32_t *rgb, int width, int height, int strid
         for (int y=0;y<height;++y)
             std::memcpy(copy.data()+y*width,reinterpret_cast<const unsigned char *>(rgb)+y*stride,width*4);
         auto stream=std::make_unique<DatvStream>();
+        stream->preview_only=preview_only; stream->width=width; stream->height=height;
         stream->worker=std::thread(stream_worker,stream.get(),std::move(copy),width,height,std::string(call),settings);
         return stream.release();
-    } catch (const std::exception &e) { std::snprintf(error,256,"UDP starten mislukt: %s",e.what()); return nullptr; }
+    } catch (const std::exception &e) { std::snprintf(error,256,"DATV voorbereiden mislukt: %s",e.what()); return nullptr; }
+}
+DatvStream *datv_udp_start(const uint32_t *rgb, int width, int height, int stride,
+                          const char *call, DatvUdpSettings settings, char error[256]) {
+    return start_job(rgb,width,height,stride,call,settings,error,false);
+}
+DatvStream *datv_preview_start(const uint32_t *rgb, int width, int height, int stride,
+                              const char *call, DatvSettings settings, char error[256]) {
+    DatvUdpSettings udp{}; udp.video=settings;
+    return start_job(rgb,width,height,stride,call,udp,error,true);
+}
+int datv_preview_image(DatvStream *job, uint32_t *rgb, int width, int height, int stride) {
+    if (!job || !rgb || width!=job->width || height!=job->height || stride<width*4 || stride%4) return 0;
+    std::lock_guard<std::mutex> lock(job->mutex);
+    if (job->preview.empty() || job->status.state!=DATV_STOPPED) return 0;
+    for (int y=0;y<height;++y)
+        std::memcpy(reinterpret_cast<unsigned char *>(rgb)+y*stride,job->preview.data()+y*width,width*4);
+    return 1;
 }
 void datv_udp_status(DatvStream *stream, DatvUdpStatus *status) {
     std::lock_guard<std::mutex> lock(stream->mutex); *status=stream->status;

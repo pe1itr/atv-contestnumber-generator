@@ -186,3 +186,17 @@ en de Portsdown.
 Modulatorprofielen, doorlopend wijzigen van de uitgezonden kaart en permanente
 nummeropslag per band/contest zijn vervolgstappen. De lokale netwerkproeven
 vervangen geen test met Portsdown en echte RF-ontvangst.
+
+## Lokaal compressievoorbeeld
+
+`datv_preview_start` gebruikt dezelfde doorlopende GOP-proefplanning en QP-keuze
+als `datv_udp_start`. In de voorbeeldtak wordt geen socket geopend en worden geen
+pakketten verstuurd. Na de kwaliteitskeuze decodeert OpenH264 de eerste IDR uit de
+werkelijk gecodeerde frames; de vaste PES-header wordt vóór decodering verwijderd.
+De decoderpixels worden uit limited-range BT.601 YUV420 naar RGB omgerekend en
+naast het origineel getoond. Er wordt geen alternatieve encoderinstelling gebruikt.
+
+De asynchrone taak ondersteunt stoppen en opruimen via de bestaande jobfuncties;
+`datv_preview_image` kopieert alleen een voltooid voorbeeld. `DATV_STOPPED` betekent
+voor deze lokale taak dat de verwerking gereed is, `DATV_FAILED` bevat een fout.
+Het voorbeeld is één IDR, geen simulatie van RF-ontvangst of bewijs van leesbaarheid.

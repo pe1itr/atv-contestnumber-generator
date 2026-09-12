@@ -392,11 +392,14 @@ static gboolean udp_poll(gpointer data) {
     gboolean busy=status.state==DATV_PREPARING || status.state==DATV_RUNNING;
     for (int i=0;i<5;++i) gtk_widget_set_sensitive(d->fields[i],!busy);
     gtk_widget_set_sensitive(d->presets,!busy);
+    gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),4,!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),1,!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),3,!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),2,busy);
     return G_SOURCE_CONTINUE;
 }
+#include "quality_linux.h"
+
 static void output_udp(GtkWidget *widget, gpointer data) {
     (void)widget;
     App *app=data;
@@ -417,7 +420,7 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     }
     UdpDialog d={0}; d.app=app;
     d.dialog=gtk_dialog_new_with_buttons("DATV: UDP-uitvoer",GTK_WINDOW(app->window),GTK_DIALOG_MODAL,
-        "_Start",1,"S_top",2,"_Toepassen en sluiten",3,"_Sluiten",GTK_RESPONSE_CLOSE,NULL);
+        "Beeld _controleren",4,"_Start",1,"S_top",2,"_Toepassen en sluiten",3,"_Sluiten",GTK_RESPONSE_CLOSE,NULL);
     GtkWidget *grid=gtk_grid_new();
     gtk_grid_set_row_spacing(GTK_GRID(grid),8); gtk_grid_set_column_spacing(GTK_GRID(grid),12);
     gtk_container_set_border_width(GTK_CONTAINER(grid),16);
@@ -449,7 +452,7 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     for (;;) {
         int response=gtk_dialog_run(GTK_DIALOG(d.dialog));
         if (response==2) { datv_udp_stop(d.stream); continue; }
-        if (response!=1 && response!=3) break;
+        if (response!=1 && response!=3 && response!=4) break;
         if (d.stream) {
             DatvUdpStatus status; datv_udp_status(d.stream,&status);
             if (status.state==DATV_PREPARING || status.state==DATV_RUNNING) continue;
@@ -464,8 +467,9 @@ static void output_udp(GtkWidget *widget, gpointer data) {
         s.video.gop=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[4]));
         DatvUdpSettings check=s;
         if (response==3 && !check.ip[0]) g_strlcpy(check.ip,"127.0.0.1",sizeof(check.ip));
-        invalid=datv_udp_validate(check,r.width,r.height);
+        invalid=response==4 ? datv_validate(s.video,r.width,r.height) : datv_udp_validate(check,r.width,r.height);
         if (invalid) { gtk_label_set_text(GTK_LABEL(d.status),invalid); continue; }
+        if (response==4) { quality_compare(GTK_WINDOW(d.dialog),im,r,call,s.video); continue; }
         app->udp=s;
         if (response==3) break;
         datv_udp_destroy(d.stream); d.stream=NULL;

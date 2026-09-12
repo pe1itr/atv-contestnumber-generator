@@ -267,6 +267,8 @@ typedef struct {
     char call[25];
     DatvStream *stream;
 } UdpDialog;
+#include "quality_windows.h"
+
 static void udp_status_message(HWND window,const char *message) {
     wchar_t text[512]; MultiByteToWideChar(CP_UTF8,0,message,-1,text,512);
     SetDlgItemTextW(window,IDC_UDP_STATUS,text);
@@ -277,8 +279,8 @@ static void udp_poll(HWND window,UdpDialog *d) {
     char text[512]; datv_udp_status_text(udp_settings,status,text,sizeof(text));
     udp_status_message(window,text);
     BOOL busy=status.state==DATV_PREPARING || status.state==DATV_RUNNING;
-    const int fields[]={IDC_UDP_IP,IDC_UDP_PORT,IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP,IDC_UDP_START,IDC_UDP_APPLY};
-    for (int i=0;i<7;++i) EnableWindow(GetDlgItem(window,fields[i]),!busy);
+    const int fields[]={IDC_UDP_IP,IDC_UDP_PORT,IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP,IDC_UDP_START,IDC_UDP_APPLY,IDC_UDP_PREVIEW};
+    for (int i=0;i<8;++i) EnableWindow(GetDlgItem(window,fields[i]),!busy);
     for (int i=0;i<DATV_BITRATE_PRESET_COUNT;++i)
         EnableWindow(GetDlgItem(window,IDC_BITRATE_PRESET1+i),!busy);
     EnableWindow(GetDlgItem(window,IDC_UDP_STOP),busy);
@@ -307,7 +309,7 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
     if (message==WM_COMMAND && LOWORD(wp)==IDC_UDP_STOP) {
         datv_udp_stop(d->stream); return TRUE;
     }
-    if (message==WM_COMMAND && (LOWORD(wp)==IDC_UDP_START || LOWORD(wp)==IDC_UDP_APPLY)) {
+    if (message==WM_COMMAND && (LOWORD(wp)==IDC_UDP_START || LOWORD(wp)==IDC_UDP_APPLY || LOWORD(wp)==IDC_UDP_PREVIEW)) {
         if (d->stream) {
             DatvUdpStatus status; datv_udp_status(d->stream,&status);
             if (status.state==DATV_PREPARING || status.state==DATV_RUNNING) return TRUE;
@@ -321,13 +323,14 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         values[0]=text[0]; values[1]="10"; values[2]=text[1]; values[3]=text[2];
         int w,h; BOOL valid=FALSE;
         s.port=(int)GetDlgItemInt(window,IDC_UDP_PORT,&valid,FALSE);
-        if (!valid || !datv_test_options(4,values,&s.video,&w,&h)) {
+        if ((LOWORD(wp)!=IDC_UDP_PREVIEW && !valid) || !datv_test_options(4,values,&s.video,&w,&h)) {
             udp_status_message(window,"Gebruik poort 1-65535, bitrate 48000-2000000 bit/s, 1-25 beelden/s en GOP 1-250."); return TRUE;
         }
         DatvUdpSettings check=s;
         if (LOWORD(wp)==IDC_UDP_APPLY && !check.ip[0]) strcpy(check.ip,"127.0.0.1");
-        const char *error=datv_udp_validate(check,d->size.width,d->size.height);
+        const char *error=LOWORD(wp)==IDC_UDP_PREVIEW ? datv_validate(s.video,d->size.width,d->size.height) : datv_udp_validate(check,d->size.width,d->size.height);
         if (error) { udp_status_message(window,error); return TRUE; }
+        if (LOWORD(wp)==IDC_UDP_PREVIEW) { quality_compare(window,d->bitmap,d->size,d->call,s.video); return TRUE; }
         udp_settings=s;
         if (LOWORD(wp)==IDC_UDP_APPLY) {
             KillTimer(window,1); EndDialog(window,0); return TRUE;
