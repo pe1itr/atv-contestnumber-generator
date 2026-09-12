@@ -142,7 +142,12 @@ uitvoer een timerresolutie van 1 ms en geeft die bij stoppen weer vrij.
 
 Voorbereiding controleert meerdere herhalingen en minimaal 30 seconden transport;
 een onhaalbare bitrate wordt vóór de eerste verzending geweigerd. Ook tijdens
-uitvoer bewaakt de muxer de beelddeadlines. Socketfouten, volle verzendbuffers en
+uitvoer bewaakt de muxer de beelddeadlines. Poortweigeringen (Linux ECONNREFUSED,
+Windows WSAECONNREFUSED/WSAECONNRESET) worden geteld en getoond; de stream loopt
+door zodat een later gestarte IPTS-ontvanger kan instappen. Het geweigerde datagram
+wordt overgeslagen, zonder hertransmissie. Windows opent hiervoor de socket opnieuw.
+De pakketteller telt lokaal geslaagde verzendingen, geen bevestigde ontvangst.
+Andere socketfouten, volle verzendbuffers en
 een achterstand van meer dan één datagramperiode stoppen met een melding.
 Na slaapstand worden achterstallige pakketten dus niet in een grote reeks ingehaald.
 Start daarna opnieuw. Stop kan de laatste video-PES afbreken; er worden nooit
@@ -152,7 +157,7 @@ halve UDP-datagrammen verstuurd.
 
 ```sh
 make test-udp
-make build/udp-sender.exe
+make build/udp-sender.exe build/test-udp-errors.exe
 python3 checks/check_udp.py --windows
 ```
 
@@ -163,6 +168,14 @@ Stop en annuleren tijdens voorbereiding. FFmpeg verifieert de gedecodeerde beeld
 TSDuck controleert continuïteit en PCR. Voor GOP 1 worden ook de wisselende
 IDR-identificaties gecontroleerd. De venstertests controleren Start/Stop, opnieuw
 starten, ongeldige adressen en sluiten tijdens uitzending, op beide platforms.
+
+De UDP-test start de ontvanger ook later en sluit/heropent de poort tijdens de
+uitzending. Na herstel worden pacing en gedecodeerde beelden met een gezonde
+stream vergeleken. Gerichte foutinjectie controleert de weigeringafhandeling en
+dat andere fouten fataal blijven. Wine kan ICMP-poortweigeringen onderdrukken;
+de test meldt die systeemdekking dan expliciet als niet geverifieerd, naast de
+verplichte Windows-foutinjectietest. Dit vervangt geen proef met echte Windows
+en de Portsdown.
 
 ## Vervolg
 

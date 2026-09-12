@@ -14,6 +14,8 @@ enum { DATV_PREPARING, DATV_RUNNING, DATV_STOPPED, DATV_FAILED };
 typedef struct {
     int state, qp;
     uint64_t packets;
+    /* Reported port refusals, not a count of all datagrams lost at the receiver. */
+    uint64_t refusals;
     double seconds;
     char error[256];
 } DatvUdpStatus;

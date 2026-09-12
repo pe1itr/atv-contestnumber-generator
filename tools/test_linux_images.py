@@ -1,4 +1,4 @@
-"""Run the existing renderer integration path without retaining 680 JPEGs."""
+"""Run the renderer integration path without retaining the generated JPEGs."""
 import subprocess
 import tempfile
 import sys

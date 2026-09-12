@@ -37,7 +37,7 @@ Laat de hoofd-agent beide builds leveren met `make all test-linux`. Voer daarna,
 ```sh
 make test-ts
 make test-udp
-make build/udp-sender.exe
+make build/udp-sender.exe build/test-udp-errors.exe
 python3 checks/check_udp.py --windows
 ```
 

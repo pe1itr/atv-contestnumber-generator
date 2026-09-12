@@ -15,6 +15,7 @@ import time
 
 
 def verify(data, bitrate, fps, gop, path):
+    hashes = None
     cc, pcrs, pts, starts = {}, [], [], []
     for i in range(len(data)//188):
         p = data[i*188:(i+1)*188]
@@ -67,6 +68,7 @@ def verify(data, bitrate, fps, gop, path):
     if shutil.which("tsp"):
         result = subprocess.run(["tsp","-I","file",str(path),"-P","continuity","-P","pcrverify","--bitrate",str(bitrate),"--jitter-max","1","-O","drop"],capture_output=True,text=True,check=True)
         assert "0 with jitter" in result.stderr and "error" not in result.stderr.lower(),result.stderr
+    return set(hashes) if hashes is not None else None
 
 
 def capture(windows, duration, bitrate, fps, gop):
@@ -98,6 +100,7 @@ def capture(windows, duration, bitrate, fps, gop):
         assert process.returncode==0,(stdout,stderr)
         status = json.loads(stdout.strip())
         assert status["packets"]==len(packets),status
+        assert status["refusals"]==0,status
         assert status["stop_ms"]<500,status
         # No delayed queued stream remains after Stop/destruction.
         receiver.settimeout(0.25)
@@ -111,8 +114,9 @@ def capture(windows, duration, bitrate, fps, gop):
         assert abs(statistics.mean(deltas)-interval)<interval*0.03
         assert min(deltas)>interval*0.2 and max(deltas)<interval*2+0.03,(min(deltas),max(deltas))
         with tempfile.TemporaryDirectory(prefix="atv-udp-check-") as temp:
-            verify(b"".join(packets),bitrate,fps,gop,Path(temp)/"capture.ts")
+            hashes = verify(b"".join(packets),bitrate,fps,gop,Path(temp)/"capture.ts")
         print(f"{'Windows/Wine' if windows else 'Linux'} OK: {bitrate} bit/s, {fps} fps, GOP {gop}, {len(packets)} datagrams; interval mean/min/max {statistics.mean(deltas)*1000:.2f}/{min(deltas)*1000:.2f}/{max(deltas)*1000:.2f} ms; stop {status['stop_ms']:.1f} ms",flush=True)
+        return hashes
     finally:
         if process.poll() is None:
             process.kill(); process.wait()
@@ -120,8 +124,95 @@ def capture(windows, duration, bitrate, fps, gop):
         output_file.close(); error_file.close()
 
 
+def recovery(windows, reference_hashes):
+    """Start RX late, close its port during TX, then recover without restarting TX."""
+    receiver = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    receiver.bind(("127.0.0.1", 0))
+    port = receiver.getsockname()[1]
+    receiver.close()
+    command = ["wine", "build/udp-sender.exe"] if windows else ["build/udp-sender"]
+    command += [str(port), "9", "120000", "10", "2"]
+    env = dict(os.environ, WINEPREFIX="/tmp/atv-contest-wine", WINEDEBUG="-all")
+    with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+        process = subprocess.Popen(command, stdout=output, stderr=errors, env=env)
+        try:
+            time.sleep(1)
+            receiver = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            receiver.bind(("127.0.0.1", port))
+            receiver.settimeout(25)
+            first, _ = receiver.recvfrom(65535)
+            assert len(first) == 1316
+            receiver.close()
+            time.sleep(1)
+            assert process.poll() is None, "TX stopped when RX closed its UDP port"
+            receiver = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            receiver.bind(("127.0.0.1", port))
+            receiver.settimeout(0.1)
+            packets, times = [], []
+            deadline = time.monotonic()+30
+            while time.monotonic() < deadline:
+                try:
+                    packet, _ = receiver.recvfrom(65535)
+                    assert len(packet) == 1316
+                    assert all(packet[i] == 0x47 for i in range(0, 1316, 188))
+                    packets.append(packet)
+                    times.append(time.perf_counter())
+                except socket.timeout:
+                    if process.poll() is not None:
+                        break
+            else:
+                raise AssertionError("Recovery sender timed out")
+            process.wait(timeout=2)
+            output.seek(0); errors.seek(0)
+            stdout, stderr = output.read().decode(), errors.read().decode()
+            assert process.returncode == 0, (stdout, stderr)
+            status = json.loads(stdout)
+            if windows and status["refusals"] == 0:
+                print("Windows/Wine ICMP error delivery: NOT VERIFIED (no refusal reported); "
+                      "requires the separate test-udp-errors.exe injection check.", flush=True)
+            else:
+                assert status["refusals"] > 0, status
+            assert status["packets"] > len(packets), status
+            assert status["stop_ms"] < 500, status
+            assert len(packets) > 40
+            deltas = [b-a for a,b in zip(times,times[1:])]
+            interval = 1316*8/120000
+            assert abs(statistics.mean(deltas)-interval) < interval*0.03
+            assert min(deltas) > interval*0.2, "Backlog burst after recovery"
+            # Joining a live stream may initially cut a PES/non-IDR picture.
+            # Check actual decoder recovery, without claiming no initial loss.
+            if shutil.which("ffmpeg"):
+                with tempfile.TemporaryDirectory(prefix="atv-udp-recovery-") as temp:
+                    path = Path(temp)/"recovery.ts"
+                    data = b"".join(packets)
+                    # Stop may cut the final PES, just like the healthy capture.
+                    starts = [i for i in range(0, len(data), 188)
+                              if data[i+1]&64 and ((data[i+1]&31)<<8 | data[i+2]) == 256]
+                    assert starts
+                    path.write_bytes(data[:starts[-1]])
+                    decoded = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path),
+                        "-f", "framemd5", "-"], capture_output=True, text=True)
+                    assert decoded.returncode == 0, decoded.stderr
+                    hashes = [line.rsplit(",", 1)[-1] for line in decoded.stdout.splitlines()
+                              if line and not line.startswith("#")]
+                    assert len(hashes) > 20, (len(hashes), decoded.stderr)
+                    assert reference_hashes and set(hashes[-20:]) <= reference_hashes
+                    assert all(a == b for a,b in zip(hashes[-20:-2], hashes[-18:]))
+            print(f"{'Windows/Wine' if windows else 'Linux'} RX late/restart OK: "
+                  f"{status['refusals']} refusals, {len(packets)} recovered datagrams, "
+                  f"stop {status['stop_ms']:.1f} ms", flush=True)
+        finally:
+            if process.poll() is None:
+                process.kill(); process.wait()
+            receiver.close()
+
+
 if __name__=="__main__":
     windows="--windows" in sys.argv
-    capture(windows,13,120000,10,2)
+    if windows:
+        subprocess.run(["wine", "build/test-udp-errors.exe"], check=True, timeout=30,
+                       env=dict(os.environ, WINEPREFIX="/tmp/atv-contest-wine", WINEDEBUG="-all"))
+    reference_hashes = capture(windows,13,120000,10,2)
     capture(windows,5,60000,2,1)
     capture(windows,5,240000,10,1)
+    recovery(windows, reference_hashes)

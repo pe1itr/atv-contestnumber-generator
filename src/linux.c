@@ -876,7 +876,7 @@ static int smoke_test(const char *directory) {
         cairo_surface_destroy(surface); g_free(path);
         if (!ok) { g_printerr("%s\n", error->message); g_error_free(error); return 4; }
     }
-    g_print("680 JPEGs generated; 1000 random codes checked.\n");
+    g_print("%d JPEGs generated; 1000 random codes checked.\n", 68*RESOLUTION_COUNT);
     return 0;
 }
 

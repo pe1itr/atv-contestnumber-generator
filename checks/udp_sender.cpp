@@ -39,7 +39,7 @@ int main(int argc,char **argv) {
     }
     datv_udp_destroy(stream);
     double stop_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-stop).count();
-    std::printf("{\"packets\":%llu,\"stop_ms\":%.3f,\"qp\":%d}\n",(unsigned long long)status.packets,stop_ms,status.qp);
+    std::printf("{\"packets\":%llu,\"refusals\":%llu,\"stop_ms\":%.3f,\"qp\":%d}\n",(unsigned long long)status.packets,(unsigned long long)status.refusals,stop_ms,status.qp);
     // Cancellation while preparing and repeated destruction must not hang.
     for (int n=0;n<3;++n) {
         s.video.gop=250;

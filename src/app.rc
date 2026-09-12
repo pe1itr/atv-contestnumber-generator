@@ -47,7 +47,7 @@ FONT 9, "Segoe UI"
 BEGIN
     LTEXT "TS maken en bitrate controleren...", -1, 12, 16, 236, 16
 END
-IDD_UDP DIALOGEX 0, 0, 335, 220
+IDD_UDP DIALOGEX 0, 0, 335, 240
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "DATV: UDP-uitvoer"
 FONT 9, "Segoe UI"
@@ -63,11 +63,11 @@ BEGIN
     LTEXT "GOP (1-250 beelden; 1 = alleen IDR)", -1, 12, 110, 192, 12
     EDITTEXT IDC_UDP_GOP, 210, 107, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT "Start zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.", -1, 12, 132, 311, 28
-    LTEXT "Vul het IP-adres van Portsdown in en kies Start.", IDC_UDP_STATUS, 12, 165, 311, 27
-    DEFPUSHBUTTON "Start", IDC_UDP_START, 12, 196, 50, 16
-    PUSHBUTTON "Stop", IDC_UDP_STOP, 68, 196, 50, 16
-    PUSHBUTTON "Toepassen en sluiten", IDC_UDP_APPLY, 124, 196, 123, 16
-    PUSHBUTTON "Sluiten", IDCANCEL, 257, 196, 66, 16
+    LTEXT "Vul het IP-adres van Portsdown in en kies Start.", IDC_UDP_STATUS, 12, 165, 311, 47
+    DEFPUSHBUTTON "Start", IDC_UDP_START, 12, 216, 50, 16
+    PUSHBUTTON "Stop", IDC_UDP_STOP, 68, 216, 50, 16
+    PUSHBUTTON "Toepassen en sluiten", IDC_UDP_APPLY, 124, 216, 123, 16
+    PUSHBUTTON "Sluiten", IDCANCEL, 257, 216, 66, 16
 END
 IDD_MAIN DIALOGEX 0, 0, 460, 327
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX

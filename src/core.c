@@ -1,6 +1,7 @@
 #include "core.h"
 #include "datv.h"
 #include <stdlib.h>
+#include <string.h>
 #include <errno.h>
 #include <limits.h>
 
@@ -15,6 +16,12 @@ void datv_udp_status_text(DatvUdpSettings s, DatvUdpStatus status, char *text, s
     else if (status.state==DATV_STOPPED) snprintf(text,size,"UDP gestopt (%llu pakketten).",(unsigned long long)status.packets);
     else snprintf(text,size,"UDP-uitvoer actief naar %s:%d\n%d bit/s, %llu pakketten van 1316 bytes, QP %d.",
         s.ip,s.port,s.video.bitrate,(unsigned long long)status.packets,status.qp);
+    if (size && (status.state==DATV_RUNNING || status.state==DATV_STOPPED) && status.refusals) {
+        size_t used=strlen(text);
+        if (used<size) snprintf(text+used,size-used,
+            "\nPoortweigeringen gemeld: %llu. Controleer IPTS-ingang/poort; UDP bevestigt geen ontvangst.",
+            (unsigned long long)status.refusals);
+    }
 }
 const char *datv_udp_validate(DatvUdpSettings s, int width, int height) {
     if (s.port<1 || s.port>65535) return "Poort moet tussen 1 en 65535 liggen.";
@@ -60,12 +67,14 @@ const char *datv_validate(DatvSettings s, int width, int height) {
 const Resolution resolutions43[RESOLUTION_COUNT] = {
     {120,90},{160,120},
     {320,240},{640,480},{800,600},{1024,768},
-    {1080,810},{1280,960},{1600,1200},{1920,1440}
+    {1080,810},{1280,960},{1600,1200},{1920,1440},
+    {240,180} /* Append to preserve resolution indices in saved settings. */
 };
 const Resolution resolutions169[RESOLUTION_COUNT] = {
     {120,68},{160,90},
     {320,180},{640,360},{800,450},{960,540},
-    {1024,576},{1280,720},{1600,900},{1920,1080}
+    {1024,576},{1280,720},{1600,900},{1920,1080},
+    {240,136} /* Even height required by the shared H.264 encoder. */
 };
 const wchar_t *const bands[12] = {
     L"50 MHz",L"70 MHz",L"144 MHz",L"436 MHz",L"1152 MHz",L"2330 MHz",
@@ -165,7 +174,6 @@ int locator_square_changed(wchar_t previous[7], const wchar_t *locator) {
 
 /* Shared, versioned configuration. All known fields are required, so a partial
  * or damaged file is never applied to the GUI. Unknown keys are rejected. */
-#include <string.h>
 #ifdef _WIN32
 #include <windows.h>
 #endif

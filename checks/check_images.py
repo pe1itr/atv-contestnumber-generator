@@ -7,7 +7,7 @@ directory = Path(sys.argv[1])
 sizes = [(120, 90), (160, 120), (120, 68), (160, 90), (320, 240), (640, 480), (800, 600), (1024, 768),
          (1080, 810), (1280, 960), (1600, 1200), (1920, 1440),
          (320, 180), (640, 360), (800, 450), (960, 540),
-         (1024, 576), (1280, 720), (1600, 900), (1920, 1080)]
+         (1024, 576), (1280, 720), (1600, 900), (1920, 1080), (240, 180), (240, 136)]
 for colored in (False, True):
     for top_code in (False, True):
         for show_sum in (False, True):
@@ -62,7 +62,7 @@ for colored in (False, True):
                     # Nearby locator pixels can move a thresholded JPEG pixel at tiny sizes.
                     difference = ImageChops.difference(*footers)
                     assert difference.histogram()[255] <= (6 if colored else (2 if width < 320 else 0)), (width, height)
-print("640 JPEGs checked: blue/yellow and monochrome, optional top code, digit sum, normal/inverse, dimensions and text positions.")
+print(f"{32*len(sizes)} JPEGs checked: blue/yellow and monochrome, optional top code, digit sum, normal/inverse, dimensions and text positions.")
 
 # Actual PM5544 JPEGs: color survives and added white lettering remains in the name panels.
 for width, height in sizes:
@@ -78,4 +78,4 @@ for width, height in sizes:
         for x0, y0, x1, y1 in panels:
             box = (x0*width//sw, y0*height//sh, x1*width//sw, y1*height//sh)
             assert diff.crop(box).getextrema()[1] > 100, (width, height, box)
-print("40 PM5544 JPEGs checked: both templates, output dimensions, color and text panels.")
+print(f"{2*len(sizes)} PM5544 JPEGs checked: both templates, output dimensions, color and text panels.")

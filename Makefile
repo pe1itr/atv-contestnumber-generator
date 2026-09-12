@@ -81,8 +81,14 @@ build/udp-sender: checks/udp_sender.cpp src/datv.h build/core-linux.o build/datv
 build/udp-sender.exe: checks/udp_sender.cpp src/datv.h build/core-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
 	$(WINCXX) $(CXXFLAGS) -static -Isrc checks/udp_sender.cpp build/core-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a -lws2_32 -lwinmm -lwinpthread -lssp -o $@
 .PHONY: test-udp
-test-udp: build/udp-sender
+test-udp: build/udp-sender build/test-udp-errors
+	build/test-udp-errors
 	$(PYTHON) checks/check_udp.py
+
+build/test-udp-errors: checks/test_udp_errors.cpp src/datv.cpp src/datv.h src/core.h build/core-linux.o build/openh264-linux/libopenh264.a
+	$(CXX) $(CXXFLAGS) -Isrc -Ibuild/openh264-linux/codec/api $< build/core-linux.o build/openh264-linux/libopenh264.a -lpthread -o $@
+build/test-udp-errors.exe: checks/test_udp_errors.cpp src/datv.cpp src/datv.h src/core.h build/core-windows.o build/openh264-windows/libopenh264.a
+	$(WINCXX) $(CXXFLAGS) -static -Isrc -Ibuild/openh264-windows/codec/api $< build/core-windows.o build/openh264-windows/libopenh264.a -lws2_32 -lwinmm -lwinpthread -lssp -o $@
 
 build/test-config: checks/test_config.c src/core.c src/core.h src/datv.h
 	$(HOSTCC) $(CFLAGS) -Isrc checks/test_config.c src/core.c -o $@

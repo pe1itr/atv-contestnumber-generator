@@ -272,6 +272,7 @@ struct DatvStream {
 
 namespace {
 class UdpSocket {
+    sockaddr_in address{};
 #ifdef _WIN32
     SOCKET fd=INVALID_SOCKET;
     bool initialized=false, timer=false;
@@ -280,7 +281,20 @@ class UdpSocket {
     int fd=-1;
     static int last_error() { return errno; }
 #endif
-    static void failed() { throw std::runtime_error("UDP-netwerkfout (code "+std::to_string(last_error())+"). Controleer het adres en het netwerk."); }
+    static void failed(int error=last_error()) { throw std::runtime_error("UDP-netwerkfout (code "+std::to_string(error)+"). Controleer het adres en het netwerk."); }
+    void create_socket() {
+        fd=socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);
+#ifdef _WIN32
+        if (fd==INVALID_SOCKET) failed();
+        u_long nonblocking=1;
+        if (ioctlsocket(fd,FIONBIO,&nonblocking)!=0) failed();
+#else
+        if (fd<0) failed();
+        int flags=fcntl(fd,F_GETFL,0);
+        if (flags<0 || fcntl(fd,F_SETFL,flags|O_NONBLOCK)<0) failed();
+#endif
+        if (connect(fd,reinterpret_cast<sockaddr *>(&address),sizeof(address))!=0) failed();
+    }
 public:
     ~UdpSocket() {
 #ifdef _WIN32
@@ -297,24 +311,28 @@ public:
         int err=WSAStartup(MAKEWORD(2,2),&data);
         if (err) throw std::runtime_error("Kan Windows-netwerk niet starten (code "+std::to_string(err)+").");
         initialized=true;
-#endif
-        fd=socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);
-#ifdef _WIN32
-        if (fd==INVALID_SOCKET) failed();
-        u_long nonblocking=1;
-        if (ioctlsocket(fd,FIONBIO,&nonblocking)!=0) failed();
         timer=timeBeginPeriod(1)==TIMERR_NOERROR;
-#else
-        if (fd<0) failed();
-        int flags=fcntl(fd,F_GETFL,0);
-        if (flags<0 || fcntl(fd,F_SETFL,flags|O_NONBLOCK)<0) failed();
 #endif
-        sockaddr_in address{}; address.sin_family=AF_INET; address.sin_port=htons(s.port);
+        address.sin_family=AF_INET; address.sin_port=htons(s.port);
         if (inet_pton(AF_INET,s.ip,&address.sin_addr)!=1) throw std::runtime_error("Ongeldig IPv4-adres.");
-        if (connect(fd,reinterpret_cast<sockaddr *>(&address),sizeof(address))!=0) failed();
+        create_socket();
     }
-    void packet(const unsigned char *data) {
-        if (send(fd,reinterpret_cast<const char *>(data),1316,0)!=1316) failed();
+    bool packet(const unsigned char *data) {
+        int sent=send(fd,reinterpret_cast<const char *>(data),1316,0);
+        if (sent==1316) return true;
+        if (sent>=0) throw std::runtime_error("UDP-datagram onvolledig verzonden.");
+        int error=last_error();
+#ifdef _WIN32
+        if (error!=WSAECONNREFUSED && error!=WSAECONNRESET) failed(error);
+        // Winsock documents the socket as unusable after WSAECONNRESET.
+        closesocket(fd); fd=INVALID_SOCKET;
+        create_socket();
+#else
+        if (error!=ECONNREFUSED) failed(error);
+#endif
+        // An ICMP port refusal may refer to a previous datagram. Keep the live
+        // timeline advancing: no retransmission or backlog when RX starts later.
+        return false;
     }
 };
 
@@ -371,9 +389,11 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
                 // Never flush a backlog of datagrams after suspend or overload.
                 if (std::chrono::steady_clock::now()-due>interval)
                     throw std::runtime_error("UDP gestopt: verzending liep te ver achter (slaapstand of systeembelasting). Start opnieuw.");
-                socket.packet(datagram);
+                bool sent=socket.packet(datagram);
                 std::lock_guard<std::mutex> lock(stream->mutex);
-                stream->status.state=DATV_RUNNING; stream->status.packets=n+1;
+                stream->status.state=DATV_RUNNING;
+                if (sent) ++stream->status.packets;
+                else ++stream->status.refusals;
                 stream->status.seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-origin).count();
             }
         }

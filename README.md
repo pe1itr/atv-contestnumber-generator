@@ -107,6 +107,17 @@ starten met 10 beelden/s en GOP 2. Voor een ander beeld: Stop, venster sluiten,
 beeld aanpassen en opnieuw Start. Permanente nummeropslag per band volgt later.
 Zie [DATV-testinstructies en technische grenzen](docs/datv.md).
 
+De UDP-stream blijft doorlopen als de doelpoort tijdelijk weigert (Linux-code
+111), bijvoorbeeld wanneer de Portsdown-IPTS-ingang nog niet gestart is.
+Gemelde poortweigeringen blijven zichtbaar in de status. Start de IPTS-ingang
+of IPTS Viewer op de Portsdown om het actuele beeld op te pakken; oude pakketten
+worden niet opnieuw verstuurd. De pakketteller telt lokaal geslaagde verzendingen,
+geen bevestigde ontvangst. Andere netwerkfouten stoppen de stream nog steeds.
+
+De resolutielijst bevat ook 240 pixels breed: 240 × 180 (4:3) en 240 × 136
+(16:9, afgerond op een even hoogte voor H.264). Deze keuzes staan onderaan,
+zodat eerder opgeslagen resolutiekeuzes dezelfde betekenis houden.
+
 ## Bouwen
 
 De eerste build downloadt circa 58 MB OpenH264-broncode en controleert de vaste
