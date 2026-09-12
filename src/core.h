@@ -10,7 +10,7 @@ extern "C" {
 typedef struct {
     char call[97], locator[49], code[17]; /* UTF-8 */
     int mode, automatic, aspect, resolution, band;
-    int show, inverse, blue_yellow, show_sum, top_code, genius;
+    int show, inverse, blue_yellow, show_sum, top_code, genius, ebu_top, ebu_bottom;
     DatvSettings ts;
     DatvUdpSettings udp;
 } AppConfig;
@@ -28,6 +28,9 @@ extern const wchar_t *const bands[12];
 extern const wchar_t *const band_files[12];
 typedef struct { unsigned char red, green, blue; } ContestColor;
 typedef struct { ContestColor background, foreground; } ContestPalette;
+#define EBU_BAR_COUNT 8
+#define EBU_STRIP_PERCENT 9
+extern const ContestColor ebu_colors[EBU_BAR_COUNT];
 ContestPalette contest_palette(int blue_yellow, int inverse);
 const wchar_t *contest_color_suffix(int blue_yellow);
 int valid_call(const wchar_t *s);

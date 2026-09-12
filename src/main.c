@@ -103,7 +103,7 @@ static int draw_line(HDC dc, const wchar_t *text, RECT box, int height, UINT ali
     return result != 0;
 }
 static HBITMAP render(int width, int height, const wchar_t *call, const wchar_t *code,
-                      const wchar_t *locator, int show_locator, const wchar_t *band, int inverse, int show_sum, int top_code, int blue_yellow) {
+                      const wchar_t *locator, int show_locator, const wchar_t *band, int inverse, int show_sum, int top_code, int blue_yellow, int ebu_top, int ebu_bottom) {
     BITMAPINFO info = {0};
     void *pixels;
     info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -121,6 +121,15 @@ static HBITMAP render(int width, int height, const wchar_t *call, const wchar_t 
     SetDCBrushColor(dc, RGB(palette.background.red, palette.background.green, palette.background.blue));
     RECT background = {0, 0, width, height};
     FillRect(dc, &background, (HBRUSH)GetStockObject(DC_BRUSH));
+    for (int i=0; i<EBU_BAR_COUNT; ++i) {
+        ContestColor c = ebu_colors[i];
+        SetDCBrushColor(dc, RGB(c.red, c.green, c.blue));
+        RECT strip = {width*i/EBU_BAR_COUNT, 0, width*(i+1)/EBU_BAR_COUNT, height*EBU_STRIP_PERCENT/100};
+        if (ebu_top) FillRect(dc, &strip, (HBRUSH)GetStockObject(DC_BRUSH));
+        strip.top = height*(100-EBU_STRIP_PERCENT)/100; strip.bottom = height;
+        if (ebu_bottom) FillRect(dc, &strip, (HBRUSH)GetStockObject(DC_BRUSH));
+    }
+    SetBkColor(dc, RGB(palette.background.red, palette.background.green, palette.background.blue));
     SetBkMode(dc, TRANSPARENT);
     SetTextColor(dc, RGB(palette.foreground.red, palette.foreground.green, palette.foreground.blue));
     int margin = width / 40;
@@ -132,15 +141,18 @@ static HBITMAP render(int width, int height, const wchar_t *call, const wchar_t 
     RECT footer = {width/2, height*91/100, width-margin, height*99/100};
     RECT sum_box = {margin, height*91/100, width/2, height*99/100};
     if (!show_locator) center.bottom = height*91/100;
-    if (top_code) top.top = height*9/100;
+    if (top_code || ebu_top) top.top = height*9/100;
     int ok = draw_line(dc, call, top, height*17/100, DT_CENTER)
         && draw_line(dc, code, center, height*70/100, DT_CENTER);
     if (show_locator) ok = ok && draw_line(dc, locator, bottom, height*14/100, DT_CENTER);
+    SetBkMode(dc, ebu_bottom ? OPAQUE : TRANSPARENT);
     ok = ok && draw_line(dc, band, footer, small_size, DT_RIGHT);
     if (top_code && valid_code(code)) {
+        SetBkMode(dc, ebu_top ? OPAQUE : TRANSPARENT);
         RECT corner = {width/2, height/100, width-margin, height*9/100};
         ok = ok && draw_line(dc, code, corner, small_size, DT_RIGHT);
     }
+    SetBkMode(dc, ebu_bottom ? OPAQUE : TRANSPARENT);
     int sum = code_digit_sum(code);
     if (show_sum && sum >= 0) {
         wchar_t label[32];
@@ -167,7 +179,7 @@ static void update_mode(HWND window) {
     int pm = pm_mode(window);
     locator_changed(window);
     const int controls[] = {IDC_AUTO, IDC_MANUAL, IDC_CODE, IDC_INVERSE, IDC_BLUE_YELLOW, IDC_BAND,
-                            IDC_SHOW_SUM, IDC_TOP_CODE, IDC_SHOW_LOCATOR};
+                            IDC_SHOW_SUM, IDC_TOP_CODE, IDC_SHOW_LOCATOR, IDC_EBU_TOP, IDC_EBU_BOTTOM};
     for (size_t i=0; i<sizeof(controls)/sizeof(controls[0]); ++i)
         EnableWindow(GetDlgItem(window, controls[i]), !pm);
     EnableWindow(GetDlgItem(window, IDC_NEW_CODE), !pm && IsDlgButtonChecked(window, IDC_AUTO) == BST_CHECKED);
@@ -333,7 +345,9 @@ static void output_udp(HWND window) {
     WideCharToMultiByte(CP_UTF8,0,call,-1,d.call,sizeof(d.call),NULL,NULL);
     d.bitmap=pm?render_pm(d.size,call,locator):render(d.size.width,d.size.height,call,code,locator,show,bands[band],
         IsDlgButtonChecked(window,IDC_INVERSE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_SHOW_SUM)==BST_CHECKED,
-        IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_BLUE_YELLOW)==BST_CHECKED);
+        IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_BLUE_YELLOW)==BST_CHECKED,
+        IsDlgButtonChecked(window, IDC_EBU_TOP) == BST_CHECKED,
+        IsDlgButtonChecked(window, IDC_EBU_BOTTOM) == BST_CHECKED);
     if (!d.bitmap) { error(window,L"Kan het beeld niet maken."); return; }
     HINSTANCE instance=(HINSTANCE)GetWindowLongPtrW(window,GWLP_HINSTANCE);
     if (DialogBoxParamW(instance,MAKEINTRESOURCEW(IDD_UDP),window,udp_dialog,(LPARAM)&d)==-1)
@@ -442,7 +456,9 @@ static void export_ts(HWND window) {
     if (band<0 || band>10) return;
     job.bitmap=pm?render_pm(r,call,locator):render(r.width,r.height,call,code,locator,show,bands[band],
         IsDlgButtonChecked(window,IDC_INVERSE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_SHOW_SUM)==BST_CHECKED,
-        IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_BLUE_YELLOW)==BST_CHECKED);
+        IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_BLUE_YELLOW)==BST_CHECKED,
+        IsDlgButtonChecked(window, IDC_EBU_TOP) == BST_CHECKED,
+        IsDlgButtonChecked(window, IDC_EBU_BOTTOM) == BST_CHECKED);
     if (!job.bitmap) { error(window,L"Kan het beeld niet maken."); return; }
     if (DialogBoxParamW(instance,MAKEINTRESOURCEW(IDD_TS_PROGRESS),window,ts_progress,(LPARAM)&job)==-1)
         strcpy(job.error,"Kan het voortgangsvenster niet openen.");
@@ -520,7 +536,9 @@ static void generate(HWND window, BOOL choose_path) {
     HBITMAP bitmap = pm ? render_pm(r, call, locator) : render(r.width, r.height, call, code, locator, show, bands[band], inverse,
         IsDlgButtonChecked(window, IDC_SHOW_SUM) == BST_CHECKED,
         IsDlgButtonChecked(window, IDC_TOP_CODE) == BST_CHECKED,
-        IsDlgButtonChecked(window, IDC_BLUE_YELLOW) == BST_CHECKED);
+        IsDlgButtonChecked(window, IDC_BLUE_YELLOW) == BST_CHECKED,
+        IsDlgButtonChecked(window, IDC_EBU_TOP) == BST_CHECKED,
+        IsDlgButtonChecked(window, IDC_EBU_BOTTOM) == BST_CHECKED);
     HRESULT hr = bitmap ? save_jpeg(bitmap, temporary) : E_OUTOFMEMORY;
     if (bitmap) DeleteObject(bitmap);
     if (SUCCEEDED(hr) && !MoveFileExW(temporary, path, overwrite ? MOVEFILE_REPLACE_EXISTING : 0)) hr = HRESULT_FROM_WIN32(GetLastError());
@@ -546,7 +564,9 @@ static void preview(HWND window, DRAWITEMSTRUCT *item) {
         IsDlgButtonChecked(window, IDC_INVERSE) == BST_CHECKED,
         IsDlgButtonChecked(window, IDC_SHOW_SUM) == BST_CHECKED,
         IsDlgButtonChecked(window, IDC_TOP_CODE) == BST_CHECKED,
-        IsDlgButtonChecked(window, IDC_BLUE_YELLOW) == BST_CHECKED);
+        IsDlgButtonChecked(window, IDC_BLUE_YELLOW) == BST_CHECKED,
+        IsDlgButtonChecked(window, IDC_EBU_TOP) == BST_CHECKED,
+        IsDlgButtonChecked(window, IDC_EBU_BOTTOM) == BST_CHECKED);
     if (!bitmap) return;
     HDC dc = CreateCompatibleDC(item->hDC);
     if (!dc) { DeleteObject(bitmap); return; }
@@ -600,6 +620,8 @@ static AppConfig capture_config(HWND window) {
     s.blue_yellow=IsDlgButtonChecked(window,IDC_BLUE_YELLOW)==BST_CHECKED;
     s.show_sum=IsDlgButtonChecked(window,IDC_SHOW_SUM)==BST_CHECKED;
     s.top_code=IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED;
+    s.ebu_top=IsDlgButtonChecked(window,IDC_EBU_TOP)==BST_CHECKED;
+    s.ebu_bottom=IsDlgButtonChecked(window,IDC_EBU_BOTTOM)==BST_CHECKED;
     s.genius=genius_level; s.ts=ts_settings; s.udp=udp_settings; return s;
 }
 static void apply_config(HWND window,const AppConfig *s) {
@@ -618,6 +640,8 @@ static void apply_config(HWND window,const AppConfig *s) {
     CheckDlgButton(window,IDC_BLUE_YELLOW,s->blue_yellow?BST_CHECKED:BST_UNCHECKED);
     CheckDlgButton(window,IDC_SHOW_SUM,s->show_sum?BST_CHECKED:BST_UNCHECKED);
     CheckDlgButton(window,IDC_TOP_CODE,s->top_code?BST_CHECKED:BST_UNCHECKED);
+    CheckDlgButton(window,IDC_EBU_BOTTOM,s->ebu_bottom?BST_CHECKED:BST_UNCHECKED);
+    CheckDlgButton(window,IDC_EBU_TOP,s->ebu_top?BST_CHECKED:BST_UNCHECKED);
     contest_square[0]=0;
     read_text(window,IDC_LOCATOR,text,LOCATOR_MAX_LENGTH+1);
     locator_square_changed(contest_square,text);
@@ -736,10 +760,19 @@ static int smoke_test(const wchar_t *directory) {
     for (int aspect=0; aspect<2; ++aspect) for (int i=0; i<RESOLUTION_COUNT; ++i) for (int show=0; show<2; ++show) {
         Resolution r = (aspect ? resolutions169 : resolutions43)[i];
         if (swprintf(path, MAX_PATH, L"%ls\\test-%dx%d-locator%d%ls%ls%ls%ls.jpg", directory, r.width, r.height, show, contest_color_suffix(blue_yellow), inverse ? L"-inverse" : L"", show_sum ? L"-sum" : L"", top_code ? L"-top" : L"") < 0) return 2;
-        HBITMAP bitmap = render(r.width, r.height, L"PE1ITR/P", L"1957", L"JO21QK86DV", show, L"436 MHz", inverse, show_sum, top_code, blue_yellow);
+        HBITMAP bitmap = render(r.width, r.height, L"PE1ITR/P", L"1957", L"JO21QK86DV", show, L"436 MHz", inverse, show_sum, top_code, blue_yellow, FALSE, FALSE);
         if (!bitmap) return 3;
         HRESULT hr = save_jpeg(bitmap, path);
         DeleteObject(bitmap);
+        if (FAILED(hr)) return 4;
+    }
+    for (int flags=0; flags<4; ++flags)
+    for (int aspect=0; aspect<2; ++aspect) for (int i=0; i<RESOLUTION_COUNT; ++i) {
+        Resolution r = (aspect ? resolutions169 : resolutions43)[i];
+        if (swprintf(path, MAX_PATH, L"%ls\\ebu-%dx%d-%d.jpg", directory, r.width, r.height, flags) < 0) return 2;
+        HBITMAP bitmap = render(r.width, r.height, L"PE1ITR/P", L"1957", L"JO21QK86DV", TRUE, L"436 MHz", FALSE, TRUE, TRUE, FALSE, flags&1, flags&2);
+        if (!bitmap) return 3;
+        HRESULT hr = save_jpeg(bitmap, path); DeleteObject(bitmap);
         if (FAILED(hr)) return 4;
     }
     for (int aspect=0; aspect<2; ++aspect) for (int i=0; i<RESOLUTION_COUNT; ++i) for (int text=0; text<2; ++text) {
@@ -763,7 +796,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
     int result;
     int argc=0;
     LPWSTR *argv=CommandLineToArgvW(GetCommandLineW(),&argc);
-    if (argv && argc>=3 && !wcscmp(argv[1],L"--ts-test")) {
+    if (argv && argc>=3 && (!wcscmp(argv[1],L"--ts-test") || !wcscmp(argv[1],L"--ts-ebu-test"))) {
         char text[6][32]; const char *values[6];
         result=1;
         if (argc<=9) {
@@ -777,7 +810,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
             DWORD length=GetFullPathNameW(argv[2],MAX_PATH,job.path,NULL);
             if (converted && length && length<MAX_PATH && datv_test_options(argc-3,values,&job.settings,&w,&h)) {
                 strcpy(job.call,"PE1ITR");
-                job.bitmap=render(w,h,L"PE1ITR",L"1957",L"JO21QK",TRUE,L"436 MHz",FALSE,TRUE,TRUE,FALSE);
+                job.bitmap=render(w,h,L"PE1ITR",L"1957",L"JO21QK",TRUE,L"436 MHz",FALSE,TRUE,TRUE,FALSE, !wcscmp(argv[1],L"--ts-ebu-test"), !wcscmp(argv[1],L"--ts-ebu-test"));
                 if (job.bitmap) { ts_worker(&job); DeleteObject(job.bitmap); result=job.ok?0:1; }
             }
         }

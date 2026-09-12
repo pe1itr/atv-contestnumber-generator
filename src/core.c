@@ -178,6 +178,13 @@ int locator_square_changed(wchar_t previous[7], const wchar_t *locator) {
 #include <windows.h>
 #endif
 
+/* EBU 75% RGB bars, left to right: white, yellow, cyan, green,
+ * magenta, red, blue, black. Independent of the contest palette. */
+const ContestColor ebu_colors[EBU_BAR_COUNT] = {
+    {191,191,191}, {191,191,0}, {0,191,191}, {0,191,0},
+    {191,0,191}, {191,0,0}, {0,0,191}, {0,0,0}
+};
+
 typedef struct { const char *key; size_t offset, size; int min, max; } ConfigField;
 #define CONFIG_INT_FIELD(field, low, high) {#field, offsetof(AppConfig, field), 0, low, high}
 #define CONFIG_TEXT_FIELD(field) {#field, offsetof(AppConfig, field), sizeof(((AppConfig *)0)->field), 0, 0}
@@ -186,6 +193,7 @@ static const ConfigField config_fields[]={
     CONFIG_INT_FIELD(mode,0,1), CONFIG_INT_FIELD(automatic,0,1), CONFIG_INT_FIELD(aspect,0,1),
     CONFIG_INT_FIELD(resolution,0,RESOLUTION_COUNT-1), CONFIG_INT_FIELD(band,0,10),
     CONFIG_INT_FIELD(show,0,1), CONFIG_INT_FIELD(inverse,0,1), CONFIG_INT_FIELD(blue_yellow,0,1),
+    CONFIG_INT_FIELD(ebu_top,0,1), CONFIG_INT_FIELD(ebu_bottom,0,1),
     CONFIG_INT_FIELD(show_sum,0,1), CONFIG_INT_FIELD(top_code,0,1), CONFIG_INT_FIELD(genius,1,2),
     CONFIG_INT_FIELD(ts.bitrate,48000,2000000), CONFIG_INT_FIELD(ts.seconds,1,60),
     CONFIG_INT_FIELD(ts.fps,1,25), CONFIG_INT_FIELD(ts.gop,1,250),
@@ -284,7 +292,12 @@ int config_load(const char *path, AppConfig *out) {
     }
     if (ferror(f)) ok=0;
     if (fclose(f)) ok=0;
-    if (!ok || !version || seen!=(1UL<<CONFIG_FIELDS)-1 || !config_valid(&s)) return -1;
+    /* Configurations saved before the EBU options keep both strips off. */
+    unsigned long required = (1UL<<CONFIG_FIELDS)-1;
+    for (size_t i=0; i<CONFIG_FIELDS; ++i)
+        if (config_fields[i].offset==offsetof(AppConfig,ebu_top) ||
+            config_fields[i].offset==offsetof(AppConfig,ebu_bottom)) required &= ~(1UL<<i);
+    if (!ok || !version || (seen&required)!=required || !config_valid(&s)) return -1;
     *out=s; return 1;
 }
 int config_save(const char *path, const AppConfig *s) {

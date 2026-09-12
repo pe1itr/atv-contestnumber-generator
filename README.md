@@ -153,3 +153,12 @@ wine build/test-config-windows-ui.exe
 Voer de venstertests uit in een grafische sessie. Ze gebruiken tijdelijke bestanden;
 de Windows-venstertest gebruikt een configuratie naast het testprogramma in `build/`
 en weigert een reeds aanwezig configuratiebestand te overschrijven.
+
+Met **EBU boven** en **EBU onder** schakel je onafhankelijk smalle EBU-kleurenstroken
+in het contestbeeld in. Elke strook beslaat 9% van de beeldhoogte, over de volle
+breedte, tot aan de roepnaam of vanaf de locator. De hoekcode, frequentieband en
+cijfersom blijven leesbaar met een achtergrond in de gekozen beeldkleur.
+De stroken werken in het voorbeeld, JPG en DATV (TS/UDP), en worden via Config
+mee opgeslagen. In PM5544-modus zijn deze opties uitgeschakeld.
+Voor een TS-rendercontrole met beide stroken gebruik je `--ts-ebu-test` met
+dezelfde argumenten als `--ts-test`.

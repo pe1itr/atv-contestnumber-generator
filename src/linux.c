@@ -12,7 +12,7 @@
 
 typedef struct {
     GtkWidget *window, *call, *locator, *show, *automatic, *code;
-    GtkWidget *aspect, *resolution, *band, *preview, *status, *inverse, *blue_yellow, *show_sum, *top_code, *mode, *manual, *new_code;
+    GtkWidget *aspect, *resolution, *band, *preview, *status, *inverse, *blue_yellow, *show_sum, *top_code, *ebu_top, *ebu_bottom, *mode, *manual, *new_code;
     GtkWidget *export_menu, *export_as_menu, *about_menu, *quit_menu;
     GtkWidget *ts_menu, *level1, *level2;
     gboolean restoring;
@@ -72,7 +72,7 @@ static gboolean random_code(char code[5]) {
 }
 
 static void draw_line(cairo_t *cr, const char *text, int left, int top,
-                      int right, int bottom, int size, PangoAlignment alignment) {
+                      int right, int bottom, int size, PangoAlignment alignment, const ContestPalette *backdrop) {
     PangoLayout *layout = pango_cairo_create_layout(cr);
     PangoFontDescription *font = pango_font_description_from_string("Arial Bold");
     pango_layout_set_text(layout, text, -1);
@@ -85,18 +85,36 @@ static void draw_line(cairo_t *cr, const char *text, int left, int top,
     cairo_move_to(cr, alignment == PANGO_ALIGN_RIGHT ? right-width :
                   alignment == PANGO_ALIGN_LEFT ? left : left+(right-left-width)/2,
                   top+(bottom-top-height)/2);
+    if (backdrop) {
+        double x, y; cairo_get_current_point(cr, &x, &y);
+        cairo_save(cr);
+        cairo_set_source_rgb(cr, backdrop->background.red/255.0, backdrop->background.green/255.0, backdrop->background.blue/255.0);
+        cairo_rectangle(cr, x, y, width, height); cairo_fill(cr);
+        cairo_restore(cr); cairo_move_to(cr, x, y);
+    }
     pango_cairo_show_layout(cr, layout);
     pango_font_description_free(font);
     g_object_unref(layout);
 }
 
 static cairo_surface_t *render(Resolution r, const char *call, const char *code,
-                               const char *locator, gboolean show, const char *band, gboolean inverse, gboolean show_sum, gboolean top_code, gboolean blue_yellow) {
+                               const char *locator, gboolean show, const char *band, gboolean inverse, gboolean show_sum, gboolean top_code, gboolean blue_yellow, gboolean ebu_top, gboolean ebu_bottom) {
     cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, r.width, r.height);
     cairo_t *cr = cairo_create(surface);
     ContestPalette palette = contest_palette(blue_yellow, inverse);
     cairo_set_source_rgb(cr, palette.background.red/255.0, palette.background.green/255.0, palette.background.blue/255.0);
     cairo_paint(cr);
+    for (int i=0; i<EBU_BAR_COUNT; ++i) {
+        ContestColor c = ebu_colors[i];
+        int left = r.width*i/EBU_BAR_COUNT, right = r.width*(i+1)/EBU_BAR_COUNT;
+        cairo_set_source_rgb(cr, c.red/255.0, c.green/255.0, c.blue/255.0);
+        if (ebu_top) cairo_rectangle(cr, left, 0, right-left, r.height*EBU_STRIP_PERCENT/100);
+        if (ebu_bottom) {
+            int y = r.height*(100-EBU_STRIP_PERCENT)/100;
+            cairo_rectangle(cr, left, y, right-left, r.height-y);
+        }
+        cairo_fill(cr);
+    }
     cairo_set_source_rgb(cr, palette.foreground.red/255.0, palette.foreground.green/255.0, palette.foreground.blue/255.0);
     cairo_font_options_t *options = cairo_font_options_create();
     cairo_font_options_set_antialias(options, CAIRO_ANTIALIAS_GRAY);
@@ -104,19 +122,19 @@ static cairo_surface_t *render(Resolution r, const char *call, const char *code,
     cairo_font_options_destroy(options);
     int w = r.width, h = r.height, m = w/40;
     int small_size = MAX(7, h*6/100);
-    draw_line(cr, call, m, top_code ? h*9/100 : h/50, w-m, h*22/100, h*17/100, PANGO_ALIGN_CENTER);
-    draw_line(cr, code, m, h*22/100, w-m, h*(show ? 80 : 91)/100, h*70/100, PANGO_ALIGN_CENTER);
-    if (show) draw_line(cr, locator, m, h*80/100, w-m, h*91/100, h*14/100, PANGO_ALIGN_CENTER);
-    draw_line(cr, band, w/2, h*91/100, w-m, h*99/100, small_size, PANGO_ALIGN_RIGHT);
+    draw_line(cr, call, m, (top_code || ebu_top) ? h*9/100 : h/50, w-m, h*22/100, h*17/100, PANGO_ALIGN_CENTER, NULL);
+    draw_line(cr, code, m, h*22/100, w-m, h*(show ? 80 : 91)/100, h*70/100, PANGO_ALIGN_CENTER, NULL);
+    if (show) draw_line(cr, locator, m, h*80/100, w-m, h*91/100, h*14/100, PANGO_ALIGN_CENTER, NULL);
+    draw_line(cr, band, w/2, h*91/100, w-m, h*99/100, small_size, PANGO_ALIGN_RIGHT, ebu_bottom ? &palette : NULL);
     wchar_t digits[5] = {0};
     if (strlen(code) == 4) for (int i=0; i<4; ++i) digits[i] = (unsigned char)code[i];
     int sum = code_digit_sum(digits);
     if (top_code && sum >= 0)
-        draw_line(cr, code, w/2, h/100, w-m, h*9/100, small_size, PANGO_ALIGN_RIGHT);
+        draw_line(cr, code, w/2, h/100, w-m, h*9/100, small_size, PANGO_ALIGN_RIGHT, ebu_top ? &palette : NULL);
     if (show_sum && sum >= 0) {
         char label[32];
         g_snprintf(label, sizeof(label), "de som is %d", sum);
-        draw_line(cr, label, m, h*91/100, w/2, h*99/100, small_size, PANGO_ALIGN_LEFT);
+        draw_line(cr, label, m, h*91/100, w/2, h*99/100, small_size, PANGO_ALIGN_LEFT, ebu_bottom ? &palette : NULL);
     }
     cairo_destroy(cr);
     cairo_surface_flush(surface);
@@ -248,7 +266,7 @@ static void toggled(GtkWidget *widget, gpointer data) {
     gboolean pm = pm_mode(app);
     locator_changed(NULL, app);
     GtkWidget *controls[] = {app->automatic, app->manual, app->code, app->inverse, app->blue_yellow,
-                             app->band, app->show_sum, app->top_code, app->show};
+                             app->band, app->show_sum, app->top_code, app->show, app->ebu_top, app->ebu_bottom};
     for (size_t i=0; i<G_N_ELEMENTS(controls); ++i) gtk_widget_set_sensitive(controls[i], !pm);
     gtk_widget_set_sensitive(app->new_code, !pm && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->automatic)));
     if (widget == app->automatic && !pm && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->automatic))) new_code(NULL, app);
@@ -265,7 +283,9 @@ static cairo_surface_t *current_image(App *app) {
         gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->inverse)),
         gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show_sum)),
         gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->top_code)),
-        gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->blue_yellow)));
+        gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->blue_yellow)),
+        gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->ebu_top)),
+        gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->ebu_bottom)));
     g_free(call); g_free(locator); g_free(band);
     return surface;
 }
@@ -653,6 +673,8 @@ static AppConfig capture_config(App *app) {
     s.blue_yellow=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->blue_yellow));
     s.show_sum=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show_sum));
     s.top_code=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->top_code));
+    s.ebu_top=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->ebu_top));
+    s.ebu_bottom=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->ebu_bottom));
     s.genius=gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level2))?2:1;
     s.ts=app->datv; s.udp=app->udp; return s;
 }
@@ -671,6 +693,8 @@ static void apply_config(App *app, const AppConfig *s) {
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->blue_yellow),s->blue_yellow);
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->show_sum),s->show_sum);
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->top_code),s->top_code);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->ebu_top),s->ebu_top);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->ebu_bottom),s->ebu_bottom);
     gtk_entry_set_text(GTK_ENTRY(app->code),s->code);
     app->contest_square[0]=0;
     wchar_t locator[LOCATOR_MAX_LENGTH+1]; read_locator(app,locator);
@@ -811,6 +835,12 @@ static void create_ui(App *app) {
     gtk_grid_attach(GTK_GRID(fields), app->top_code, 0, 16, 1, 1);
     app->blue_yellow = gtk_check_button_new_with_mnemonic("Blauw/_geel");
     gtk_grid_attach(GTK_GRID(fields), app->blue_yellow, 0, 17, 1, 1);
+    GtkWidget *ebu_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    app->ebu_top = gtk_check_button_new_with_mnemonic("EBU b_oven");
+    app->ebu_bottom = gtk_check_button_new_with_mnemonic("EBU o_nder");
+    gtk_box_pack_start(GTK_BOX(ebu_row), app->ebu_top, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ebu_row), app->ebu_bottom, FALSE, FALSE, 0);
+    gtk_grid_attach(GTK_GRID(fields), ebu_row, 0, 18, 2, 1);
     GtkWidget *frame = gtk_frame_new("Voorbeeld");
     app->preview = gtk_drawing_area_new();
     gtk_widget_set_size_request(app->preview, 480, 360);
@@ -837,6 +867,8 @@ static void create_ui(App *app) {
     g_signal_connect(app->inverse, "toggled", G_CALLBACK(changed), app);
     g_signal_connect(app->show_sum, "toggled", G_CALLBACK(changed), app);
     g_signal_connect(app->top_code, "toggled", G_CALLBACK(changed), app);
+    g_signal_connect(app->ebu_top, "toggled", G_CALLBACK(changed), app);
+    g_signal_connect(app->ebu_bottom, "toggled", G_CALLBACK(changed), app);
     g_signal_connect(app->new_code, "clicked", G_CALLBACK(new_code), app);
     g_signal_connect(button, "clicked", G_CALLBACK(generate), app);
     g_signal_connect(app->export_menu, "activate", G_CALLBACK(generate), app);
@@ -861,7 +893,17 @@ static int smoke_test(const char *directory) {
     for (int aspect=0; aspect<2; ++aspect) for (int i=0; i<RESOLUTION_COUNT; ++i) for (int show=0; show<2; ++show) {
         Resolution r = (aspect ? resolutions169 : resolutions43)[i];
         char *path = g_strdup_printf("%s/test-%dx%d-locator%d%s%s%s%s.jpg", directory, r.width, r.height, show, blue_yellow ? "-blauw-geel" : "", inverse ? "-inverse" : "", show_sum ? "-sum" : "", top_code ? "-top" : "");
-        cairo_surface_t *surface = render(r, "PE1ITR/P", "1957", "JO21QK86DV", show, "436 MHz", inverse, show_sum, top_code, blue_yellow);
+        cairo_surface_t *surface = render(r, "PE1ITR/P", "1957", "JO21QK86DV", show, "436 MHz", inverse, show_sum, top_code, blue_yellow, FALSE, FALSE);
+        GError *error = NULL;
+        gboolean ok = save_jpeg(surface, path, TRUE, &error);
+        cairo_surface_destroy(surface); g_free(path);
+        if (!ok) { g_printerr("%s\n", error->message); g_error_free(error); return 3; }
+    }
+    for (int flags=0; flags<4; ++flags)
+    for (int aspect=0; aspect<2; ++aspect) for (int i=0; i<RESOLUTION_COUNT; ++i) {
+        Resolution r = (aspect ? resolutions169 : resolutions43)[i];
+        char *path = g_strdup_printf("%s/ebu-%dx%d-%d.jpg", directory, r.width, r.height, flags);
+        cairo_surface_t *surface = render(r, "PE1ITR/P", "1957", "JO21QK86DV", TRUE, "436 MHz", FALSE, TRUE, TRUE, FALSE, flags&1, flags&2);
         GError *error = NULL;
         gboolean ok = save_jpeg(surface, path, TRUE, &error);
         cairo_surface_destroy(surface); g_free(path);
@@ -876,17 +918,17 @@ static int smoke_test(const char *directory) {
         cairo_surface_destroy(surface); g_free(path);
         if (!ok) { g_printerr("%s\n", error->message); g_error_free(error); return 4; }
     }
-    g_print("%d JPEGs generated; 1000 random codes checked.\n", 68*RESOLUTION_COUNT);
+    g_print("%d JPEGs generated; 1000 random codes checked.\n", 76*RESOLUTION_COUNT);
     return 0;
 }
 
 int main(int argc, char **argv) {
-    if (argc>=3 && !strcmp(argv[1],"--ts-test")) {
+    if (argc>=3 && (!strcmp(argv[1],"--ts-test") || !strcmp(argv[1],"--ts-ebu-test"))) {
         DatvSettings s; int w,h;
         if (!datv_test_options(argc-3,(const char *const *)(argv+3),&s,&w,&h)) {
             g_printerr("Ongeldige TS-testinstellingen.\n"); return 1;
         }
-        cairo_surface_t *im=render((Resolution){w,h},"PE1ITR","1957","JO21QK",TRUE,"436 MHz",FALSE,TRUE,TRUE,FALSE);
+        cairo_surface_t *im=render((Resolution){w,h},"PE1ITR","1957","JO21QK",TRUE,"436 MHz",FALSE,TRUE,TRUE,FALSE, !strcmp(argv[1],"--ts-ebu-test"), !strcmp(argv[1],"--ts-ebu-test"));
         FILE *f=fopen(argv[2],"wbx"); char error[256]="Kan geen nieuw TS-bestand maken (bestaat het al?).";
         DatvResult result;
         int ok=f && cairo_surface_status(im)==CAIRO_STATUS_SUCCESS && datv_write(f,

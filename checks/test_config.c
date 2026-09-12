@@ -40,6 +40,16 @@ int main(void) {
     }
     FILE *f=fopen(TEST_PATH,"wb"); assert(f); assert(fputs("version=1\ncall=PE1ITR\n",f)>=0); assert(!fclose(f));
     assert(config_load(TEST_PATH,&loaded)==-1);
+    /* Older complete config files omit the two new optional strip fields. */
+    original=config_defaults(); original.ebu_top=1; original.ebu_bottom=1;
+    assert(config_save(TEST_PATH,&original));
+    char old_config[8192]="", line[1024];
+    f=fopen(TEST_PATH,"rb"); assert(f);
+    while (fgets(line,sizeof(line),f))
+        if (strncmp(line,"ebu_top=",8) && strncmp(line,"ebu_bottom=",11)) strcat(old_config,line);
+    assert(!fclose(f)); f=fopen(TEST_PATH,"wb"); assert(f);
+    assert(fputs(old_config,f)>=0); assert(!fclose(f));
+    assert(config_load(TEST_PATH,&loaded)==1 && !loaded.ebu_top && !loaded.ebu_bottom);
     /* Blank inputs and an unused UDP address can be saved before setup. */
     original=config_defaults(); assert(config_save(TEST_PATH,&original));
     assert(config_load(TEST_PATH,&loaded)==1); assert(!memcmp(&original,&loaded,sizeof(original)));

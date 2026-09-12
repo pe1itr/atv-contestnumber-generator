@@ -79,3 +79,26 @@ for width, height in sizes:
             box = (x0*width//sw, y0*height//sh, x1*width//sw, y1*height//sh)
             assert diff.crop(box).getextrema()[1] > 100, (width, height, box)
 print(f"{2*len(sizes)} PM5544 JPEGs checked: both templates, output dimensions, color and text panels.")
+
+# Independent top/bottom switches: sample all eight bars away from footer text.
+bar_colors = [(191,191,191), (191,191,0), (0,191,191), (0,191,0),
+              (191,0,191), (191,0,0), (0,0,191), (0,0,0)]
+for width, height in sizes:
+    for flags in range(4):
+        path = directory / f"ebu-{width}x{height}-{flags}.jpg"
+        with Image.open(path) as image:
+            image = image.convert("RGB")
+            for enabled, y in ((flags & 1, 0), (flags & 2, height-1)):
+                for bar, color in enumerate(bar_colors):
+                    x = width*(2*bar+1)//16
+                    expected = color if enabled else (0,0,0)
+                    actual = image.getpixel((x,y))
+                    # Tiny strips share chroma blocks with the black label backdrops;
+                    # JPEG 4:2:0 can halve a primary channel at the bottom edge.
+                    tolerance = 115 if width < 320 else 55
+                    assert max(abs(a-b) for a,b in zip(actual, expected)) < tolerance, (path, x, y, actual, expected)
+            # The central contest number is unaffected by either switch.
+            with Image.open(directory / f"ebu-{width}x{height}-0.jpg") as base:
+                box = (0, height*30//100, width, height*70//100)
+                assert not ImageChops.difference(image.crop(box), base.convert("RGB").crop(box)).getbbox(), path
+print(f"{4*len(sizes)} EBU JPEGs checked: independent strips, eight colors, unchanged central number.")

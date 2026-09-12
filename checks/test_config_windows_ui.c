@@ -25,7 +25,7 @@ int wmain(void) {
     AppConfig wanted=config_defaults();
     strcpy(wanted.call,"PE1ITR/P"); strcpy(wanted.locator,"JO21QK86DV12"); strcpy(wanted.code,"1957");
     wanted.aspect=1; wanted.resolution=1; wanted.band=10; wanted.genius=2;
-    wanted.show=0; wanted.inverse=1; wanted.blue_yellow=1; wanted.show_sum=1; wanted.top_code=1;
+    wanted.show=0; wanted.inverse=1; wanted.blue_yellow=1; wanted.show_sum=1; wanted.top_code=1; wanted.ebu_top=1; wanted.ebu_bottom=1;
     wanted.ts=(DatvSettings){60000,30,2,1}; apply_config(w,&wanted);
     UINT_PTR timer=SetTimer(NULL,0,100,drive_timer); assert(timer);
     SendMessageW(w,WM_COMMAND,IDM_UDP,0); KillTimer(NULL,timer);
