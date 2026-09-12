@@ -17,7 +17,7 @@ dist/atv-contestnummer: src/linux.c src/core.c src/core.h src/app_info.c src/app
 	mkdir -p dist
 	$(HOSTCC) $(CFLAGS) src/linux.c src/core.c src/app_info.c build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -o $@ $(shell pkg-config --cflags --libs gtk+-3.0 pangocairo) -lstdc++ -lpthread -lm
 
-build/pm_assets.h: tools/embed_pm5544.py assets/pm5544.jpg assets/pm5544w.jpg
+build/pm_assets.h: tools/embed_pm5544.py assets/pm5544.jpg assets/pm5544w.jpg assets/FuBK-Testbild.png assets/FuBK_wide.jpg
 	$(PYTHON) tools/embed_pm5544.py
 
 build/pm5544-linux.o: src/pm5544.c src/pm5544.h build/pm_assets.h

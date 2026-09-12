@@ -141,7 +141,7 @@ static cairo_surface_t *render(Resolution r, const char *call, const char *code,
     return surface;
 }
 
-static cairo_surface_t *render_pm(Resolution r, const char *call, const char *locator) {
+static cairo_surface_t *render_pattern(Resolution r, const char *call, const char *locator, int mode) {
     wchar_t wc[25] = {0}, wl[LOCATOR_MAX_LENGTH+1] = {0};
     const char *p = call;
     for (int i=0; i<24 && *p; ++i, p=g_utf8_next_char(p)) wc[i] = (wchar_t)g_utf8_get_char(p);
@@ -150,7 +150,7 @@ static cairo_surface_t *render_pm(Resolution r, const char *call, const char *lo
     cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, r.width, r.height);
     if (cairo_surface_status(surface) == CAIRO_STATUS_SUCCESS) {
         cairo_surface_flush(surface);
-        if (!pm5544_render((uint32_t *)cairo_image_surface_get_data(surface), r.width, r.height, wc, wl)) {
+        if (!(mode==IMAGE_FUBK ? fubk_render : pm5544_render)((uint32_t *)cairo_image_surface_get_data(surface), r.width, r.height, wc, wl)) {
             cairo_surface_destroy(surface);
             return cairo_image_surface_create(CAIRO_FORMAT_RGB24, -1, -1);
         }
@@ -158,9 +158,10 @@ static cairo_surface_t *render_pm(Resolution r, const char *call, const char *lo
     }
     return surface;
 }
-static gboolean pm_mode(App *app) {
-    return gtk_combo_box_get_active(GTK_COMBO_BOX(app->mode)) == 1;
+static int selected_mode(App *app) {
+    return gtk_combo_box_get_active(GTK_COMBO_BOX(app->mode));
 }
+static gboolean pattern_mode(App *app) { return selected_mode(app)>IMAGE_CONTEST; }
 
 static gboolean save_jpeg(cairo_surface_t *surface, const char *path,
                            gboolean overwrite, GError **error) {
@@ -253,7 +254,7 @@ static void locator_changed(GtkWidget *widget, gpointer data) {
     (void)widget;
     App *app = data;
     if (app->restoring) return;
-    if (pm_mode(app) || !gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->automatic))) return;
+    if (pattern_mode(app) || !gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->automatic))) return;
     wchar_t locator[LOCATOR_MAX_LENGTH+1];
     read_locator(app, locator);
     if (locator_square_changed(app->contest_square, locator)) new_code(NULL, app);
@@ -263,7 +264,7 @@ static void toggled(GtkWidget *widget, gpointer data) {
     App *app = data;
     if (app->restoring) return;
     gtk_editable_set_editable(GTK_EDITABLE(app->code), !gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->automatic)));
-    gboolean pm = pm_mode(app);
+    gboolean pm = pattern_mode(app);
     locator_changed(NULL, app);
     GtkWidget *controls[] = {app->automatic, app->manual, app->code, app->inverse, app->blue_yellow,
                              app->band, app->show_sum, app->top_code, app->show, app->ebu_top, app->ebu_bottom};
@@ -277,7 +278,7 @@ static void toggled(GtkWidget *widget, gpointer data) {
 static cairo_surface_t *current_image(App *app) {
     char *call = entry_text(app->call), *locator = entry_text(app->locator);
     char *band = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(app->band));
-    cairo_surface_t *surface = pm_mode(app) ? render_pm(selected_resolution(app), call, locator) : render(selected_resolution(app), call,
+    cairo_surface_t *surface = pattern_mode(app) ? render_pattern(selected_resolution(app), call, locator, selected_mode(app)) : render(selected_resolution(app), call,
         gtk_entry_get_text(GTK_ENTRY(app->code)), locator,
         gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show)), band ? band : "",
         gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->inverse)),
@@ -400,10 +401,10 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     (void)widget;
     App *app=data;
     char *call=entry_text(app->call), *locator=entry_text(app->locator);
-    gboolean show=pm_mode(app)||gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show));
-    if (!validate(call,valid_call) || ((show||*locator) && !validate(locator,valid_locator)) ||
-        (!pm_mode(app) && !validate(gtk_entry_get_text(GTK_ENTRY(app->code)),valid_code))) {
-        notify_error(app,"Vul eerst een geldige roepnaam en locator in. De contestcode moet vier cijfers bevatten, niet alle vier gelijk en geen oplopende of aflopende reeks.");
+    gboolean show=pattern_mode(app)||gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show));
+    if (!validate(call,valid_call) || ((show||*locator) && !validate(locator,selected_mode(app)==IMAGE_FUBK?valid_fubk_locator:valid_locator)) ||
+        (!pattern_mode(app) && !validate(gtk_entry_get_text(GTK_ENTRY(app->code)),valid_code))) {
+        notify_error(app,"Vul eerst een geldige roepnaam en locator in (FUBK: minimaal 6 locatortekens). De contestcode moet vier cijfers bevatten, niet alle vier gelijk en geen oplopende of aflopende reeks.");
         g_free(call); g_free(locator); return;
     }
     g_free(locator);
@@ -481,10 +482,10 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     (void)widget;
     App *app=data;
     char *call=entry_text(app->call), *locator=entry_text(app->locator);
-    gboolean show=pm_mode(app)||gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show));
-    if (!validate(call,valid_call) || ((show||*locator) && !validate(locator,valid_locator)) ||
-        (!pm_mode(app) && !validate(gtk_entry_get_text(GTK_ENTRY(app->code)),valid_code))) {
-        notify_error(app,"Vul eerst een geldige roepnaam en locator in. De contestcode moet vier cijfers bevatten, niet alle vier gelijk en geen oplopende of aflopende reeks.");
+    gboolean show=pattern_mode(app)||gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show));
+    if (!validate(call,valid_call) || ((show||*locator) && !validate(locator,selected_mode(app)==IMAGE_FUBK?valid_fubk_locator:valid_locator)) ||
+        (!pattern_mode(app) && !validate(gtk_entry_get_text(GTK_ENTRY(app->code)),valid_code))) {
+        notify_error(app,"Vul eerst een geldige roepnaam en locator in (FUBK: minimaal 6 locatortekens). De contestcode moet vier cijfers bevatten, niet alle vier gelijk en geen oplopende of aflopende reeks.");
         g_free(call); g_free(locator); return;
     }
     g_free(locator);
@@ -527,7 +528,7 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     gtk_file_chooser_set_local_only(chooser,TRUE);
     gtk_file_chooser_set_current_folder(chooser,app->directory);
     char *safe=g_strdup(call); for (char *p=safe; *p; ++p) if (*p=='/') *p='_';
-    char *name=g_strdup_printf("%s-%s-%dx%d-%dbps.ts",safe,pm_mode(app)?"PM5544":gtk_entry_get_text(GTK_ENTRY(app->code)),r.width,r.height,app->datv.bitrate);
+    char *name=g_strdup_printf("%s-%s-%dx%d-%dbps.ts",safe,pattern_mode(app)?(selected_mode(app)==IMAGE_FUBK?"FUBK":"PM5544"):gtk_entry_get_text(GTK_ENTRY(app->code)),r.width,r.height,app->datv.bitrate);
     gtk_file_chooser_set_current_name(chooser,name); g_free(safe); g_free(name);
     GtkFileFilter *filter=gtk_file_filter_new(); gtk_file_filter_set_name(filter,"MPEG-TS (*.ts)");
     gtk_file_filter_add_pattern(filter,"*.ts"); gtk_file_chooser_add_filter(chooser,filter);
@@ -574,9 +575,9 @@ static void generate(GtkWidget *widget, gpointer data) {
         notify_error(app, "Vul een roepnaam in met letters en cijfers, eventueel met / (3 tot 24 tekens).");
         goto cleanup;
     }
-    gboolean pm = pm_mode(app);
-    if ((pm || locator[0] || gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show))) && !validate(locator, valid_locator)) {
-        notify_error(app, "Vul een geldige Maidenheadlocator in (4, 6, 8, 10 of 12 tekens), bijvoorbeeld JO21QK.");
+    gboolean pm = pattern_mode(app);
+    if ((pm || locator[0] || gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show))) && !validate(locator, selected_mode(app)==IMAGE_FUBK?valid_fubk_locator:valid_locator)) {
+        notify_error(app, "Vul een geldige Maidenheadlocator in (4, 6, 8, 10 of 12 tekens), bijvoorbeeld JO21QK. FUBK vereist minimaal 6 tekens.");
         goto cleanup;
     }
     if (!pm && !validate(gtk_entry_get_text(GTK_ENTRY(app->code)), valid_code)) {
@@ -597,7 +598,7 @@ static void generate(GtkWidget *widget, gpointer data) {
     char *locator_name = utf8(short_locator);
     char *locator_suffix = *locator_name ? g_strconcat("-", locator_name, NULL) : g_strdup("");
     g_free(locator_name);
-    char *name = pm ? g_strdup_printf("%s%s-PM5544-%dx%d.jpg", call, locator_suffix, r.width, r.height) : g_strdup_printf("%s%s-%s-%s-%dx%d%s%s.jpg", call, locator_suffix, gtk_entry_get_text(GTK_ENTRY(app->code)), band_file, r.width, r.height, color_suffix, inverse ? "-inverse" : "");
+    char *name = pm ? g_strdup_printf("%s%s-%s-%dx%d.jpg", call, locator_suffix, selected_mode(app)==IMAGE_FUBK?"FUBK":"PM5544", r.width, r.height) : g_strdup_printf("%s%s-%s-%s-%dx%d%s%s.jpg", call, locator_suffix, gtk_entry_get_text(GTK_ENTRY(app->code)), band_file, r.width, r.height, color_suffix, inverse ? "-inverse" : "");
     g_free(locator_suffix);
     char *path = g_build_filename(app->directory, name, NULL);
     if (widget == app->export_as_menu) {
@@ -800,8 +801,10 @@ static void create_ui(App *app) {
     GtkWidget *mode_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
     GtkWidget *mode_label = gtk_label_new_with_mnemonic("Beeld_type");
     app->mode = gtk_combo_box_text_new();
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app->mode), "Contest");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app->mode), "PM5544");
+    for (int i=0; i<IMAGE_MODE_COUNT; ++i) {
+        char *name=utf8(image_modes[i]);
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app->mode),name); g_free(name);
+    }
     gtk_combo_box_set_active(GTK_COMBO_BOX(app->mode), 0);
     gtk_label_set_mnemonic_widget(GTK_LABEL(mode_label), app->mode);
     gtk_box_pack_start(GTK_BOX(mode_row), mode_label, FALSE, FALSE, 0);
@@ -931,23 +934,32 @@ static int smoke_test(const char *directory) {
     for (int aspect=0; aspect<2; ++aspect) for (int i=0; i<RESOLUTION_COUNT; ++i) for (int text=0; text<2; ++text) {
         Resolution r = (aspect ? resolutions169 : resolutions43)[i];
         char *path = g_strdup_printf("%s/pm-%dx%d-%d.jpg", directory, r.width, r.height, text);
-        cairo_surface_t *surface = render_pm(r, text ? "PE1ITR/P" : "", text ? "JO21QK86DV" : "");
+        cairo_surface_t *surface = render_pattern(r, text ? "PE1ITR/P" : "", text ? "JO21QK86DV" : "", IMAGE_PM5544);
         GError *error = NULL;
         gboolean ok = save_jpeg(surface, path, TRUE, &error);
         cairo_surface_destroy(surface); g_free(path);
         if (!ok) { g_printerr("%s\n", error->message); g_error_free(error); return 4; }
     }
-    g_print("%d JPEGs generated; 1000 random codes checked.\n", 76*RESOLUTION_COUNT);
+    for (int aspect=0; aspect<2; ++aspect) for (int i=0; i<RESOLUTION_COUNT; ++i) for (int text=0; text<3; ++text) {
+        Resolution r = (aspect ? resolutions169 : resolutions43)[i];
+        char *path = g_strdup_printf("%s/fubk-%dx%d-%d.jpg", directory, r.width, r.height, text);
+        cairo_surface_t *surface = render_pattern(r, text ? "PE1ITR/P" : "", text==2 ? "JO21QK" : text ? "JO21QK86DV" : "", IMAGE_FUBK);
+        GError *error = NULL;
+        gboolean ok = save_jpeg(surface, path, TRUE, &error);
+        cairo_surface_destroy(surface); g_free(path);
+        if (!ok) { g_printerr("%s\n", error->message); g_error_free(error); return 4; }
+    }
+    g_print("%d JPEGs generated; 1000 random codes checked.\n", 82*RESOLUTION_COUNT);
     return 0;
 }
 
 int main(int argc, char **argv) {
-    if (argc>=3 && (!strcmp(argv[1],"--ts-test") || !strcmp(argv[1],"--ts-ebu-test"))) {
+    if (argc>=3 && (!strcmp(argv[1],"--ts-test") || !strcmp(argv[1],"--ts-ebu-test") || !strcmp(argv[1],"--ts-fubk-test"))) {
         DatvSettings s; int w,h;
         if (!datv_test_options(argc-3,(const char *const *)(argv+3),&s,&w,&h)) {
             g_printerr("Ongeldige TS-testinstellingen.\n"); return 1;
         }
-        cairo_surface_t *im=render((Resolution){w,h},"PE1ITR","1957","JO21QK",TRUE,"436 MHz",FALSE,TRUE,TRUE,FALSE, !strcmp(argv[1],"--ts-ebu-test"), !strcmp(argv[1],"--ts-ebu-test"));
+        cairo_surface_t *im=!strcmp(argv[1],"--ts-fubk-test") ? render_pattern((Resolution){w,h},"PE1ITR","JO21QK86DV",IMAGE_FUBK) : render((Resolution){w,h},"PE1ITR","1957","JO21QK",TRUE,"436 MHz",FALSE,TRUE,TRUE,FALSE, !strcmp(argv[1],"--ts-ebu-test"), !strcmp(argv[1],"--ts-ebu-test"));
         FILE *f=fopen(argv[2],"wbx"); char error[256]="Kan geen nieuw TS-bestand maken (bestaat het al?).";
         DatvResult result;
         int ok=f && cairo_surface_status(im)==CAIRO_STATUS_SUCCESS && datv_write(f,

@@ -48,7 +48,7 @@ int main(int argc,char **argv) {
     assert(!strcmp(gtk_entry_get_text(GTK_ENTRY(reopened.code)),"1957"));
     gtk_entry_set_text(GTK_ENTRY(reopened.locator),"JO22QK99AA99");
     assert(strcmp(gtk_entry_get_text(GTK_ENTRY(reopened.code)),"1957"));
-    wanted.mode=1; wanted.automatic=0; wanted.genius=1; wanted.resolution=9;
+    wanted.mode=IMAGE_FUBK; wanted.automatic=0; wanted.genius=1; wanted.resolution=9;
     apply_config(&reopened,&wanted); save_config(NULL,&reopened); close_app(&reopened);
     App again={0}; again.directory=directory; create_ui(&again); load_config(&again);
     actual=capture_config(&again); assert(!memcmp(&wanted,&actual,sizeof(wanted)));

@@ -102,3 +102,21 @@ for width, height in sizes:
                 box = (0, height*30//100, width, height*70//100)
                 assert not ImageChops.difference(image.crop(box), base.convert("RGB").crop(box)).getbbox(), path
 print(f"{4*len(sizes)} EBU JPEGs checked: independent strips, eight colors, unchanged central number.")
+
+for width, height in sizes:
+    wide = width*3 != height*4
+    sw, sh = (2000,1125) if wide else (768,576)
+    panels = ((545,565,999,638),(1002,565,1455,638)) if wide else ((240,290,382,327),(386,290,528,327))
+    with Image.open(directory/f"fubk-{width}x{height}-0.jpg") as blank, Image.open(directory/f"fubk-{width}x{height}-1.jpg") as text, Image.open(directory/f"fubk-{width}x{height}-2.jpg") as six:
+        assert blank.size == text.size == six.size == (width,height)
+        assert not ImageChops.difference(text,six).getbbox(), "FUBK must truncate locator at six characters"
+        diff = ImageChops.difference(blank.convert("RGB"),text.convert("RGB")).convert("L")
+        for x0,y0,x1,y1 in panels:
+            box = (x0*width//sw,y0*height//sh,x1*width//sw,y1*height//sh)
+            assert diff.crop(box).getextrema()[1]>100, (width,height,box)
+        # Outside the middle text row, preserve the source test pattern exactly.
+        top = max(0, (panels[0][1]*height//sh//16-1)*16)
+        bottom = min(height, ((panels[0][3]*height//sh+15)//16+1)*16)
+        assert not diff.crop((0,0,width,top)).getbbox()
+        assert not diff.crop((0,bottom,width,height)).getbbox()
+print(f"{3*len(sizes)} FUBK JPEGs checked: both templates, left/right labels, six-character locator and intact surrounding pattern.")

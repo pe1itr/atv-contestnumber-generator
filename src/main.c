@@ -166,17 +166,18 @@ static HBITMAP render(int width, int height, const wchar_t *call, const wchar_t 
     return bitmap;
 }
 
-static int pm_mode(HWND window) {
-    return SendDlgItemMessageW(window, IDC_MODE, CB_GETCURSEL, 0, 0) == 1;
+static int selected_mode(HWND window) {
+    return (int)SendDlgItemMessageW(window, IDC_MODE, CB_GETCURSEL, 0, 0);
 }
+static int pattern_mode(HWND window) { return selected_mode(window)>IMAGE_CONTEST; }
 static void locator_changed(HWND window) {
-    if (pm_mode(window) || IsDlgButtonChecked(window, IDC_AUTO) != BST_CHECKED) return;
+    if (pattern_mode(window) || IsDlgButtonChecked(window, IDC_AUTO) != BST_CHECKED) return;
     wchar_t locator[LOCATOR_MAX_LENGTH+1];
     read_text(window, IDC_LOCATOR, locator, LOCATOR_MAX_LENGTH+1);
     if (locator_square_changed(contest_square, locator)) new_code(window);
 }
 static void update_mode(HWND window) {
-    int pm = pm_mode(window);
+    int pm = pattern_mode(window);
     locator_changed(window);
     const int controls[] = {IDC_AUTO, IDC_MANUAL, IDC_CODE, IDC_INVERSE, IDC_BLUE_YELLOW, IDC_BAND,
                             IDC_SHOW_SUM, IDC_TOP_CODE, IDC_SHOW_LOCATOR, IDC_EBU_TOP, IDC_EBU_BOTTOM};
@@ -185,7 +186,7 @@ static void update_mode(HWND window) {
     EnableWindow(GetDlgItem(window, IDC_NEW_CODE), !pm && IsDlgButtonChecked(window, IDC_AUTO) == BST_CHECKED);
     EnableWindow(GetDlgItem(window, IDC_LOCATOR), pm || IsDlgButtonChecked(window, IDC_SHOW_LOCATOR) == BST_CHECKED);
 }
-static HBITMAP render_pm(Resolution r, const wchar_t *call, const wchar_t *locator) {
+static HBITMAP render_pattern(Resolution r, const wchar_t *call, const wchar_t *locator, int mode) {
     BITMAPINFO info = {0};
     info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     info.bmiHeader.biWidth = r.width;
@@ -195,7 +196,7 @@ static HBITMAP render_pm(Resolution r, const wchar_t *call, const wchar_t *locat
     info.bmiHeader.biCompression = BI_RGB;
     void *pixels;
     HBITMAP bitmap = CreateDIBSection(NULL, &info, DIB_RGB_COLORS, &pixels, NULL, 0);
-    if (bitmap && !pm5544_render(pixels, r.width, r.height, call, locator)) {
+    if (bitmap && !(mode==IMAGE_FUBK ? fubk_render : pm5544_render)(pixels, r.width, r.height, call, locator)) {
         DeleteObject(bitmap); return NULL;
     }
     return bitmap;
@@ -348,9 +349,9 @@ static void output_udp(HWND window) {
     if (genius_level!=2) return;
     wchar_t call[25],locator[LOCATOR_MAX_LENGTH+1],code[5];
     read_text(window,IDC_CALL,call,25); read_text(window,IDC_LOCATOR,locator,LOCATOR_MAX_LENGTH+1); read_text(window,IDC_CODE,code,5);
-    BOOL pm=pm_mode(window), show=pm||IsDlgButtonChecked(window,IDC_SHOW_LOCATOR)==BST_CHECKED;
-    if (!valid_call(call) || ((show||locator[0])&&!valid_locator(locator)) || (!pm&&!valid_code(code))) {
-        error(window,L"Vul eerst een geldige roepnaam en locator in. De contestcode moet vier cijfers bevatten, niet alle vier gelijk en geen oplopende of aflopende reeks."); return;
+    BOOL pm=pattern_mode(window), show=pm||IsDlgButtonChecked(window,IDC_SHOW_LOCATOR)==BST_CHECKED;
+    if (!valid_call(call) || ((show||locator[0])&&!(selected_mode(window)==IMAGE_FUBK?valid_fubk_locator(locator):valid_locator(locator))) || (!pm&&!valid_code(code))) {
+        error(window,L"Vul eerst een geldige roepnaam en locator in (FUBK: minimaal 6 locatortekens). De contestcode moet vier cijfers bevatten, niet alle vier gelijk en geen oplopende of aflopende reeks."); return;
     }
     UdpDialog d={0}; d.size=resolution(window);
     const char *invalid=datv_validate(udp_settings.video,d.size.width,d.size.height);
@@ -358,7 +359,7 @@ static void output_udp(HWND window) {
     int band=(int)SendDlgItemMessageW(window,IDC_BAND,CB_GETCURSEL,0,0);
     if (band<0 || band>10) return;
     WideCharToMultiByte(CP_UTF8,0,call,-1,d.call,sizeof(d.call),NULL,NULL);
-    d.bitmap=pm?render_pm(d.size,call,locator):render(d.size.width,d.size.height,call,code,locator,show,bands[band],
+    d.bitmap=pm?render_pattern(d.size,call,locator,selected_mode(window)):render(d.size.width,d.size.height,call,code,locator,show,bands[band],
         IsDlgButtonChecked(window,IDC_INVERSE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_SHOW_SUM)==BST_CHECKED,
         IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_BLUE_YELLOW)==BST_CHECKED,
         IsDlgButtonChecked(window, IDC_EBU_TOP) == BST_CHECKED,
@@ -447,9 +448,9 @@ static void export_ts(HWND window) {
     if (genius_level!=2) return;
     wchar_t call[25],locator[LOCATOR_MAX_LENGTH+1],code[5],safe[25];
     read_text(window,IDC_CALL,call,25); read_text(window,IDC_LOCATOR,locator,LOCATOR_MAX_LENGTH+1); read_text(window,IDC_CODE,code,5);
-    BOOL pm=pm_mode(window), show=pm||IsDlgButtonChecked(window,IDC_SHOW_LOCATOR)==BST_CHECKED;
-    if (!valid_call(call) || ((show||locator[0])&&!valid_locator(locator)) || (!pm&&!valid_code(code))) {
-        error(window,L"Vul eerst een geldige roepnaam en locator in. De contestcode moet vier cijfers bevatten, niet alle vier gelijk en geen oplopende of aflopende reeks."); return;
+    BOOL pm=pattern_mode(window), show=pm||IsDlgButtonChecked(window,IDC_SHOW_LOCATOR)==BST_CHECKED;
+    if (!valid_call(call) || ((show||locator[0])&&!(selected_mode(window)==IMAGE_FUBK?valid_fubk_locator(locator):valid_locator(locator))) || (!pm&&!valid_code(code))) {
+        error(window,L"Vul eerst een geldige roepnaam en locator in (FUBK: minimaal 6 locatortekens). De contestcode moet vier cijfers bevatten, niet alle vier gelijk en geen oplopende of aflopende reeks."); return;
     }
     Resolution r=resolution(window);
     const char *invalid=datv_validate(ts_settings,r.width,r.height);
@@ -459,7 +460,7 @@ static void export_ts(HWND window) {
     TsJob job={0}; job.settings=ts_settings;
     WideCharToMultiByte(CP_UTF8,0,call,-1,job.call,25,NULL,NULL);
     filename_call(safe,call);
-    swprintf(job.path,MAX_PATH,L"%ls-%ls-%dx%d-%dbps.ts",safe,pm?L"PM5544":code,r.width,r.height,ts_settings.bitrate);
+    swprintf(job.path,MAX_PATH,L"%ls-%ls-%dx%d-%dbps.ts",safe,pm?image_modes[selected_mode(window)]:code,r.width,r.height,ts_settings.bitrate);
     OPENFILENAMEW picker={0}; picker.lStructSize=sizeof(picker); picker.hwndOwner=window;
     picker.lpstrFilter=L"MPEG-TS (*.ts)\0*.ts\0\0"; picker.lpstrFile=job.path; picker.nMaxFile=MAX_PATH;
     picker.lpstrTitle=L"TS opslaan"; picker.lpstrDefExt=L"ts";
@@ -471,7 +472,7 @@ static void export_ts(HWND window) {
     job.overwrite=GetFileAttributesW(job.path)!=INVALID_FILE_ATTRIBUTES;
     int band=(int)SendDlgItemMessageW(window,IDC_BAND,CB_GETCURSEL,0,0);
     if (band<0 || band>10) return;
-    job.bitmap=pm?render_pm(r,call,locator):render(r.width,r.height,call,code,locator,show,bands[band],
+    job.bitmap=pm?render_pattern(r,call,locator,selected_mode(window)):render(r.width,r.height,call,code,locator,show,bands[band],
         IsDlgButtonChecked(window,IDC_INVERSE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_SHOW_SUM)==BST_CHECKED,
         IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_BLUE_YELLOW)==BST_CHECKED,
         IsDlgButtonChecked(window, IDC_EBU_TOP) == BST_CHECKED,
@@ -493,12 +494,12 @@ static void generate(HWND window, BOOL choose_path) {
     read_text(window, IDC_CALL, call, 25);
     read_text(window, IDC_LOCATOR, locator, LOCATOR_MAX_LENGTH+1);
     read_text(window, IDC_CODE, code, 5);
-    int pm = pm_mode(window);
+    int pm = pattern_mode(window);
     int show = pm || IsDlgButtonChecked(window, IDC_SHOW_LOCATOR) == BST_CHECKED;
     int inverse = IsDlgButtonChecked(window, IDC_INVERSE) == BST_CHECKED;
     int blue_yellow = IsDlgButtonChecked(window, IDC_BLUE_YELLOW) == BST_CHECKED;
     if (!valid_call(call)) { error(window, L"Vul een roepnaam in met letters en cijfers, eventueel met / (3 tot 24 tekens)."); return; }
-    if ((show || locator[0]) && !valid_locator(locator)) { error(window, L"Vul een geldige Maidenheadlocator in, bijvoorbeeld JO21QK (4, 6, 8, 10 of 12 tekens)."); return; }
+    if ((show || locator[0]) && !(selected_mode(window)==IMAGE_FUBK?valid_fubk_locator(locator):valid_locator(locator))) { error(window, L"Vul een geldige Maidenheadlocator in, bijvoorbeeld JO21QK (4, 6, 8, 10 of 12 tekens; FUBK minimaal 6)."); return; }
     if (!pm && !valid_code(code)) { error(window, L"Vul vier cijfers in; niet alle vier gelijk en geen oplopende of aflopende reeks (zoals 4567 of 5432)."); return; }
     int band = (int)SendDlgItemMessageW(window, IDC_BAND, CB_GETCURSEL, 0, 0);
     if (band < 0 || band > 10) return;
@@ -507,7 +508,7 @@ static void generate(HWND window, BOOL choose_path) {
     wchar_t short_locator[7], locator_suffix[8] = L"";
     filename_locator(short_locator, locator);
     if (short_locator[0]) swprintf(locator_suffix, 8, L"-%ls", short_locator);
-    if (pm) swprintf(filename, 100, L"%ls%ls-PM5544-%dx%d.jpg", safe_call, locator_suffix, r.width, r.height);
+    if (pm) swprintf(filename, 100, L"%ls%ls-%ls-%dx%d.jpg", safe_call, locator_suffix, image_modes[selected_mode(window)], r.width, r.height);
     else swprintf(filename, 100, L"%ls%ls-%ls-%ls-%dx%d%ls%ls.jpg", safe_call, locator_suffix, code, band_files[band], r.width, r.height, contest_color_suffix(blue_yellow), inverse ? L"-inverse" : L"");
     DWORD length = GetModuleFileNameW(NULL, path, MAX_PATH);
     if (!length || length >= MAX_PATH) { error(window, L"Het pad naar het programma is te lang."); return; }
@@ -550,7 +551,7 @@ static void generate(HWND window, BOOL choose_path) {
     if (!GetTempFileNameW(directory, L"atv", 0, temporary)) {
         error(window, L"Kan niet schrijven in de gekozen map. Controleer de schrijfrechten of kies een andere map via Exporteren naar..."); return;
     }
-    HBITMAP bitmap = pm ? render_pm(r, call, locator) : render(r.width, r.height, call, code, locator, show, bands[band], inverse,
+    HBITMAP bitmap = pm ? render_pattern(r, call, locator,selected_mode(window)) : render(r.width, r.height, call, code, locator, show, bands[band], inverse,
         IsDlgButtonChecked(window, IDC_SHOW_SUM) == BST_CHECKED,
         IsDlgButtonChecked(window, IDC_TOP_CODE) == BST_CHECKED,
         IsDlgButtonChecked(window, IDC_BLUE_YELLOW) == BST_CHECKED,
@@ -576,7 +577,7 @@ static void preview(HWND window, DRAWITEMSTRUCT *item) {
     Resolution r = resolution(window);
     int band = (int)SendDlgItemMessageW(window, IDC_BAND, CB_GETCURSEL, 0, 0);
     if (band < 0 || band > 10) band = 3;
-    HBITMAP bitmap = pm_mode(window) ? render_pm(r, call, locator) : render(r.width, r.height, call, code, locator,
+    HBITMAP bitmap = pattern_mode(window) ? render_pattern(r, call, locator,selected_mode(window)) : render(r.width, r.height, call, code, locator,
         IsDlgButtonChecked(window, IDC_SHOW_LOCATOR) == BST_CHECKED, bands[band],
         IsDlgButtonChecked(window, IDC_INVERSE) == BST_CHECKED,
         IsDlgButtonChecked(window, IDC_SHOW_SUM) == BST_CHECKED,
@@ -690,8 +691,8 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
         ready = 0;
         ts_settings=datv_defaults(); udp_settings=datv_udp_defaults(); genius_level=1;
         contest_square[0] = 0;
-        SendDlgItemMessageW(window, IDC_MODE, CB_ADDSTRING, 0, (LPARAM)L"Contest");
-        SendDlgItemMessageW(window, IDC_MODE, CB_ADDSTRING, 0, (LPARAM)L"PM5544");
+        for (int i=0; i<IMAGE_MODE_COUNT; ++i)
+            SendDlgItemMessageW(window, IDC_MODE, CB_ADDSTRING, 0, (LPARAM)image_modes[i]);
         SendDlgItemMessageW(window, IDC_MODE, CB_SETCURSEL, 0, 0);
         SendDlgItemMessageW(window, IDC_CALL, EM_SETLIMITTEXT, 24, 0);
         SendDlgItemMessageW(window, IDC_LOCATOR, EM_SETLIMITTEXT, LOCATOR_MAX_LENGTH, 0);
@@ -795,10 +796,18 @@ static int smoke_test(const wchar_t *directory) {
     for (int aspect=0; aspect<2; ++aspect) for (int i=0; i<RESOLUTION_COUNT; ++i) for (int text=0; text<2; ++text) {
         Resolution r = (aspect ? resolutions169 : resolutions43)[i];
         if (swprintf(path, MAX_PATH, L"%ls\\pm-%dx%d-%d.jpg", directory, r.width, r.height, text) < 0) return 2;
-        HBITMAP bitmap = render_pm(r, text ? L"PE1ITR/P" : L"", text ? L"JO21QK86DV" : L"");
+        HBITMAP bitmap = render_pattern(r, text ? L"PE1ITR/P" : L"", text ? L"JO21QK86DV" : L"", IMAGE_PM5544);
         if (!bitmap) return 6;
         HRESULT hr = save_jpeg(bitmap, path);
         DeleteObject(bitmap);
+        if (FAILED(hr)) return 7;
+    }
+    for (int aspect=0; aspect<2; ++aspect) for (int i=0; i<RESOLUTION_COUNT; ++i) for (int text=0; text<3; ++text) {
+        Resolution r = (aspect ? resolutions169 : resolutions43)[i];
+        if (swprintf(path, MAX_PATH, L"%ls\\fubk-%dx%d-%d.jpg", directory, r.width, r.height, text) < 0) return 2;
+        HBITMAP bitmap = render_pattern(r, text ? L"PE1ITR/P" : L"", text==2 ? L"JO21QK" : text ? L"JO21QK86DV" : L"", IMAGE_FUBK);
+        if (!bitmap) return 6;
+        HRESULT hr = save_jpeg(bitmap, path); DeleteObject(bitmap);
         if (FAILED(hr)) return 7;
     }
     return 0;
@@ -813,7 +822,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
     int result;
     int argc=0;
     LPWSTR *argv=CommandLineToArgvW(GetCommandLineW(),&argc);
-    if (argv && argc>=3 && (!wcscmp(argv[1],L"--ts-test") || !wcscmp(argv[1],L"--ts-ebu-test"))) {
+    if (argv && argc>=3 && (!wcscmp(argv[1],L"--ts-test") || !wcscmp(argv[1],L"--ts-ebu-test") || !wcscmp(argv[1],L"--ts-fubk-test"))) {
         char text[6][32]; const char *values[6];
         result=1;
         if (argc<=9) {
@@ -827,7 +836,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
             DWORD length=GetFullPathNameW(argv[2],MAX_PATH,job.path,NULL);
             if (converted && length && length<MAX_PATH && datv_test_options(argc-3,values,&job.settings,&w,&h)) {
                 strcpy(job.call,"PE1ITR");
-                job.bitmap=render(w,h,L"PE1ITR",L"1957",L"JO21QK",TRUE,L"436 MHz",FALSE,TRUE,TRUE,FALSE, !wcscmp(argv[1],L"--ts-ebu-test"), !wcscmp(argv[1],L"--ts-ebu-test"));
+                job.bitmap=!wcscmp(argv[1],L"--ts-fubk-test") ? render_pattern((Resolution){w,h},L"PE1ITR",L"JO21QK86DV",IMAGE_FUBK) : render(w,h,L"PE1ITR",L"1957",L"JO21QK",TRUE,L"436 MHz",FALSE,TRUE,TRUE,FALSE, !wcscmp(argv[1],L"--ts-ebu-test"), !wcscmp(argv[1],L"--ts-ebu-test"));
                 if (job.bitmap) { ts_worker(&job); DeleteObject(job.bitmap); result=job.ok?0:1; }
             }
         }

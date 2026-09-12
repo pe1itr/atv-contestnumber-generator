@@ -18,13 +18,15 @@ static const unsigned char glyphs[][7] = {
     {17,17,17,17,17,10,4}, {17,17,17,21,21,21,10}, {17,17,10,4,10,17,17},
     {17,17,10,4,4,4,4}, {31,1,2,4,8,16,31}, {1,2,2,4,8,8,16}
 };
-static uint32_t *backgrounds[2];
+static uint32_t *backgrounds[4];
 
-static uint32_t *decode(int wide) {
-    if (backgrounds[wide]) return backgrounds[wide];
-    size_t count = wide ? 1280u*720u : 720u*576u;
-    size_t length = wide ? sizeof(pm169) : sizeof(pm43);
-    const unsigned char *data = wide ? pm169 : pm43;
+static uint32_t *decode(int index) {
+    if (backgrounds[index]) return backgrounds[index];
+    const size_t counts[] = {720u*576u, 1280u*720u, 768u*576u, 2000u*1125u};
+    const size_t lengths[] = {sizeof(pm43), sizeof(pm169), sizeof(fubk43), sizeof(fubk169)};
+    const unsigned char *const sources[] = {pm43, pm169, fubk43, fubk169};
+    size_t count = counts[index], length = lengths[index];
+    const unsigned char *data = sources[index];
     uint32_t *pixels = malloc(count*sizeof(*pixels));
     if (!pixels) return NULL;
     size_t offset = 0;
@@ -35,20 +37,21 @@ static uint32_t *decode(int wide) {
         while (run--) pixels[offset++] = color;
     }
     if (offset != count) { free(pixels); return NULL; }
-    backgrounds[wide] = pixels;
+    backgrounds[index] = pixels;
     return pixels;
 }
 
 static void label(uint32_t *pixels, int width, int height, int source_width, int source_height,
-                  int left, int top, int right, int bottom, const wchar_t *text) {
+                  int left, int top, int right, int bottom, const wchar_t *text, int min_cells) {
     /* Keep a border inside the original black panel; never alter the surrounding pattern. */
     int x0 = (left+3)*width/source_width, x1 = (right-3)*width/source_width;
     int y0 = (top+4)*height/source_height, y1 = (bottom-4)*height/source_height;
     size_t length = wcslen(text);
     if (!length || length > 24) return;
     int cells = (int)length*6-1;
+    int fit_cells = cells>min_cells ? cells : min_cells;
     double scale = (double)(y1-y0)/7;
-    if (scale > (double)(x1-x0)/cells) scale = (double)(x1-x0)/cells;
+    if (scale > (double)(x1-x0)/fit_cells) scale = (double)(x1-x0)/fit_cells;
     int tw = (int)(cells*scale), th = (int)(7*scale);
     if (tw < 1 || y1 <= y0) return;
     if (th < 1) th = 1; /* Keep very long labels present even in tiny images. */
@@ -75,16 +78,40 @@ int pm5544_render(uint32_t *pixels, int width, int height,
     for (int y=0; y<height; ++y) for (int x=0; x<width; ++x)
         pixels[y*width+x] = source[(y*sh/height)*sw+x*sw/width];
     if (wide) {
-        label(pixels, width, height, sw, sh, 533,67,747,120, call);
-        label(pixels, width, height, sw, sh, 480,547,800,600, locator);
+        label(pixels, width, height, sw, sh, 533,67,747,120, call, 0);
+        label(pixels, width, height, sw, sh, 480,547,800,600, locator, 0);
     } else {
-        label(pixels, width, height, sw, sh, 279,51,441,95, call);
-        label(pixels, width, height, sw, sh, 237,439,483,482, locator);
+        label(pixels, width, height, sw, sh, 279,51,441,95, call, 0);
+        label(pixels, width, height, sw, sh, 237,439,483,482, locator, 0);
+    }
+    return 1;
+}
+
+int fubk_render(uint32_t *pixels, int width, int height,
+                const wchar_t *call, const wchar_t *locator) {
+    if (!pixels || width<=0 || height<=0) return 0;
+    int wide = width*3 != height*4;
+    int sw = wide ? 2000 : 768, sh = wide ? 1125 : 576;
+    uint32_t *source = decode(2+wide);
+    if (!source) return 0;
+    for (int y=0; y<height; ++y) for (int x=0; x<width; ++x)
+        pixels[y*width+x] = source[(y*sh/height)*sw+x*sw/width];
+    wchar_t short_locator[7] = {0};
+    for (int i=0; i<6 && locator[i]; ++i) short_locator[i]=locator[i];
+    int longest = (int)wcslen(call);
+    if (longest<6) longest=6;
+    int min_cells = longest*6-1;
+    /* Keep the central white divider and all surrounding test elements intact. */
+    if (wide) {
+        label(pixels,width,height,sw,sh,545,565,999,638,call,min_cells);
+        label(pixels,width,height,sw,sh,1002,565,1455,638,short_locator,min_cells);
+    } else {
+        label(pixels,width,height,sw,sh,240,290,382,327,call,min_cells);
+        label(pixels,width,height,sw,sh,386,290,528,327,short_locator,min_cells);
     }
     return 1;
 }
 
 void pm5544_cleanup(void) {
-    free(backgrounds[0]); free(backgrounds[1]);
-    backgrounds[0] = backgrounds[1] = NULL;
+    for (int i=0; i<4; ++i) { free(backgrounds[i]); backgrounds[i]=NULL; }
 }

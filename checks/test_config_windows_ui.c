@@ -38,7 +38,7 @@ int wmain(void) {
     wchar_t code[5];
     SetDlgItemTextW(w,IDC_LOCATOR,L"JO21QK99AA99"); GetDlgItemTextW(w,IDC_CODE,code,5); assert(!wcscmp(code,L"1957"));
     SetDlgItemTextW(w,IDC_LOCATOR,L"JO22QK99AA99"); GetDlgItemTextW(w,IDC_CODE,code,5); assert(wcscmp(code,L"1957"));
-    wanted.mode=1; wanted.automatic=0; wanted.genius=1; wanted.resolution=9;
+    wanted.mode=IMAGE_FUBK; wanted.automatic=0; wanted.genius=1; wanted.resolution=9;
     apply_config(w,&wanted); SendMessageW(w,WM_COMMAND,IDM_SAVE_CONFIG,0); DestroyWindow(w);
     w=open_app(); actual=capture_config(w); assert(!memcmp(&wanted,&actual,sizeof(wanted)));
     assert(GetMenuState(GetSubMenu(GetMenu(w),0),IDM_UDP,MF_BYCOMMAND)==(UINT)-1);

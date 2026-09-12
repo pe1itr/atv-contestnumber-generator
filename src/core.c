@@ -5,6 +5,9 @@
 #include <errno.h>
 #include <limits.h>
 
+const wchar_t *const image_modes[IMAGE_MODE_COUNT] = {L"Contest", L"PM5544", L"FUBK"};
+int valid_fubk_locator(const wchar_t *s) { return valid_locator(s) && wcslen(s)>=6; }
+
 DatvSettings datv_defaults(void) { return (DatvSettings){120000, 10, 5, 5}; }
 const int datv_bitrate_presets[DATV_BITRATE_PRESET_COUNT]={115196,123607};
 DatvUdpSettings datv_udp_defaults(void) {
@@ -189,7 +192,7 @@ typedef struct { const char *key; size_t offset, size; int min, max; } ConfigFie
 #define CONFIG_TEXT_FIELD(field) {#field, offsetof(AppConfig, field), sizeof(((AppConfig *)0)->field), 0, 0}
 static const ConfigField config_fields[]={
     CONFIG_TEXT_FIELD(call), CONFIG_TEXT_FIELD(locator), CONFIG_TEXT_FIELD(code),
-    CONFIG_INT_FIELD(mode,0,1), CONFIG_INT_FIELD(automatic,0,1), CONFIG_INT_FIELD(aspect,0,1),
+    CONFIG_INT_FIELD(mode,0,IMAGE_MODE_COUNT-1), CONFIG_INT_FIELD(automatic,0,1), CONFIG_INT_FIELD(aspect,0,1),
     CONFIG_INT_FIELD(resolution,0,RESOLUTION_COUNT-1), CONFIG_INT_FIELD(band,0,10),
     CONFIG_INT_FIELD(show,0,1), CONFIG_INT_FIELD(inverse,0,1), CONFIG_INT_FIELD(blue_yellow,0,1),
     CONFIG_INT_FIELD(ebu_top,0,1), CONFIG_INT_FIELD(ebu_bottom,0,1),

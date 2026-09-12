@@ -6,6 +6,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+enum { IMAGE_CONTEST, IMAGE_PM5544, IMAGE_FUBK, IMAGE_MODE_COUNT };
+extern const wchar_t *const image_modes[IMAGE_MODE_COUNT];
+int valid_fubk_locator(const wchar_t *s);
 #define CONFIG_FILENAME "atv-contestnummer.conf"
 typedef struct {
     char call[97], locator[49], code[17]; /* UTF-8 */

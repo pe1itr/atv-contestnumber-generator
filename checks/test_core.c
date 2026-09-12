@@ -4,6 +4,10 @@
 #include <stdio.h>
 #include <string.h>
 int main(void) {
+    assert(!valid_fubk_locator(L"JO21"));
+    assert(valid_fubk_locator(L"JO21QK"));
+    assert(valid_fubk_locator(L"JO21QK86DV12"));
+    assert(!valid_fubk_locator(L"JO21ZZ"));
     DatvUdpSettings udp=datv_udp_defaults();
     assert(udp.port==10000 && udp.video.fps==10 && udp.video.gop==2);
     DatvUdpStatus status={0}; char message[512];

@@ -169,3 +169,19 @@ De stroken werken in het voorbeeld, JPG en DATV (TS/UDP), en worden via Config
 mee opgeslagen. In PM5544-modus zijn deze opties uitgeschakeld.
 Voor een TS-rendercontrole met beide stroken gebruik je `--ts-ebu-test` met
 dezelfde argumenten als `--ts-test`.
+
+## FUBK
+
+Kies **FUBK** bij **Beeldtype** voor het bijbehorende bronbeeld in 4:3 of 16:9.
+In de zwarte middenbalk staat links de roepnaam en rechts de locator, met het
+zelfde ingebouwde bloklettertype als PM5544. FUBK vereist een geldige locator
+van minimaal zes tekens en toont de eerste zes; een langere invoer blijft bewaard.
+De contestopties zijn bij FUBK uitgeschakeld. Het voorbeeld, JPG-export en DATV
+(TS/UDP) gebruiken hetzelfde beeld. Bestandsnamen bevatten `FUBK`; de keuze
+wordt via **Config → Huidige instellingen opslaan** bewaard.
+
+De aangeleverde bestanden `assets/FuBK-Testbild.png` en `assets/FuBK_wide.jpg`
+worden tijdens bouwen ingebouwd, zonder losse runtime-bestanden. De plaatsing
+volgt het [WDR-voorbeeld](https://pe1itr.com/tv-dx/vhf-h/VHFCHE11_WDR1%20teutoburger%20wald.htm).
+Met `--ts-fubk-test` en dezelfde argumenten als `--ts-test` maak je een TS-test
+met het FUBK-beeld.
