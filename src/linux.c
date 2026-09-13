@@ -441,7 +441,7 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     }
     d.presets=bitrate_presets(d.fields[2]);
     gtk_grid_attach(GTK_GRID(grid),d.presets,2,2,1,1);
-    GtkWidget *note=gtk_label_new("Start zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.");
+    GtkWidget *note=gtk_label_new("Tip voor de contest: gebruik 4 fps en GOP 2.\n\nStart zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.");
     gtk_grid_attach(GTK_GRID(grid),note,0,5,3,1);
     d.status=gtk_label_new("Vul het IP-adres van Portsdown in en kies Start.");
     gtk_label_set_line_wrap(GTK_LABEL(d.status),TRUE); gtk_label_set_max_width_chars(GTK_LABEL(d.status),65);

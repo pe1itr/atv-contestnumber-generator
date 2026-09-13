@@ -49,7 +49,7 @@ FONT 9, "Segoe UI"
 BEGIN
     LTEXT "TS maken en bitrate controleren...", -1, 12, 16, 236, 16
 END
-IDD_UDP DIALOGEX 0, 0, 447, 240
+IDD_UDP DIALOGEX 0, 0, 447, 260
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "DATV: UDP-uitvoer"
 FONT 9, "Segoe UI"
@@ -66,13 +66,14 @@ BEGIN
     EDITTEXT IDC_UDP_FPS, 210, 83, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT "GOP (1-250 beelden; 1 = alleen IDR)", -1, 12, 110, 192, 12
     EDITTEXT IDC_UDP_GOP, 210, 107, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "Start zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.", -1, 12, 132, 311, 28
-    LTEXT "Vul het IP-adres van Portsdown in en kies Start.", IDC_UDP_STATUS, 12, 165, 423, 47
-    DEFPUSHBUTTON "Start", IDC_UDP_START, 12, 216, 50, 16
-    PUSHBUTTON "Stop", IDC_UDP_STOP, 68, 216, 50, 16
-    PUSHBUTTON "Toepassen en sluiten", IDC_UDP_APPLY, 124, 216, 123, 16
-    PUSHBUTTON "Beeld &controleren", IDC_UDP_PREVIEW, 253, 216, 110, 16
-    PUSHBUTTON "Sluiten", IDCANCEL, 369, 216, 66, 16
+    LTEXT "Tip voor de contest: gebruik 4 fps en GOP 2.", -1, 12, 132, 423, 12
+    LTEXT "Start zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.", -1, 12, 152, 311, 28
+    LTEXT "Vul het IP-adres van Portsdown in en kies Start.", IDC_UDP_STATUS, 12, 185, 423, 47
+    DEFPUSHBUTTON "Start", IDC_UDP_START, 12, 236, 50, 16
+    PUSHBUTTON "Stop", IDC_UDP_STOP, 68, 236, 50, 16
+    PUSHBUTTON "Toepassen en sluiten", IDC_UDP_APPLY, 124, 236, 123, 16
+    PUSHBUTTON "Beeld &controleren", IDC_UDP_PREVIEW, 253, 236, 110, 16
+    PUSHBUTTON "Sluiten", IDCANCEL, 369, 236, 66, 16
 END
 IDD_MAIN DIALOGEX 0, 0, 460, 327
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
