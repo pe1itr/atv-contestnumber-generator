@@ -7,16 +7,29 @@ static wchar_t target[MAX_PATH];
 static SOCKET receiver;
 static int port, received;
 static ULONGLONG udp_deadline;
-static void check_presets(HWND window,int field) {
-    const int expected[]={115196,123607};
-    for (int i=0;i<2;++i) {
-        assert(GetDlgItemInt(window,IDC_BITRATE_PRESET1+i,NULL,FALSE)==(UINT)expected[i]);
-        SendMessageW(window,WM_COMMAND,IDC_BITRATE_PRESET1+i,0);
-        assert(GetDlgItemInt(window,field,NULL,FALSE)==(UINT)expected[i]);
-    }
-    SetDlgItemInt(window,field,119999,FALSE);
-    assert(GetDlgItemInt(window,field,NULL,FALSE)==119999);
-    SendMessageW(window,WM_COMMAND,field==IDC_TS_BITRATE?IDC_BITRATE_PRESET2:IDC_BITRATE_PRESET1,0);
+static void select_dvb(HWND window,int id,int index) {
+    SendDlgItemMessageW(window,id,CB_SETCURSEL,index,0);
+    SendMessageW(window,WM_COMMAND,MAKEWPARAM(id,CBN_SELCHANGE),0);
+}
+static void check_dvb(HWND window,int field) {
+    assert(GetWindowLongPtrW(GetDlgItem(window,field),GWL_STYLE)&ES_READONLY);
+    select_dvb(window,IDC_DVB_SR,2); select_dvb(window,IDC_DVB_FEC,0);
+    select_dvb(window,IDC_DVB_SYSTEM,DVB_S);
+    assert(GetDlgItemInt(window,field,NULL,FALSE)==115196);
+    select_dvb(window,IDC_DVB_SYSTEM,DVB_S2);
+    assert(IsWindowEnabled(GetDlgItem(window,IDC_DVB_PILOTS)));
+    CheckDlgButton(window,IDC_DVB_PILOTS,BST_CHECKED);
+    SendMessageW(window,WM_COMMAND,MAKEWPARAM(IDC_DVB_PILOTS,BN_CLICKED),0);
+    assert(GetDlgItemInt(window,field,NULL,FALSE)==120665);
+    CheckDlgButton(window,IDC_DVB_PILOTS,BST_UNCHECKED);
+    SendMessageW(window,WM_COMMAND,MAKEWPARAM(IDC_DVB_PILOTS,BN_CLICKED),0);
+    assert(GetDlgItemInt(window,field,NULL,FALSE)==123607);
+    select_dvb(window,IDC_DVB_SYSTEM,DVB_T);
+    select_dvb(window,IDC_DVB_BW,0); select_dvb(window,IDC_DVB_GUARD,0);
+    assert(!IsWindowEnabled(GetDlgItem(window,IDC_DVB_SR)) && !IsWindowEnabled(GetDlgItem(window,IDC_DVB_PILOTS)));
+    assert(IsWindowEnabled(GetDlgItem(window,IDC_DVB_BW)) && IsWindowEnabled(GetDlgItem(window,IDC_DVB_GUARD)));
+    assert(GetDlgItemInt(window,field,NULL,FALSE)==103676);
+    select_dvb(window,IDC_DVB_SYSTEM,field==IDC_TS_BITRATE?DVB_S2:DVB_S);
 }
 static void receive_udp(void) {
     char bytes[2048]; int n;
@@ -30,7 +43,7 @@ static BOOL CALLBACK drive_window(HWND window,LPARAM unused) {
         assert(GetTickCount64()<udp_deadline);
         wchar_t status[512]; GetDlgItemTextW(window,IDC_UDP_STATUS,status,512);
         if (stage==10) {
-            check_presets(window,IDC_UDP_BITRATE);
+            check_dvb(window,IDC_UDP_BITRATE);
             assert(GetDlgItemInt(window,IDC_UDP_PORT,NULL,FALSE)==10000);
             SetDlgItemTextW(window,IDC_UDP_IP,L"999.1.2.3"); stage=11; PostMessageW(window,WM_COMMAND,IDC_UDP_START,0);
         } else if (stage==11) {
@@ -40,8 +53,8 @@ static BOOL CALLBACK drive_window(HWND window,LPARAM unused) {
             receive_udp();
             if (received>=4) {
                 assert(wcsstr(status,L"UDP-uitvoer actief")); assert(!IsWindowEnabled(GetDlgItem(window,IDC_UDP_IP)));
-                assert(!IsWindowEnabled(GetDlgItem(window,IDC_BITRATE_PRESET1)));
-                assert(!IsWindowEnabled(GetDlgItem(window,IDC_BITRATE_PRESET2)));
+                assert(!IsWindowEnabled(GetDlgItem(window,IDC_DVB_SYSTEM)));
+                assert(!IsWindowEnabled(GetDlgItem(window,IDC_DVB_FEC)));
                 stage=13; PostMessageW(window,WM_COMMAND,IDC_UDP_STOP,0);
             }
         } else if (stage==13 && wcsstr(status,L"UDP gestopt")) {
@@ -53,7 +66,7 @@ static BOOL CALLBACK drive_window(HWND window,LPARAM unused) {
     }
     if (stage==0 && !wcscmp(title,L"DATV: TS-proefbestand")) {
         SetDlgItemInt(window,IDC_TS_BITRATE,60000,FALSE);
-        check_presets(window,IDC_TS_BITRATE);
+        check_dvb(window,IDC_TS_BITRATE);
         SetDlgItemInt(window,IDC_TS_SECONDS,3,FALSE);
         SetDlgItemInt(window,IDC_TS_FPS,2,FALSE);
         SetDlgItemInt(window,IDC_TS_GOP,1,FALSE);

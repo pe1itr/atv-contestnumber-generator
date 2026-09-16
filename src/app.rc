@@ -23,24 +23,35 @@ BEGIN
         MENUITEM "OpenH264-licentie", IDM_CODEC_LICENSE
     END
 END
-IDD_TS DIALOGEX 0, 0, 400, 160
+IDD_TS DIALOGEX 0, 0, 447, 310
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "DATV: TS-proefbestand"
 FONT 9, "Segoe UI"
 BEGIN
-    LTEXT "TS-bitrate (bit/s, uit Portsdown)", -1, 12, 14, 185, 12
-    EDITTEXT IDC_TS_BITRATE, 208, 11, 68, 16, ES_NUMBER | ES_AUTOHSCROLL
-    PUSHBUTTON "", IDC_BITRATE_PRESET1, 282, 11, 50, 16
-    PUSHBUTTON "", IDC_BITRATE_PRESET2, 338, 11, 50, 16
+    LTEXT "Berekende TS-bitrate (bit/s)", -1, 12, 14, 185, 12
+    EDITTEXT IDC_TS_BITRATE, 210, 11, 68, 16, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT "Beeldduur (seconden, 1-60)", -1, 12, 38, 185, 12
-    EDITTEXT IDC_TS_SECONDS, 208, 35, 68, 16, ES_NUMBER | ES_AUTOHSCROLL
+    EDITTEXT IDC_TS_SECONDS, 210, 35, 68, 16, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT "Beelden per seconde (1-25)", -1, 12, 62, 185, 12
-    EDITTEXT IDC_TS_FPS, 208, 59, 68, 16, ES_NUMBER | ES_AUTOHSCROLL
+    EDITTEXT IDC_TS_FPS, 210, 59, 68, 16, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT "GOP (1-250 beelden; 1 = alleen IDR)", -1, 12, 86, 190, 12
-    EDITTEXT IDC_TS_GOP, 208, 83, 68, 16, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "Zonder audio. Service = roepnaam; ID = 1.\nHet bestand bevat ook 1 seconde aanloop voor de decoder.", -1, 12, 105, 264, 24
-    DEFPUSHBUTTON "Verder", IDOK, 250, 136, 65, 16
-    PUSHBUTTON "Annuleren", IDCANCEL, 323, 136, 65, 16
+    EDITTEXT IDC_TS_GOP, 210, 83, 68, 16, ES_NUMBER | ES_AUTOHSCROLL
+    LTEXT "Systeem (QPSK)", -1, 12, 113, 192, 12
+    COMBOBOX IDC_DVB_SYSTEM, 210, 110, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT "Symbol rate (DVB-S/S2)", -1, 12, 133, 192, 12
+    COMBOBOX IDC_DVB_SR, 210, 130, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT "SR/BW (Portsdown, DVB-T)", -1, 12, 153, 192, 12
+    COMBOBOX IDC_DVB_BW, 210, 150, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT "FEC", -1, 12, 173, 192, 12
+    COMBOBOX IDC_DVB_FEC, 210, 170, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT "Pilots (DVB-S2)", -1, 12, 193, 192, 12
+    CONTROL "Aan", IDC_DVB_PILOTS, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 210, 190, 113, 16
+    LTEXT "Guard interval (DVB-T, 2K)", -1, 12, 213, 192, 12
+    COMBOBOX IDC_DVB_GUARD, 210, 210, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT "DVB-S2: normale frames. DVB-T: SR/BW is bandbreedte in kHz.", -1, 12, 232, 410, 12
+    LTEXT "Zonder audio. Service = roepnaam; ID = 1.\nHet bestand bevat ook 1 seconde aanloop voor de decoder.", -1, 12, 255, 410, 24
+    DEFPUSHBUTTON "Verder", IDOK, 300, 286, 65, 16
+    PUSHBUTTON "Annuleren", IDCANCEL, 370, 286, 65, 16
 END
 IDD_TS_PROGRESS DIALOGEX 0, 0, 260, 45
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION
@@ -49,7 +60,7 @@ FONT 9, "Segoe UI"
 BEGIN
     LTEXT "TS maken en bitrate controleren...", -1, 12, 16, 236, 16
 END
-IDD_UDP DIALOGEX 0, 0, 447, 260
+IDD_UDP DIALOGEX 0, 0, 447, 396
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "DATV: UDP-uitvoer"
 FONT 9, "Segoe UI"
@@ -58,22 +69,33 @@ BEGIN
     EDITTEXT IDC_UDP_IP, 210, 11, 113, 16, ES_AUTOHSCROLL
     LTEXT "Poort", -1, 12, 38, 192, 12
     EDITTEXT IDC_UDP_PORT, 210, 35, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "TS-bitrate (bit/s, uit Portsdown)", -1, 12, 62, 192, 12
+    LTEXT "Berekende TS-bitrate (bit/s)", -1, 12, 62, 192, 12
     EDITTEXT IDC_UDP_BITRATE, 210, 59, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
-    PUSHBUTTON "", IDC_BITRATE_PRESET1, 329, 59, 50, 16
-    PUSHBUTTON "", IDC_BITRATE_PRESET2, 385, 59, 50, 16
     LTEXT "Beelden per seconde (1-25)", -1, 12, 86, 192, 12
     EDITTEXT IDC_UDP_FPS, 210, 83, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT "GOP (1-250 beelden; 1 = alleen IDR)", -1, 12, 110, 192, 12
     EDITTEXT IDC_UDP_GOP, 210, 107, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "Tip voor de contest: gebruik 4 fps en GOP 2.", -1, 12, 132, 423, 12
-    LTEXT "Start zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.", -1, 12, 152, 311, 28
-    LTEXT "Vul het IP-adres van Portsdown in en kies Start.", IDC_UDP_STATUS, 12, 185, 423, 47
-    DEFPUSHBUTTON "Start", IDC_UDP_START, 12, 236, 50, 16
-    PUSHBUTTON "Stop", IDC_UDP_STOP, 68, 236, 50, 16
-    PUSHBUTTON "Toepassen en sluiten", IDC_UDP_APPLY, 124, 236, 123, 16
-    PUSHBUTTON "Beeld &controleren", IDC_UDP_PREVIEW, 253, 236, 110, 16
-    PUSHBUTTON "Sluiten", IDCANCEL, 369, 236, 66, 16
+    LTEXT "Systeem (QPSK)", -1, 12, 133, 192, 12
+    COMBOBOX IDC_DVB_SYSTEM, 210, 130, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT "Symbol rate (DVB-S/S2)", -1, 12, 153, 192, 12
+    COMBOBOX IDC_DVB_SR, 210, 150, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT "SR/BW (Portsdown, DVB-T)", -1, 12, 173, 192, 12
+    COMBOBOX IDC_DVB_BW, 210, 170, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT "FEC", -1, 12, 193, 192, 12
+    COMBOBOX IDC_DVB_FEC, 210, 190, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT "Pilots (DVB-S2)", -1, 12, 213, 192, 12
+    CONTROL "Aan", IDC_DVB_PILOTS, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 210, 210, 113, 16
+    LTEXT "Guard interval (DVB-T, 2K)", -1, 12, 233, 192, 12
+    COMBOBOX IDC_DVB_GUARD, 210, 230, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT "DVB-S2: normale frames. DVB-T: SR/BW is bandbreedte in kHz.", -1, 12, 252, 410, 12
+    LTEXT "Tip voor de contest: gebruik 4 fps en GOP 2.", -1, 12, 270, 423, 12
+    LTEXT "Start zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.", -1, 12, 288, 423, 28
+    LTEXT "Vul het IP-adres van Portsdown in en kies Start.", IDC_UDP_STATUS, 12, 321, 423, 43
+    DEFPUSHBUTTON "Start", IDC_UDP_START, 12, 372, 50, 16
+    PUSHBUTTON "Stop", IDC_UDP_STOP, 68, 372, 50, 16
+    PUSHBUTTON "Toepassen en sluiten", IDC_UDP_APPLY, 124, 372, 123, 16
+    PUSHBUTTON "Beeld &controleren", IDC_UDP_PREVIEW, 253, 372, 110, 16
+    PUSHBUTTON "Sluiten", IDCANCEL, 369, 372, 66, 16
 END
 IDD_MAIN DIALOGEX 0, 0, 460, 327
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX

@@ -23,6 +23,7 @@ static IWICImagingFactory *factory;
 static int ready;
 static wchar_t contest_square[7];
 static DatvSettings ts_settings;
+static DvbSettings ts_dvb, udp_dvb;
 static DatvUdpSettings udp_settings;
 static int genius_level=1;
 
@@ -251,17 +252,7 @@ static void error(HWND window, const wchar_t *message) {
 static void ts_error(HWND window, const char *message) {
     wchar_t text[256]; MultiByteToWideChar(CP_UTF8,0,message,-1,text,256); error(window,text);
 }
-static void bitrate_presets_init(HWND window) {
-    for (int i=0;i<DATV_BITRATE_PRESET_COUNT;++i)
-        SetDlgItemInt(window,IDC_BITRATE_PRESET1+i,datv_bitrate_presets[i],FALSE);
-}
-static BOOL bitrate_preset_apply(HWND window,int id,int field) {
-    int index=id-IDC_BITRATE_PRESET1;
-    if (index<0 || index>=DATV_BITRATE_PRESET_COUNT) return FALSE;
-    if (IsWindowEnabled(GetDlgItem(window,field)))
-        SetDlgItemInt(window,field,datv_bitrate_presets[index],FALSE);
-    return TRUE;
-}
+#include "dvb_windows.h"
 typedef struct {
     HBITMAP bitmap;
     Resolution size;
@@ -282,8 +273,7 @@ static void udp_poll(HWND window,UdpDialog *d) {
     BOOL busy=status.state==DATV_PREPARING || status.state==DATV_RUNNING;
     const int fields[]={IDC_UDP_IP,IDC_UDP_PORT,IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP,IDC_UDP_START,IDC_UDP_APPLY,IDC_UDP_PREVIEW};
     for (int i=0;i<8;++i) EnableWindow(GetDlgItem(window,fields[i]),!busy);
-    for (int i=0;i<DATV_BITRATE_PRESET_COUNT;++i)
-        EnableWindow(GetDlgItem(window,IDC_BITRATE_PRESET1+i),!busy);
+    dvb_window_enable(window,!busy);
     EnableWindow(GetDlgItem(window,IDC_UDP_STOP),busy);
 }
 static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp) {
@@ -294,7 +284,7 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         SendDlgItemMessageW(window,IDC_UDP_IP,EM_SETLIMITTEXT,15,0);
         SetDlgItemInt(window,IDC_UDP_PORT,udp_settings.port,FALSE);
         SetDlgItemInt(window,IDC_UDP_BITRATE,udp_settings.video.bitrate,FALSE);
-        bitrate_presets_init(window);
+        dvb_window_init(window,IDC_UDP_BITRATE,udp_dvb);
         SetDlgItemInt(window,IDC_UDP_FPS,udp_settings.video.fps,FALSE);
         SetDlgItemInt(window,IDC_UDP_GOP,udp_settings.video.gop,FALSE);
         EnableWindow(GetDlgItem(window,IDC_UDP_STOP),FALSE);
@@ -302,7 +292,7 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         return TRUE;
     }
     if (message==WM_TIMER) { udp_poll(window,d); return TRUE; }
-    if (message==WM_COMMAND && bitrate_preset_apply(window,LOWORD(wp),IDC_UDP_BITRATE)) return TRUE;
+    if (message==WM_COMMAND && dvb_window_event(window,wp,IDC_UDP_BITRATE)) return TRUE;
     if (message==WM_CLOSE || (message==WM_COMMAND && LOWORD(wp)==IDCANCEL)) {
         KillTimer(window,1); datv_udp_destroy(d->stream); d->stream=NULL;
         EndDialog(window,0); return TRUE;
@@ -317,6 +307,8 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
             datv_udp_destroy(d->stream); d->stream=NULL;
         }
         DatvUdpSettings s=udp_settings;
+        DvbSettings radio=dvb_window_read(window);
+        SetDlgItemInt(window,IDC_UDP_BITRATE,dvb_bitrate(radio),FALSE);
         GetDlgItemTextA(window,IDC_UDP_IP,s.ip,sizeof(s.ip));
         char text[3][32]; const char *values[4];
         int fields[]={IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP};
@@ -325,14 +317,14 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         int w,h; BOOL valid=FALSE;
         s.port=(int)GetDlgItemInt(window,IDC_UDP_PORT,&valid,FALSE);
         if ((LOWORD(wp)!=IDC_UDP_PREVIEW && !valid) || !datv_test_options(4,values,&s.video,&w,&h)) {
-            udp_status_message(window,"Gebruik poort 1-65535, bitrate 48000-2000000 bit/s, 1-25 beelden/s en GOP 1-250."); return TRUE;
+            udp_status_message(window,"Gebruik poort 1-65535, bitrate 32000-2000000 bit/s, 1-25 beelden/s en GOP 1-250."); return TRUE;
         }
         DatvUdpSettings check=s;
         if (LOWORD(wp)==IDC_UDP_APPLY && !check.ip[0]) strcpy(check.ip,"127.0.0.1");
         const char *error=LOWORD(wp)==IDC_UDP_PREVIEW ? datv_validate(s.video,d->size.width,d->size.height) : datv_udp_validate(check,d->size.width,d->size.height);
         if (error) { udp_status_message(window,error); return TRUE; }
         if (LOWORD(wp)==IDC_UDP_PREVIEW) { quality_compare(window,d->bitmap,d->size,d->call,s.video); return TRUE; }
-        udp_settings=s;
+        udp_settings=s; udp_dvb=radio;
         if (LOWORD(wp)==IDC_UDP_APPLY) {
             KillTimer(window,1); EndDialog(window,0); return TRUE;
         }
@@ -426,24 +418,25 @@ static INT_PTR CALLBACK ts_progress(HWND window, UINT message, WPARAM wp, LPARAM
 }
 static INT_PTR CALLBACK ts_options(HWND window, UINT message, WPARAM wp, LPARAM lp) {
     (void)lp;
-    if (message==WM_COMMAND && bitrate_preset_apply(window,LOWORD(wp),IDC_TS_BITRATE)) return TRUE;
+    if (message==WM_COMMAND && dvb_window_event(window,wp,IDC_TS_BITRATE)) return TRUE;
     if (message==WM_INITDIALOG) {
-        bitrate_presets_init(window);
-        SetDlgItemInt(window,IDC_TS_BITRATE,ts_settings.bitrate,FALSE);
+        dvb_window_init(window,IDC_TS_BITRATE,ts_dvb);
         SetDlgItemInt(window,IDC_TS_SECONDS,ts_settings.seconds,FALSE);
         SetDlgItemInt(window,IDC_TS_FPS,ts_settings.fps,FALSE);
         SetDlgItemInt(window,IDC_TS_GOP,ts_settings.gop,FALSE);
         return TRUE;
     }
     if (message==WM_COMMAND && LOWORD(wp)==IDOK) {
+        DvbSettings radio=dvb_window_read(window);
+        SetDlgItemInt(window,IDC_TS_BITRATE,dvb_bitrate(radio),FALSE);
         const int ids[]={IDC_TS_BITRATE,IDC_TS_SECONDS,IDC_TS_FPS,IDC_TS_GOP};
         char text[4][32]; const char *values[4];
         for (int i=0; i<4; ++i) { GetDlgItemTextA(window,ids[i],text[i],32); values[i]=text[i]; }
         DatvSettings s; int w,h;
         if (!datv_test_options(4,values,&s,&w,&h)) {
-            error(window,L"Gebruik bitrate 48000-2000000 bit/s, duur 1-60 s, 1-25 beelden/s en GOP 1-250."); return TRUE;
+            error(window,L"Gebruik bitrate 32000-2000000 bit/s, duur 1-60 s, 1-25 beelden/s en GOP 1-250."); return TRUE;
         }
-        ts_settings=s; EndDialog(window,IDOK); return TRUE;
+        ts_settings=s; ts_dvb=radio; EndDialog(window,IDOK); return TRUE;
     }
     if (message==WM_CLOSE || (message==WM_COMMAND && LOWORD(wp)==IDCANCEL)) { EndDialog(window,IDCANCEL); return TRUE; }
     return FALSE;
@@ -644,7 +637,7 @@ static AppConfig capture_config(HWND window) {
     s.top_code=IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED;
     s.ebu_top=IsDlgButtonChecked(window,IDC_EBU_TOP)==BST_CHECKED;
     s.ebu_bottom=IsDlgButtonChecked(window,IDC_EBU_BOTTOM)==BST_CHECKED;
-    s.genius=genius_level; s.ts=ts_settings; s.udp=udp_settings; return s;
+    s.genius=genius_level; s.ts=ts_settings; s.udp=udp_settings; s.ts_dvb=ts_dvb; s.udp_dvb=udp_dvb; return s;
 }
 static void apply_config(HWND window,const AppConfig *s) {
     ready=0; wchar_t text[97];
@@ -667,7 +660,7 @@ static void apply_config(HWND window,const AppConfig *s) {
     contest_square[0]=0;
     read_text(window,IDC_LOCATOR,text,LOCATOR_MAX_LENGTH+1);
     locator_square_changed(contest_square,text);
-    ts_settings=s->ts; udp_settings=s->udp;
+    ts_settings=s->ts; udp_settings=s->udp; ts_dvb=s->ts_dvb; udp_dvb=s->udp_dvb;
     SendDlgItemMessageW(window,IDC_CODE,EM_SETREADONLY,s->automatic,0);
     update_mode(window); ready=1;
     SendMessageW(window,WM_COMMAND,s->genius==2?IDM_LEVEL2:IDM_LEVEL1,0);
@@ -694,6 +687,8 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
     case WM_INITDIALOG: {
         ready = 0;
         ts_settings=datv_defaults(); udp_settings=datv_udp_defaults(); genius_level=1;
+        ts_dvb=udp_dvb=dvb_defaults();
+        ts_settings.bitrate=udp_settings.video.bitrate=dvb_bitrate(ts_dvb);
         contest_square[0] = 0;
         for (int i=0; i<IMAGE_MODE_COUNT; ++i)
             SendDlgItemMessageW(window, IDC_MODE, CB_ADDSTRING, 0, (LPARAM)image_modes[image_mode_order[i]]);

@@ -5,7 +5,11 @@ static BOOL CALLBACK apply_udp(HWND window,LPARAM unused) {
     if (wcscmp(title,L"DATV: UDP-uitvoer")) return TRUE;
     SetDlgItemTextW(window,IDC_UDP_IP,L"192.168.1.50");
     SetDlgItemInt(window,IDC_UDP_PORT,12345,FALSE);
-    SetDlgItemInt(window,IDC_UDP_BITRATE,240000,FALSE);
+    SendDlgItemMessageW(window,IDC_DVB_SYSTEM,CB_SETCURSEL,DVB_T,0);
+    SendDlgItemMessageW(window,IDC_DVB_BW,CB_SETCURSEL,2,0);
+    SendDlgItemMessageW(window,IDC_DVB_FEC,CB_SETCURSEL,2,0);
+    SendDlgItemMessageW(window,IDC_DVB_GUARD,CB_SETCURSEL,1,0);
+    SendMessageW(window,WM_COMMAND,MAKEWPARAM(IDC_DVB_SYSTEM,CBN_SELCHANGE),0);
     SetDlgItemInt(window,IDC_UDP_FPS,12,FALSE); SetDlgItemInt(window,IDC_UDP_GOP,3,FALSE);
     PostMessageW(window,WM_COMMAND,IDC_UDP_APPLY,0); return TRUE;
 }
@@ -30,7 +34,8 @@ int wmain(void) {
     UINT_PTR timer=SetTimer(NULL,0,100,drive_timer); assert(timer);
     SendMessageW(w,WM_COMMAND,IDM_UDP,0); KillTimer(NULL,timer);
     assert(udp_settings.port==12345 && udp_settings.video.fps==12 && udp_settings.video.gop==3);
-    wanted.udp=udp_settings;
+    wanted.udp=udp_settings; wanted.udp_dvb=udp_dvb;
+    assert(wanted.udp_dvb.system==DVB_T && wanted.udp_dvb.bandwidth_khz==333 && wanted.udp_dvb.guard==1);
     SendMessageW(w,WM_COMMAND,IDM_SAVE_CONFIG,0); DestroyWindow(w);
     w=open_app(); AppConfig actual=capture_config(w); assert(!memcmp(&wanted,&actual,sizeof(wanted)));
     assert(GetMenuState(GetSubMenu(GetMenu(w),0),IDM_UDP,MF_BYCOMMAND)!=(UINT)-1);

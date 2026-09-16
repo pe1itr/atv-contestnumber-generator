@@ -43,6 +43,7 @@ const char *app_info_text(void) {
         "Kies File > Exporteren naar... om zelf een map en bestandsnaam te kiezen. "
         "Bij een bestaand bestand wordt gevraagd of je het wilt vervangen.\n\n"
         "Config > Genius level 2 toont File > Exporteer TS-proefbestand. "
+        "Kies DVB-S/S2/T, SR/BW, FEC en pilots of GI; de TS-bitrate wordt berekend (QPSK). "
         "Dit maakt H.264-video zonder audio met ingebouwde OpenH264. "
         "File > DATV UDP-uitvoer zendt het huidige beeld naar een IP-adres en poort. "
         "Start/Stop bedienen de uitzending; sluiten stopt ook. Beeld controleren toont het origineel naast het gecomprimeerde beeld zonder te zenden. "

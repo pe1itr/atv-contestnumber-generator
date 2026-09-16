@@ -1,0 +1,68 @@
+/* Shared DVB controls for file export and UDP, using the core calculator. */
+typedef struct {
+    GtkWidget *box, *system, *sr, *bw, *fec, *pilots, *guard, *bitrate;
+} DvbControls;
+static DvbSettings dvb_controls_read(DvbControls *d) {
+    DvbSettings s=dvb_defaults();
+    s.system=gtk_combo_box_get_active(GTK_COMBO_BOX(d->system));
+    s.symbol_rate=gtk_combo_box_get_active(GTK_COMBO_BOX(d->sr));
+    s.fec=gtk_combo_box_get_active(GTK_COMBO_BOX(d->fec));
+    s.guard=gtk_combo_box_get_active(GTK_COMBO_BOX(d->guard));
+    s.pilots=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(d->pilots));
+    int bw=gtk_combo_box_get_active(GTK_COMBO_BOX(d->bw));
+    s.bandwidth_khz=bw>=0 && bw<DVB_BANDWIDTH_COUNT?dvb_bandwidths[bw]:0;
+    return s;
+}
+static void dvb_controls_changed(GtkWidget *widget,gpointer data) {
+    (void)widget; DvbControls *d=data;
+    DvbSettings s=dvb_controls_read(d);
+    gtk_widget_set_sensitive(d->sr,s.system!=DVB_T);
+    gtk_widget_set_sensitive(d->bw,s.system==DVB_T);
+    gtk_widget_set_sensitive(d->guard,s.system==DVB_T);
+    gtk_widget_set_sensitive(d->pilots,s.system==DVB_S2);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(d->bitrate),dvb_bitrate(s));
+}
+static void dvb_controls_init(DvbControls *d,GtkWidget *bitrate,DvbSettings s) {
+    d->bitrate=bitrate; d->box=gtk_grid_new();
+    gtk_grid_set_row_spacing(GTK_GRID(d->box),6);
+    gtk_grid_set_column_spacing(GTK_GRID(d->box),12);
+    d->system=gtk_combo_box_text_new(); d->sr=gtk_combo_box_text_new();
+    d->bw=gtk_combo_box_text_new(); d->fec=gtk_combo_box_text_new();
+    d->guard=gtk_combo_box_text_new(); d->pilots=gtk_check_button_new_with_label("Aan");
+    const wchar_t *const *names[]={dvb_system_names,dvb_fec_names,dvb_guard_names};
+    GtkWidget *combos[]={d->system,d->fec,d->guard};
+    const int counts[]={DVB_SYSTEM_COUNT,DVB_FEC_COUNT,DVB_GUARD_COUNT};
+    for (int n=0;n<3;++n) for (int i=0;i<counts[n];++i) {
+        char *text=utf8(names[n][i]);
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combos[n]),text); g_free(text);
+    }
+    for (int i=0;i<DVB_SYMBOL_RATE_COUNT;++i) {
+        char text[24]; g_snprintf(text,sizeof(text),"%d ksym/s",dvb_symbol_rates[i]);
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(d->sr),text);
+    }
+    int bw=0;
+    for (int i=0;i<DVB_BANDWIDTH_COUNT;++i) {
+        char text[24]; g_snprintf(text,sizeof(text),"%dk",dvb_bandwidths[i]);
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(d->bw),text);
+        if (s.bandwidth_khz==dvb_bandwidths[i]) bw=i;
+    }
+    gtk_combo_box_set_active(GTK_COMBO_BOX(d->system),s.system);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(d->sr),s.symbol_rate);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(d->bw),bw);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(d->fec),s.fec);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(d->guard),s.guard);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(d->pilots),s.pilots);
+    GtkWidget *fields[]={d->system,d->sr,d->bw,d->fec,d->pilots,d->guard};
+    const char *labels[]={"Systeem (QPSK)","Symbol rate (DVB-S/S2)","SR/BW (Portsdown, DVB-T)","FEC","Pilots (DVB-S2)","Guard interval (DVB-T, 2K)"};
+    for (int i=0;i<6;++i) {
+        GtkWidget *label=gtk_label_new(labels[i]); gtk_label_set_xalign(GTK_LABEL(label),0);
+        gtk_grid_attach(GTK_GRID(d->box),label,0,i,1,1);
+        gtk_grid_attach(GTK_GRID(d->box),fields[i],1,i,1,1);
+        g_signal_connect(fields[i],i==4?"toggled":"changed",G_CALLBACK(dvb_controls_changed),d);
+    }
+    gtk_grid_attach(GTK_GRID(d->box),gtk_label_new("DVB-S2: normale frames. DVB-T: SR/BW is bandbreedte in kHz."),0,6,2,1);
+    gtk_spin_button_set_range(GTK_SPIN_BUTTON(bitrate),0,2000000);
+    gtk_editable_set_editable(GTK_EDITABLE(bitrate),FALSE);
+    gtk_widget_set_sensitive(bitrate,FALSE);
+    dvb_controls_changed(NULL,d);
+}

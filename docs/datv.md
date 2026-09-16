@@ -5,9 +5,9 @@
 1. Vul de roepnaam, locator en code in en kies een resolutie tot **640 × 480**.
 2. Kies **Config → Genius level 2**. Standaard start het programma op level 1.
 3. Kies **File → Exporteer TS-proefbestand...**.
-4. Vul de **totale TS-bitrate in bit/s** in die Portsdown opgeeft. Dit is niet de
-   symboolsnelheid en niet alleen de videobitrate. `60000` betekent 60 kbit/s;
-   neem voor je eigen opstelling de daadwerkelijke Portsdown-waarde over.
+4. Kies **DVB-S, DVB-S2 of DVB-T**, SR/BW, FEC en eventueel pilots of GI.
+   De **totale TS-bitrate in bit/s** wordt automatisch berekend. Dit is niet
+   alleen de videobitrate. Zie [de berekening](dvb-bitrate.md).
 5. Stel beeldduur, beelden per seconde en GOP-lengte in. **GOP 1** maakt ieder
    beeld een zelfstandig IDR-beeld. Bij 5 beelden/s en GOP 5 komt iedere seconde
    een IDR-beeld. Kies een opslaglocatie; bij vervangen volgt een bevestiging.
@@ -19,7 +19,7 @@ bewaart de huidige kaart en TS-/UDP-instellingen in `atv-contestnummer.conf` naa
 het programma. Bij opstarten wordt dit bestand automatisch geladen, zonder UDP
 te starten. Zonder bestand blijven de normale standaardinstellingen gelden.
 
-Grenzen: bitrate 48000–2000000 bit/s, beeldduur 1–60 s, 1–25 beelden/s, GOP 1–250
+Grenzen: bitrate 32000–2000000 bit/s, beeldduur 1–60 s, 1–25 beelden/s, GOP 1–250
 beelden. Het gekozen beeld moet even afmetingen hebben, maximaal 640 × 480.
 De export draait op een achtergrondthread en publiceert pas een compleet bestand.
 
@@ -34,7 +34,8 @@ De TS bevat één H.264 Constrained Baseline-videokanaal met vierkante pixels en
 BT.601-kleuromzetting, zonder B-frames en zonder audio-PID. Servicenaam én provider
 komen uit de roepnaam, inclusief een eventuele `/`. Service-ID, TS-ID en
 original-network-ID zijn 1; video/PCR-PID is `0x0100`, PMT-PID `0x1000`.
-PAT en PMT worden ongeveer iedere 200 ms herhaald, SDT iedere seconde.
+PAT en PMT worden ongeveer iedere 200 ms herhaald. SDT wordt na 800 ms opnieuw
+aangevraagd, met ruimte voor pakketplanning tot circa een seconde.
 Elk IDR-beeld bevat opnieuw SPS/PPS-decoderinformatie.
 
 De encoder probeert vaste QP-waarden van 24 t/m 48, in stappen van 4. De eerste

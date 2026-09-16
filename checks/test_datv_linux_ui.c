@@ -8,19 +8,31 @@ static char *directory;
 static GSocket *receiver;
 static int port, received;
 static gint64 udp_deadline;
-static void check_presets(GtkGrid *grid,int row) {
+static void check_dvb(GtkGrid *grid,int row) {
     GtkWidget *field=gtk_grid_get_child_at(grid,1,row);
-    GList *buttons=gtk_container_get_children(GTK_CONTAINER(gtk_grid_get_child_at(grid,2,row)));
-    const int expected[]={115196,123607};
-    assert(g_list_length(buttons)==2);
-    for (int i=0;i<2;++i) {
-        gtk_button_clicked(GTK_BUTTON(g_list_nth_data(buttons,i)));
-        assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(field))==expected[i]);
-    }
-    gtk_spin_button_set_value(GTK_SPIN_BUTTON(field),119999);
-    assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(field))==119999);
-    gtk_button_clicked(GTK_BUTTON(g_list_nth_data(buttons,row==0?1:0)));
-    g_list_free(buttons);
+    GtkGrid *radio=GTK_GRID(gtk_grid_get_child_at(grid,0,row==0?4:5));
+    GtkWidget *system=gtk_grid_get_child_at(radio,1,0);
+    GtkWidget *sr=gtk_grid_get_child_at(radio,1,1), *bw=gtk_grid_get_child_at(radio,1,2);
+    GtkWidget *fec=gtk_grid_get_child_at(radio,1,3), *pilots=gtk_grid_get_child_at(radio,1,4);
+    GtkWidget *guard=gtk_grid_get_child_at(radio,1,5);
+    assert(!gtk_editable_get_editable(GTK_EDITABLE(field)) && !gtk_widget_get_sensitive(field));
+    gtk_combo_box_set_active(GTK_COMBO_BOX(sr),2);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(fec),0);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(system),DVB_S);
+    assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(field))==115196);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(system),DVB_S2);
+    assert(gtk_widget_get_sensitive(pilots) && !gtk_widget_get_sensitive(guard));
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(pilots),TRUE);
+    assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(field))==120665);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(pilots),FALSE);
+    assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(field))==123607);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(system),DVB_T);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(bw),0);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(guard),0);
+    assert(!gtk_widget_get_sensitive(sr) && !gtk_widget_get_sensitive(pilots));
+    assert(gtk_widget_get_sensitive(bw) && gtk_widget_get_sensitive(guard));
+    assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(field))==103676);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(system),row==0?DVB_S2:DVB_S);
 }
 static void receive_udp(void) {
     char bytes[2048]; GError *error=NULL; gssize n;
@@ -42,9 +54,9 @@ static gboolean drive_dialogs(gpointer unused) {
             GList *children=gtk_container_get_children(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(w))));
             GtkGrid *grid=GTK_GRID(children->data); g_list_free(children);
             GtkWidget *ip=gtk_grid_get_child_at(grid,1,0), *port_field=gtk_grid_get_child_at(grid,1,1);
-            const char *status=gtk_label_get_text(GTK_LABEL(gtk_grid_get_child_at(grid,0,6)));
+            const char *status=gtk_label_get_text(GTK_LABEL(gtk_grid_get_child_at(grid,0,7)));
             if (stage==10) {
-                check_presets(grid,2);
+                check_dvb(grid,2);
                 assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(port_field))==10000);
                 gtk_entry_set_text(GTK_ENTRY(ip),"999.1.2.3"); stage=11; gtk_dialog_response(GTK_DIALOG(w),1);
             } else if (stage==11) {
@@ -56,7 +68,7 @@ static gboolean drive_dialogs(gpointer unused) {
                 receive_udp();
                 if (received>=4) {
                     assert(strstr(status,"UDP-uitvoer actief")); assert(!gtk_widget_get_sensitive(ip));
-                    assert(!gtk_widget_get_sensitive(gtk_grid_get_child_at(grid,2,2)));
+                    assert(!gtk_widget_get_sensitive(gtk_grid_get_child_at(grid,0,5)));
                     stage=13; gtk_dialog_response(GTK_DIALOG(w),2);
                 }
             } else if (stage==13 && strstr(status,"UDP gestopt")) {
@@ -70,8 +82,8 @@ static gboolean drive_dialogs(gpointer unused) {
             GList *children=gtk_container_get_children(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(w))));
             GtkGrid *grid=GTK_GRID(children->data);
             int values[]={60000,3,2,1};
-            for (int i=0;i<4;++i) gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,i)),values[i]);
-            check_presets(grid,0);
+            for (int i=1;i<4;++i) gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,i)),values[i]);
+            check_dvb(grid,0);
             g_list_free(children); stage=1; gtk_dialog_response(GTK_DIALOG(w),GTK_RESPONSE_ACCEPT);
         } else if (stage==1 && GTK_IS_FILE_CHOOSER(w)) {
             gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(w),directory);

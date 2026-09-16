@@ -17,6 +17,7 @@ typedef struct {
     GtkWidget *ts_menu, *level1, *level2;
     gboolean restoring;
     DatvSettings datv;
+    DvbSettings ts_dvb, udp_dvb;
     GtkWidget *udp_menu;
     DatvUdpSettings udp;
     char *directory;
@@ -364,26 +365,13 @@ static gboolean keep_progress(GtkWidget *widget, GdkEvent *event, gpointer data)
     (void)widget; (void)event; (void)data; return TRUE;
 }
 
+#include "dvb_linux.h"
 typedef struct {
     App *app;
-    GtkWidget *dialog, *fields[5], *status, *presets;
+    GtkWidget *dialog, *fields[5], *status;
+    DvbControls dvb;
     DatvStream *stream;
 } UdpDialog;
-static void bitrate_preset_clicked(GtkButton *button, gpointer field) {
-    int value=GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button),"bitrate-preset"));
-    gtk_spin_button_set_value(GTK_SPIN_BUTTON(field),value);
-}
-static GtkWidget *bitrate_presets(GtkWidget *field) {
-    GtkWidget *box=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,6);
-    for (int i=0;i<DATV_BITRATE_PRESET_COUNT;++i) {
-        char label[24]; g_snprintf(label,sizeof(label),"%d",datv_bitrate_presets[i]);
-        GtkWidget *button=gtk_button_new_with_label(label);
-        g_object_set_data(G_OBJECT(button),"bitrate-preset",GINT_TO_POINTER(datv_bitrate_presets[i]));
-        g_signal_connect(button,"clicked",G_CALLBACK(bitrate_preset_clicked),field);
-        gtk_box_pack_start(GTK_BOX(box),button,FALSE,FALSE,0);
-    }
-    return box;
-}
 static gboolean udp_poll(gpointer data) {
     UdpDialog *d=data;
     if (!d->stream) return G_SOURCE_CONTINUE;
@@ -391,8 +379,8 @@ static gboolean udp_poll(gpointer data) {
     char text[512]; datv_udp_status_text(d->app->udp,status,text,sizeof(text));
     gtk_label_set_text(GTK_LABEL(d->status),text);
     gboolean busy=status.state==DATV_PREPARING || status.state==DATV_RUNNING;
-    for (int i=0;i<5;++i) gtk_widget_set_sensitive(d->fields[i],!busy);
-    gtk_widget_set_sensitive(d->presets,!busy);
+    for (int i=0;i<5;++i) gtk_widget_set_sensitive(d->fields[i],i!=2 && !busy);
+    gtk_widget_set_sensitive(d->dvb.box,!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),4,!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),1,!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),3,!busy);
@@ -426,9 +414,9 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     gtk_grid_set_row_spacing(GTK_GRID(grid),8); gtk_grid_set_column_spacing(GTK_GRID(grid),12);
     gtk_container_set_border_width(GTK_CONTAINER(grid),16);
     gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(d.dialog))),grid);
-    const char *labels[]={"IP-adres (IPv4)","Poort","TS-bitrate (bit/s, uit Portsdown)","Beelden per seconde","GOP (beelden; 1 = alleen IDR)"};
+    const char *labels[]={"IP-adres (IPv4)","Poort","Berekende TS-bitrate (bit/s)","Beelden per seconde","GOP (beelden; 1 = alleen IDR)"};
     int values[]={0,app->udp.port,app->udp.video.bitrate,app->udp.video.fps,app->udp.video.gop};
-    int mins[]={0,1,48000,1,1}, maxs[]={0,65535,2000000,25,250};
+    int mins[]={0,1,0,1,1}, maxs[]={0,65535,2000000,25,250};
     for (int i=0;i<5;++i) {
         GtkWidget *label=gtk_label_new(labels[i]); gtk_label_set_xalign(GTK_LABEL(label),0);
         d.fields[i]=i?gtk_spin_button_new_with_range(mins[i],maxs[i],i==2?1000:1):gtk_entry_new();
@@ -440,13 +428,13 @@ static void output_udp(GtkWidget *widget, gpointer data) {
         }
         gtk_grid_attach(GTK_GRID(grid),label,0,i,1,1); gtk_grid_attach(GTK_GRID(grid),d.fields[i],1,i,1,1);
     }
-    d.presets=bitrate_presets(d.fields[2]);
-    gtk_grid_attach(GTK_GRID(grid),d.presets,2,2,1,1);
+    dvb_controls_init(&d.dvb,d.fields[2],app->udp_dvb);
+    gtk_grid_attach(GTK_GRID(grid),d.dvb.box,0,5,3,1);
     GtkWidget *note=gtk_label_new("Tip voor de contest: gebruik 4 fps en GOP 2.\n\nStart zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.");
-    gtk_grid_attach(GTK_GRID(grid),note,0,5,3,1);
+    gtk_grid_attach(GTK_GRID(grid),note,0,6,3,1);
     d.status=gtk_label_new("Vul het IP-adres van Portsdown in en kies Start.");
     gtk_label_set_line_wrap(GTK_LABEL(d.status),TRUE); gtk_label_set_max_width_chars(GTK_LABEL(d.status),65);
-    gtk_label_set_xalign(GTK_LABEL(d.status),0); gtk_grid_attach(GTK_GRID(grid),d.status,0,6,3,1);
+    gtk_label_set_xalign(GTK_LABEL(d.status),0); gtk_grid_attach(GTK_GRID(grid),d.status,0,7,3,1);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d.dialog),2,FALSE);
     gtk_widget_show_all(d.dialog);
     guint timer=g_timeout_add(200,udp_poll,&d);
@@ -461,9 +449,10 @@ static void output_udp(GtkWidget *widget, gpointer data) {
         }
         DatvUdpSettings s=app->udp;
         g_strlcpy(s.ip,gtk_entry_get_text(GTK_ENTRY(d.fields[0])),sizeof(s.ip));
-        for (int i=1;i<5;++i) gtk_spin_button_update(GTK_SPIN_BUTTON(d.fields[i]));
+        for (int i=1;i<5;++i) if (i!=2) gtk_spin_button_update(GTK_SPIN_BUTTON(d.fields[i]));
         s.port=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[1]));
-        s.video.bitrate=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[2]));
+        DvbSettings radio=dvb_controls_read(&d.dvb);
+        s.video.bitrate=dvb_bitrate(radio);
         s.video.fps=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[3]));
         s.video.gop=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[4]));
         DatvUdpSettings check=s;
@@ -471,7 +460,7 @@ static void output_udp(GtkWidget *widget, gpointer data) {
         invalid=response==4 ? datv_validate(s.video,r.width,r.height) : datv_udp_validate(check,r.width,r.height);
         if (invalid) { gtk_label_set_text(GTK_LABEL(d.status),invalid); continue; }
         if (response==4) { quality_compare(GTK_WINDOW(d.dialog),im,r,call,s.video); continue; }
-        app->udp=s;
+        app->udp=s; app->udp_dvb=radio;
         if (response==3) break;
         datv_udp_destroy(d.stream); d.stream=NULL;
         char error[256];
@@ -504,9 +493,9 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     gtk_grid_set_row_spacing(GTK_GRID(grid),8); gtk_grid_set_column_spacing(GTK_GRID(grid),12);
     gtk_container_set_border_width(GTK_CONTAINER(grid),16);
     gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))),grid);
-    const char *labels[]={"TS-bitrate (bit/s, uit Portsdown)","Beeldduur (seconden)","Beelden per seconde","GOP (beelden; 1 = alleen IDR)"};
+    const char *labels[]={"Berekende TS-bitrate (bit/s)","Beeldduur (seconden)","Beelden per seconde","GOP (beelden; 1 = alleen IDR)"};
     int values[]={app->datv.bitrate,app->datv.seconds,app->datv.fps,app->datv.gop};
-    int minimum[]={48000,1,1,1}, maximum[]={2000000,60,25,250};
+    int minimum[]={0,1,1,1}, maximum[]={2000000,60,25,250};
     GtkWidget *fields[4];
     for (int i=0; i<4; ++i) {
         GtkWidget *label=gtk_label_new(labels[i]); gtk_label_set_xalign(GTK_LABEL(label),0);
@@ -514,15 +503,18 @@ static void export_ts(GtkWidget *widget, gpointer data) {
         gtk_spin_button_set_value(GTK_SPIN_BUTTON(fields[i]),values[i]);
         gtk_grid_attach(GTK_GRID(grid),label,0,i,1,1); gtk_grid_attach(GTK_GRID(grid),fields[i],1,i,1,1);
     }
-    gtk_grid_attach(GTK_GRID(grid),bitrate_presets(fields[0]),2,0,1,1);
+    DvbControls radio_controls;
+    dvb_controls_init(&radio_controls,fields[0],app->ts_dvb);
+    gtk_grid_attach(GTK_GRID(grid),radio_controls.box,0,4,3,1);
     GtkWidget *note=gtk_label_new("Huidig beeld, zonder audio. Service = roepnaam; ID = 1.\nHet bestand bevat ook 1 seconde aanloop voor de decoder.");
-    gtk_grid_attach(GTK_GRID(grid),note,0,4,3,1);
+    gtk_grid_attach(GTK_GRID(grid),note,0,5,3,1);
     gtk_widget_show_all(dialog);
     if (gtk_dialog_run(GTK_DIALOG(dialog))!=GTK_RESPONSE_ACCEPT) {
         gtk_widget_destroy(dialog); g_free(call); return;
     }
-    for (int i=0; i<4; ++i) gtk_spin_button_update(GTK_SPIN_BUTTON(fields[i]));
-    app->datv=(DatvSettings){gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[0])),
+    for (int i=1; i<4; ++i) gtk_spin_button_update(GTK_SPIN_BUTTON(fields[i]));
+    app->ts_dvb=dvb_controls_read(&radio_controls);
+    app->datv=(DatvSettings){dvb_bitrate(app->ts_dvb),
         gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[1])),
         gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[2])),
         gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[3]))};
@@ -703,7 +695,7 @@ static AppConfig capture_config(App *app) {
     s.ebu_top=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->ebu_top));
     s.ebu_bottom=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->ebu_bottom));
     s.genius=gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level2))?2:1;
-    s.ts=app->datv; s.udp=app->udp; return s;
+    s.ts=app->datv; s.udp=app->udp; s.ts_dvb=app->ts_dvb; s.udp_dvb=app->udp_dvb; return s;
 }
 static void apply_config(App *app, const AppConfig *s) {
     app->restoring=TRUE;
@@ -726,7 +718,7 @@ static void apply_config(App *app, const AppConfig *s) {
     app->contest_square[0]=0;
     wchar_t locator[LOCATOR_MAX_LENGTH+1]; read_locator(app,locator);
     locator_square_changed(app->contest_square,locator);
-    app->datv=s->ts; app->udp=s->udp;
+    app->datv=s->ts; app->udp=s->udp; app->ts_dvb=s->ts_dvb; app->udp_dvb=s->udp_dvb;
     gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(s->genius==2?app->level2:app->level1),TRUE);
     app->restoring=FALSE; toggled(NULL,app);
 }
@@ -761,6 +753,8 @@ static void create_ui(App *app) {
     GtkWidget *file_menu = gtk_menu_new(), *info_menu = gtk_menu_new();
     app->datv=datv_defaults();
     app->udp=datv_udp_defaults();
+    app->ts_dvb=app->udp_dvb=dvb_defaults();
+    app->datv.bitrate=app->udp.video.bitrate=dvb_bitrate(app->ts_dvb);
     GtkWidget *config=gtk_menu_item_new_with_label("Config"), *config_menu=gtk_menu_new();
     GtkWidget *level1=gtk_radio_menu_item_new_with_label(NULL,"Genius level 1 (standaard)");
     GtkWidget *level2=gtk_radio_menu_item_new_with_label_from_widget(GTK_RADIO_MENU_ITEM(level1),"Genius level 2");

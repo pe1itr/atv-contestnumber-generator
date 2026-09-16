@@ -15,8 +15,43 @@ int image_mode_row(int mode) {
 }
 int valid_fubk_locator(const wchar_t *s) { return valid_locator(s) && wcslen(s)>=6; }
 
+const wchar_t *const dvb_system_names[DVB_SYSTEM_COUNT]={L"DVB-S",L"DVB-S2",L"DVB-T"};
+const int dvb_symbol_rates[DVB_SYMBOL_RATE_COUNT]={35,66,125,150,333,500};
+const int dvb_bandwidths[DVB_BANDWIDTH_COUNT]={150,250,333,500};
+const wchar_t *const dvb_fec_names[DVB_FEC_COUNT]={L"1/2",L"2/3",L"3/4"};
+const wchar_t *const dvb_guard_names[DVB_GUARD_COUNT]={L"1/8",L"1/16",L"1/32"};
+DvbSettings dvb_defaults(void) { return (DvbSettings){DVB_S,2,0,0,2,500}; }
+int dvb_bitrate(DvbSettings s) {
+    if (s.system<0 || s.system>=DVB_SYSTEM_COUNT || s.symbol_rate<0 ||
+        s.symbol_rate>=DVB_SYMBOL_RATE_COUNT || s.fec<0 || s.fec>=DVB_FEC_COUNT ||
+        s.pilots<0 || s.pilots>1 || s.guard<0 || s.guard>=DVB_GUARD_COUNT ||
+        s.bandwidth_khz<1 || s.bandwidth_khz>8000) return 0;
+    int bandwidth_ok=0;
+    for (int i=0;i<DVB_BANDWIDTH_COUNT;++i) bandwidth_ok|=s.bandwidth_khz==dvb_bandwidths[i];
+    if (!bandwidth_ok) return 0;
+    const int numerator[]={1,2,3}, denominator[]={2,3,4};
+    int64_t rate=(int64_t)dvb_symbol_rates[s.symbol_rate]*1000;
+    int64_t top, bottom;
+    if (s.system==DVB_S) {
+        /* EN 300 421: QPSK, convolutional code and RS(204,188). */
+        top=rate*2*numerator[s.fec]*188; bottom=denominator[s.fec]*204;
+    } else if (s.system==DVB_S2) {
+        /* EN 302 307-1: normal 64800-bit FECFRAME, 80-bit BBHEADER,
+         * 90-symbol PLHEADER and 22 pilot blocks of 36 symbols for QPSK.
+         * Full DATAFIELD, CCM, no ISSY or null-packet deletion. */
+        const int kbch[]={32208,43040,48408};
+        top=rate*(kbch[s.fec]-80); bottom=32400+90+s.pilots*22*36;
+    } else {
+        /* EN 300 744: 1512 data carriers, Tu=2048*7/(8*B), RS188/204.
+         * 423/544 includes carriers, useful-symbol time and outer FEC. */
+        const int guard[]={8,16,32};
+        top=(int64_t)s.bandwidth_khz*1000*423*2*numerator[s.fec]*guard[s.guard];
+        bottom=(int64_t)544*denominator[s.fec]*(guard[s.guard]+1);
+    }
+    return (int)(top/bottom);
+}
+
 DatvSettings datv_defaults(void) { return (DatvSettings){120000, 10, 5, 5}; }
-const int datv_bitrate_presets[DATV_BITRATE_PRESET_COUNT]={115196,123607};
 DatvUdpSettings datv_udp_defaults(void) {
     DatvUdpSettings s={"",10000,{120000,10,10,2}};
     return s;
@@ -66,8 +101,8 @@ int datv_test_options(int count, const char *const *values, DatvSettings *s, int
     return datv_validate(*s,*w,*h)==NULL;
 }
 const char *datv_validate(DatvSettings s, int width, int height) {
-    if (s.bitrate < 48000 || s.bitrate > 2000000)
-        return "TS-bitrate moet tussen 48000 en 2000000 bit/s liggen.";
+    if (s.bitrate < 32000 || s.bitrate > 2000000)
+        return "TS-bitrate moet tussen 32000 en 2000000 bit/s liggen.";
     if (s.seconds < 1 || s.seconds > 60) return "Duur moet tussen 1 en 60 seconden liggen.";
     if (s.fps < 1 || s.fps > 25) return "Beeldfrequentie moet tussen 1 en 25 beelden/s liggen.";
     if (s.gop < 1 || s.gop > 250) return "GOP moet tussen 1 en 250 beelden liggen (1 = alleen IDR).";
@@ -204,16 +239,31 @@ static const ConfigField config_fields[]={
     CONFIG_INT_FIELD(show,0,1), CONFIG_INT_FIELD(inverse,0,1), CONFIG_INT_FIELD(blue_yellow,0,1),
     CONFIG_INT_FIELD(ebu_top,0,1), CONFIG_INT_FIELD(ebu_bottom,0,1),
     CONFIG_INT_FIELD(show_sum,0,1), CONFIG_INT_FIELD(top_code,0,1), CONFIG_INT_FIELD(genius,1,2),
-    CONFIG_INT_FIELD(ts.bitrate,48000,2000000), CONFIG_INT_FIELD(ts.seconds,1,60),
+    CONFIG_INT_FIELD(ts.bitrate,32000,2000000), CONFIG_INT_FIELD(ts.seconds,1,60),
     CONFIG_INT_FIELD(ts.fps,1,25), CONFIG_INT_FIELD(ts.gop,1,250),
     CONFIG_TEXT_FIELD(udp.ip), CONFIG_INT_FIELD(udp.port,1,65535),
-    CONFIG_INT_FIELD(udp.video.bitrate,48000,2000000), CONFIG_INT_FIELD(udp.video.fps,1,25),
-    CONFIG_INT_FIELD(udp.video.gop,1,250)
+    CONFIG_INT_FIELD(udp.video.bitrate,32000,2000000), CONFIG_INT_FIELD(udp.video.fps,1,25),
+    CONFIG_INT_FIELD(udp.video.gop,1,250),
+    CONFIG_INT_FIELD(ts_dvb.system,0,DVB_SYSTEM_COUNT-1),
+    CONFIG_INT_FIELD(ts_dvb.symbol_rate,0,DVB_SYMBOL_RATE_COUNT-1),
+    CONFIG_INT_FIELD(ts_dvb.fec,0,DVB_FEC_COUNT-1),
+    CONFIG_INT_FIELD(ts_dvb.pilots,0,1),
+    CONFIG_INT_FIELD(ts_dvb.guard,0,DVB_GUARD_COUNT-1),
+    CONFIG_INT_FIELD(ts_dvb.bandwidth_khz,1,8000),
+    CONFIG_INT_FIELD(udp_dvb.system,0,DVB_SYSTEM_COUNT-1),
+    CONFIG_INT_FIELD(udp_dvb.symbol_rate,0,DVB_SYMBOL_RATE_COUNT-1),
+    CONFIG_INT_FIELD(udp_dvb.fec,0,DVB_FEC_COUNT-1),
+    CONFIG_INT_FIELD(udp_dvb.pilots,0,1),
+    CONFIG_INT_FIELD(udp_dvb.guard,0,DVB_GUARD_COUNT-1),
+    CONFIG_INT_FIELD(udp_dvb.bandwidth_khz,1,8000)
 };
 #define CONFIG_FIELDS (sizeof(config_fields)/sizeof(config_fields[0]))
+_Static_assert(CONFIG_FIELDS<64,"configuration field mask overflow");
 AppConfig config_defaults(void) {
     AppConfig s={0}; s.automatic=1; s.resolution=DEFAULT_RESOLUTION_INDEX;
     s.band=3; s.show=1; s.genius=1; s.ts=datv_defaults(); s.udp=datv_udp_defaults();
+    s.ts_dvb=dvb_defaults(); s.udp_dvb=dvb_defaults();
+    s.ts.bitrate=dvb_bitrate(s.ts_dvb); s.udp.video.bitrate=dvb_bitrate(s.udp_dvb);
     return s;
 }
 static int config_text_valid(const char *s, size_t capacity) {
@@ -250,7 +300,7 @@ static int config_valid(const AppConfig *s) {
     }
     DatvUdpSettings udp=s->udp;
     if (!udp.ip[0]) strcpy(udp.ip,"127.0.0.1"); /* An unused destination may be empty. */
-    return !datv_udp_validate(udp,160,120);
+    return !datv_udp_validate(udp,160,120) && dvb_bitrate(s->ts_dvb)>0 && dvb_bitrate(s->udp_dvb)>0;
 }
 #ifdef _WIN32
 static wchar_t *config_wide(const char *path) {
@@ -272,7 +322,7 @@ static FILE *config_open(const char *path, int writing) {
 int config_load(const char *path, AppConfig *out) {
     FILE *f=config_open(path,0);
     if (!f) return errno==ENOENT?0:-1;
-    AppConfig s=config_defaults(); unsigned long seen=0;
+    AppConfig s=config_defaults(); uint64_t seen=0;
     int version=0, ok=1; char line[256];
     while (fgets(line,sizeof(line),f)) {
         size_t n=strlen(line);
@@ -282,13 +332,13 @@ int config_load(const char *path, AppConfig *out) {
         char *value=strchr(line,'=');
         if (!value) { ok=0; break; } *value++=0;
         if (!strcmp(line,"version")) {
-            if (version || (strcmp(value,"1") && strcmp(value,"2"))) { ok=0; break; }
+            if (version || (strcmp(value,"1") && strcmp(value,"2") && strcmp(value,"3"))) { ok=0; break; }
             version=value[0]-'0'; continue;
         }
         size_t i;
         for (i=0;i<CONFIG_FIELDS;++i) if (!strcmp(line,config_fields[i].key)) break;
-        if (i==CONFIG_FIELDS || (seen&(1UL<<i))) { ok=0; break; }
-        seen|=1UL<<i;
+        if (i==CONFIG_FIELDS || (seen&(UINT64_C(1)<<i))) { ok=0; break; }
+        seen|=UINT64_C(1)<<i;
         const ConfigField *field=&config_fields[i]; char *target=(char *)&s+field->offset;
         if (field->size) {
             if (strlen(value)>=field->size) { ok=0; break; }
@@ -302,10 +352,31 @@ int config_load(const char *path, AppConfig *out) {
     if (ferror(f)) ok=0;
     if (fclose(f)) ok=0;
     /* Configurations saved before the EBU options keep both strips off. */
-    unsigned long required = (1UL<<CONFIG_FIELDS)-1;
+    uint64_t required = (UINT64_C(1)<<CONFIG_FIELDS)-1;
     for (size_t i=0; i<CONFIG_FIELDS; ++i)
         if (config_fields[i].offset==offsetof(AppConfig,ebu_top) ||
-            config_fields[i].offset==offsetof(AppConfig,ebu_bottom)) required &= ~(1UL<<i);
+            config_fields[i].offset==offsetof(AppConfig,ebu_bottom)) required &= ~(UINT64_C(1)<<i);
+    /* Old files have no RF parameters. Keep their stored bitrates until the
+     * user opens a dialog, where the calculated value is explicitly shown. */
+    uint64_t dvb_fields=0;
+    for (size_t i=0; i<CONFIG_FIELDS; ++i)
+        if (config_fields[i].offset>=offsetof(AppConfig,ts_dvb)) dvb_fields|=UINT64_C(1)<<i;
+    if (version<3 && !(seen&dvb_fields)) {
+        required&=~dvb_fields;
+        DvbSettings *radio[]={&s.ts_dvb,&s.udp_dvb};
+        const int rates[]={s.ts.bitrate,s.udp.video.bitrate};
+        for (int j=0;j<2;++j) {
+            int found=0;
+            for (int system=DVB_S;system<=DVB_S2 && !found;++system)
+            for (int sr=0;sr<DVB_SYMBOL_RATE_COUNT && !found;++sr)
+            for (int fec=0;fec<DVB_FEC_COUNT && !found;++fec)
+            for (int pilots=0;pilots<=(system==DVB_S2) && !found;++pilots) {
+                DvbSettings candidate=dvb_defaults(); candidate.system=system;
+                candidate.symbol_rate=sr; candidate.fec=fec; candidate.pilots=pilots;
+                if (dvb_bitrate(candidate)==rates[j]) { *radio[j]=candidate; found=1; }
+            }
+        }
+    }
     if (!ok || !version || (seen&required)!=required || !config_valid(&s)) return -1;
     /* Version 1 stored 240px at index 10; version 2 sorts by width. */
     if (version==1) {
@@ -321,7 +392,7 @@ int config_save(const char *path, const AppConfig *s) {
     snprintf(temporary,n,"%s.tmp",path);
     FILE *f=config_open(temporary,1);
     if (!f) { free(temporary); return 0; }
-    int ok=fprintf(f,"# ATV contestnummer generator\nversion=2\n")>=0;
+    int ok=fprintf(f,"# ATV contestnummer generator\nversion=3\n")>=0;
     for (size_t i=0;i<CONFIG_FIELDS && ok;++i) {
         const ConfigField *field=&config_fields[i]; const char *value=(const char *)s+field->offset;
         ok=(field->size?fprintf(f,"%s=%s\n",field->key,value):

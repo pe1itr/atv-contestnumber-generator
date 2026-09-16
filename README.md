@@ -95,8 +95,9 @@ De PM5544-bronbeelden staan in `assets/pm5544.jpg` en `assets/pm5544w.jpg`. Het 
 ## DATV-proefbestand (Genius level 2)
 
 Kies **Config → Genius level 2**, stel het beeld in op maximaal **640 × 480** en
-kies **File → Exporteer TS-proefbestand...**. Vul de totale TS-bitrate uit Portsdown
-in, in **bit/s**, plus beeldduur, beelden/s en GOP-lengte (1 = alleen IDR-beelden).
+kies **File → Exporteer TS-proefbestand...**. Kies DVB-S, DVB-S2 of DVB-T en de
+zendparameters; de totale TS-bitrate in **bit/s** wordt berekend. Stel daarnaast
+beeldduur, beelden/s en GOP-lengte in (1 = alleen IDR-beelden).
 De export bevat H.264-video zonder audio; servicenaam en provider volgen de
 roepnaam, service-ID is 1. Het nummer verandert niet bij export.
 
@@ -121,9 +122,28 @@ De resolutielijst bevat ook 240 pixels breed: 240 × 180 (4:3) en 240 × 136
 (16:9, afgerond op een even hoogte voor H.264). Ze staan in de oplopende lijst
 tussen 160 en 320 pixels breed.
 
-Naast de handmatige TS-bitrate staan knoppen voor **115196** en **123607 bit/s**,
-zowel bij TS-export als bij UDP-uitvoer. Je kunt de gekozen waarde daarna ook
-handmatig wijzigen. Tijdens uitzending zijn de bitrate-instellingen geblokkeerd.
+TS-export en UDP hebben dezelfde bitrateberekening met **QPSK**:
+
+- **DVB-S/S2:** symbol rates **35, 66, 125, 150, 333 en 500 ksym/s**.
+- **FEC:** **1/2, 2/3 en 3/4**.
+- **DVB-S2:** normale frames, **pilots aan/uit**.
+- **DVB-T:** **2K**, **SR/BW (Portsdown) 150k, 250k, 333k en 500k**,
+  met **GI 1/8, 1/16 of 1/32**. De Portsdown-SR/BW-waarde betekent hier
+  bandbreedte in kHz.
+
+De getoonde bitrate is alleen-lezen en verandert direct met de parameters.
+Tijdens uitzending zijn deze instellingen geblokkeerd. De berekening stelt de
+modulator niet op afstand in: kies op Portsdown dezelfde waarden. Standaard is
+DVB-S, 125 ksym/s, FEC 1/2: **115196 bit/s**. Bij DVB-S2 is dat **123607 bit/s**
+zonder pilots en **120665 bit/s** met pilots. Zie
+[formules en vergelijking met Portsdown](docs/dvb-bitrate.md).
+
+Zendparameters worden afzonderlijk voor TS en UDP opgeslagen. Oude configuraties
+blijven leesbaar. Bekende S/S2-bitrates worden herkend; bij een oude handmatige
+waarde zonder exacte overeenkomst starten de keuzelijsten met de standaard.
+Bij het openen van een TS-/UDP-venster verschijnt de berekende waarde; pas Verder,
+Toepassen of Start neemt die over. Annuleren/sluiten en Beeld controleren bewaren
+geen gewijzigde zendparameters. UDP start nooit automatisch.
 
 ## Bouwen
 
@@ -188,7 +208,7 @@ met het FUBK-beeld.
 
 ## Leesbaarheid vóór het uitzenden beoordelen
 
-Open **DATV: UDP-uitvoer** (via Genius level 2), stel bitrate, beelden per seconde
+Open **DATV: UDP-uitvoer** (via Genius level 2), stel zendparameters, beelden per seconde
 en GOP in en klik **Beeld controleren**. Je hoeft hiervoor geen IP-adres of
 poort in te vullen. Links staat het originele beeld; rechts hetzelfde beeld na
 H.264-compressie en decodering. Beide beelden gebruiken dezelfde vergroting;

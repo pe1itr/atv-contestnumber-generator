@@ -244,7 +244,11 @@ public:
                 payload=6; first_table[table]=false;
             }
             packet[payload]=0; std::memcpy(packet+payload+1,tables[table].data(),tables[table].size());
-            due[table]=now+(table==2?CLOCK:CLOCK/5);
+            // Request SDT after 800 ms, reserving packet-scheduling margin for
+            // its roughly one-second repetition even at 32 kbit/s. Keep relative
+            // deadlines: absolute 5+5+1 PSI packets/s would overload the slots
+            // left between PCR packets at the lowest supported bitrate.
+            due[table]=now+(table==2?CLOCK*4/5:CLOCK/5);
         } else header(packet,0x1fff,false,0);
         ++index;
         return true;

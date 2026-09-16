@@ -22,8 +22,6 @@ typedef struct {
 } DatvUdpStatus;
 /* The bitrate is the complete 188-byte TS bitrate, in bits per second. */
 DatvSettings datv_defaults(void);
-#define DATV_BITRATE_PRESET_COUNT 2
-extern const int datv_bitrate_presets[DATV_BITRATE_PRESET_COUNT];
 DatvUdpSettings datv_udp_defaults(void);
 const char *datv_udp_validate(DatvUdpSettings s, int width, int height);
 void datv_udp_status_text(DatvUdpSettings s, DatvUdpStatus status, char *text, size_t size);

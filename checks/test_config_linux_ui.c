@@ -12,7 +12,11 @@ static gboolean apply_udp(gpointer unused) {
         GtkGrid *grid=GTK_GRID(children->data); g_list_free(children);
         gtk_entry_set_text(GTK_ENTRY(gtk_grid_get_child_at(grid,1,0)),"192.168.1.50");
         gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,1)),12345);
-        gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,2)),240000);
+        GtkGrid *radio=GTK_GRID(gtk_grid_get_child_at(grid,0,5));
+        gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,0)),DVB_T);
+        gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,2)),2);
+        gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,3)),2);
+        gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,5)),1);
         gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,3)),12);
         gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,4)),3);
         gtk_dialog_response(GTK_DIALOG(w),3); g_list_free(windows); return G_SOURCE_REMOVE;
@@ -37,7 +41,8 @@ int main(int argc,char **argv) {
     assert(gtk_widget_get_visible(app.udp_menu));
     g_timeout_add(100,apply_udp,NULL); output_udp(NULL,&app);
     assert(app.udp.port==12345 && app.udp.video.fps==12 && app.udp.video.gop==3);
-    wanted.udp=app.udp;
+    wanted.udp=app.udp; wanted.udp_dvb=app.udp_dvb;
+    assert(wanted.udp_dvb.system==DVB_T && wanted.udp_dvb.bandwidth_khz==333 && wanted.udp_dvb.guard==1);
     save_config(NULL,&app); close_app(&app);
     App reopened={0}; reopened.directory=directory; create_ui(&reopened); load_config(&reopened);
     AppConfig actual=capture_config(&reopened);

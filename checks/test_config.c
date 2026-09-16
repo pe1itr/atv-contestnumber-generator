@@ -21,6 +21,10 @@ int main(void) {
     original.ts=(DatvSettings){60000,60,2,1};
     strcpy(original.udp.ip,"192.168.1.50"); original.udp.port=12345;
     original.udp.video=(DatvSettings){240000,10,10,2};
+    original.ts_dvb=(DvbSettings){DVB_S2,3,1,1,0,250};
+    original.udp_dvb=(DvbSettings){DVB_T,4,2,0,1,333};
+    original.ts.bitrate=dvb_bitrate(original.ts_dvb);
+    original.udp.video.bitrate=dvb_bitrate(original.udp_dvb);
     assert(config_save(TEST_PATH,&original)); assert(config_load(TEST_PATH,&loaded)==1);
     assert(!memcmp(&original,&loaded,sizeof(original)));
     /* Appended modes roundtrip without renumbering existing saved choices. */
@@ -78,6 +82,32 @@ int main(void) {
         assert(config_save(TEST_PATH,&migrated)); assert(config_load(TEST_PATH,&loaded)==1);
         assert(!memcmp(&loaded,&migrated,sizeof(loaded))); /* No second migration. */
     }
+    /* Version 2 had no radio parameters. Infer known presets without changing
+     * cached bitrates; reject incomplete new groups in version 3. */
+    original=config_defaults(); original.ts.bitrate=115196; original.udp.video.bitrate=123607;
+    assert(config_save(TEST_PATH,&original)); old_config[0]=0;
+    f=fopen(TEST_PATH,"rb"); assert(f);
+    while (fgets(line,sizeof(line),f)) {
+        if (!strncmp(line,"ts_dvb.",7) || !strncmp(line,"udp_dvb.",8)) continue;
+        if (!strncmp(line,"version=",8)) strcpy(line,"version=2\n");
+        strcat(old_config,line);
+    }
+    assert(!fclose(f)); f=fopen(TEST_PATH,"wb"); assert(f);
+    assert(fputs(old_config,f)>=0); assert(!fclose(f));
+    assert(config_load(TEST_PATH,&loaded)==1);
+    assert(loaded.ts.bitrate==115196 && loaded.udp.video.bitrate==123607);
+    assert(loaded.ts_dvb.system==DVB_S && loaded.udp_dvb.system==DVB_S2);
+    assert(!loaded.udp_dvb.pilots && loaded.udp_dvb.symbol_rate==2);
+    append("ts_dvb.system=0\n");
+    AppConfig untouched=loaded; assert(config_load(TEST_PATH,&loaded)==-1);
+    assert(!memcmp(&loaded,&untouched,sizeof(loaded)));
+    assert(config_save(TEST_PATH,&original)); old_config[0]=0;
+    f=fopen(TEST_PATH,"rb"); assert(f);
+    while (fgets(line,sizeof(line),f)) if (strncmp(line,"udp_dvb.guard=",14)) strcat(old_config,line);
+    assert(!fclose(f)); f=fopen(TEST_PATH,"wb"); assert(f);
+    assert(fputs(old_config,f)>=0); assert(!fclose(f));
+    assert(config_load(TEST_PATH,&loaded)==-1);
+    bad=original; bad.ts_dvb.bandwidth_khz=151; assert(!config_save(TEST_PATH,&bad));
     assert(!remove(TEST_PATH));
     puts("Config: roundtrip, defaults, ranges, malformed files and protected previous settings OK.");
     return 0;
