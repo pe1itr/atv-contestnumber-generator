@@ -1,6 +1,22 @@
 # ATV contestnummer generator
 
-Een programma voor Windows en Linux dat een contestkaart of PM5544-, PM5644- of FUBK-testbeeld als JPG maakt. Genius level 2 kan ook H.264/MPEG-TS-bestanden maken en UDP naar een DATV-zender sturen. Er worden standaard **altijd beide builds** gemaakt.
+De **ATV contestnummer generator** is een tool voor amateurtelevisiestations die
+meedoen aan **ATV- en DATV-wedstrijden**. Tijdens deze wedstrijden wisselen stations
+een geheime viercijferige code uit via het uitgezonden beeld. Met dit programma
+maak je een contesttestbeeld met die code, je roepnaam, locator en gebruikte band.
+
+Je kunt het contesttestbeeld op twee manieren gebruiken:
+
+- **Opslaan als JPG-bestand** in verschillende resoluties en beeldverhoudingen
+  (4:3 en 16:9), om het met je eigen televisieapparatuur uit te zenden.
+- **Via UDP als MPEG-TS-stream naar een DVB-zender sturen**, zodat het beeld
+  rechtstreeks als bron voor een DATV-uitzending kan dienen. Het programma
+  berekent de TS-bitrate uit de gekozen DVB-S-, DVB-S2- of DVB-T-parameters.
+
+Het programma is beschikbaar voor **Windows en Linux**. Naast de contestkaart
+kun je PM5544-, PM5644- en FUBK-testbeelden met je eigen roepnaam en locator maken.
+De functies voor MPEG-TS-bestanden en UDP-uitvoer worden zichtbaar via
+**Config → Genius level 2**.
 
 Download de nieuwste Windows-versie: [atv-contestnummer.exe](https://github.com/pe1itr/atv-contestnumber-generator/releases/latest/download/atv-contestnummer.exe). Alle uitgaven staan bij [GitHub Releases](https://github.com/pe1itr/atv-contestnumber-generator/releases).
 
