@@ -35,6 +35,7 @@ typedef struct {
     int show, inverse, blue_yellow, show_sum, top_code, genius, ebu_top, ebu_bottom;
     DatvSettings ts;
     DatvUdpSettings udp;
+    StationInfo station;
     DvbSettings ts_dvb, udp_dvb;
 } AppConfig;
 AppConfig config_defaults(void);

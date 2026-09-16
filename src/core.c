@@ -51,9 +51,9 @@ int dvb_bitrate(DvbSettings s) {
     return (int)(top/bottom);
 }
 
-DatvSettings datv_defaults(void) { return (DatvSettings){120000, 10, 5, 5}; }
+DatvSettings datv_defaults(void) { return (DatvSettings){.bitrate=120000, .seconds=10, .fps=5, .gop=5}; }
 DatvUdpSettings datv_udp_defaults(void) {
-    DatvUdpSettings s={"",10000,{120000,10,10,2}};
+    DatvUdpSettings s={.port=10000,.video={.bitrate=120000,.seconds=10,.fps=10,.gop=2}};
     return s;
 }
 void datv_udp_status_text(DatvUdpSettings s, DatvUdpStatus status, char *text, size_t size) {
@@ -108,6 +108,16 @@ const char *datv_validate(DatvSettings s, int width, int height) {
     if (s.gop < 1 || s.gop > 250) return "GOP moet tussen 1 en 250 beelden liggen (1 = alleen IDR).";
     if (width < 16 || height < 16 || width > 640 || height > 480 || width % 2 || height % 2)
         return "Kies voor deze TS-proef een even resolutie van maximaal 640 x 480.";
+    if (s.eit_enabled!=0 && s.eit_enabled!=1) return "Ongeldige EIT-keuze.";
+    if (s.eit_enabled) {
+        const char *error=station_validate(&s.station);
+        if (error) return error;
+        wchar_t locator[13]={0}; size_t n=0;
+        while (n<sizeof(s.locator) && s.locator[n]) ++n;
+        if (n>12) return "Ongeldige EIT-locator.";
+        for (size_t i=0;i<n;++i) locator[i]=(unsigned char)s.locator[i];
+        if (n && !valid_locator(locator)) return "Ongeldige EIT-locator.";
+    }
     return NULL;
 }
 const Resolution resolutions43[RESOLUTION_COUNT] = {
@@ -241,6 +251,8 @@ static const ConfigField config_fields[]={
     CONFIG_INT_FIELD(show_sum,0,1), CONFIG_INT_FIELD(top_code,0,1), CONFIG_INT_FIELD(genius,1,2),
     CONFIG_INT_FIELD(ts.bitrate,32000,2000000), CONFIG_INT_FIELD(ts.seconds,1,60),
     CONFIG_INT_FIELD(ts.fps,1,25), CONFIG_INT_FIELD(ts.gop,1,250),
+    CONFIG_INT_FIELD(ts.eit_enabled,0,1), CONFIG_INT_FIELD(udp.video.eit_enabled,0,1),
+    CONFIG_TEXT_FIELD(station.city), CONFIG_TEXT_FIELD(station.description), CONFIG_TEXT_FIELD(station.operator_name),
     CONFIG_TEXT_FIELD(udp.ip), CONFIG_INT_FIELD(udp.port,1,65535),
     CONFIG_INT_FIELD(udp.video.bitrate,32000,2000000), CONFIG_INT_FIELD(udp.video.fps,1,25),
     CONFIG_INT_FIELD(udp.video.gop,1,250),
@@ -285,6 +297,27 @@ static int config_text_valid(const char *s, size_t capacity) {
     }
     return i<capacity;
 }
+/* DVB UTF-8 (EN 300 468 annex A) is restricted to the BMP. Single-line
+ * station fields also avoid DVB control characters and config line injection. */
+const char *station_validate(const StationInfo *station) {
+    const char *fields[]={station->city,station->description,station->operator_name};
+    const size_t capacities[]={sizeof(station->city),sizeof(station->description),sizeof(station->operator_name)};
+    const size_t limits[]={EIT_CITY_LENGTH,EIT_DESCRIPTION_LENGTH,EIT_OPERATOR_LENGTH};
+    for (int i=0;i<3;++i) {
+        if (!config_text_valid(fields[i],capacities[i]))
+            return "Gebruik geldige tekst op een regel voor de EIT-stationinformatie.";
+        size_t count=0;
+        const unsigned char *p=(const unsigned char *)fields[i];
+        while (*p) {
+            unsigned c=*p++;
+            if (c>=0xf0 || (c==0xc2 && *p>=0x80 && *p<=0x9f))
+                return "EIT ondersteunt deze tekens niet. Gebruik tekst zonder emoji of besturingstekens.";
+            if ((c&0xc0)!=0x80) ++count;
+        }
+        if (count>limits[i]) return "Gebruik maximaal 40 tekens voor stad/operatornaam en 240 voor stationsomschrijving.";
+    }
+    return NULL;
+}
 static int config_valid(const AppConfig *s) {
     for (size_t i=0;i<CONFIG_FIELDS;++i) {
         const ConfigField *f=&config_fields[i]; const char *value=(const char *)s+f->offset;
@@ -298,6 +331,7 @@ static int config_valid(const AppConfig *s) {
         }
         else if (*(const int *)value<f->min || *(const int *)value>f->max) return 0;
     }
+    if (station_validate(&s->station)) return 0;
     DatvUdpSettings udp=s->udp;
     if (!udp.ip[0]) strcpy(udp.ip,"127.0.0.1"); /* An unused destination may be empty. */
     return !datv_udp_validate(udp,160,120) && dvb_bitrate(s->ts_dvb)>0 && dvb_bitrate(s->udp_dvb)>0;
@@ -323,7 +357,7 @@ int config_load(const char *path, AppConfig *out) {
     FILE *f=config_open(path,0);
     if (!f) return errno==ENOENT?0:-1;
     AppConfig s=config_defaults(); uint64_t seen=0;
-    int version=0, ok=1; char line[256];
+    int version=0, ok=1; char line[1200];
     while (fgets(line,sizeof(line),f)) {
         size_t n=strlen(line);
         if (!n || (line[n-1]!='\n' && !feof(f))) { ok=0; break; }
@@ -332,7 +366,7 @@ int config_load(const char *path, AppConfig *out) {
         char *value=strchr(line,'=');
         if (!value) { ok=0; break; } *value++=0;
         if (!strcmp(line,"version")) {
-            if (version || (strcmp(value,"1") && strcmp(value,"2") && strcmp(value,"3"))) { ok=0; break; }
+            if (version || (strcmp(value,"1") && strcmp(value,"2") && strcmp(value,"3") && strcmp(value,"4"))) { ok=0; break; }
             version=value[0]-'0'; continue;
         }
         size_t i;
@@ -356,6 +390,12 @@ int config_load(const char *path, AppConfig *out) {
     for (size_t i=0; i<CONFIG_FIELDS; ++i)
         if (config_fields[i].offset==offsetof(AppConfig,ebu_top) ||
             config_fields[i].offset==offsetof(AppConfig,ebu_bottom)) required &= ~(UINT64_C(1)<<i);
+    uint64_t eit_fields=0;
+    for (size_t i=0;i<CONFIG_FIELDS;++i)
+        if (!strcmp(config_fields[i].key,"ts.eit_enabled") ||
+            !strcmp(config_fields[i].key,"udp.video.eit_enabled") ||
+            !strncmp(config_fields[i].key,"station.",8)) eit_fields|=UINT64_C(1)<<i;
+    if (version<4 && !(seen&eit_fields)) required&=~eit_fields;
     /* Old files have no RF parameters. Keep their stored bitrates until the
      * user opens a dialog, where the calculated value is explicitly shown. */
     uint64_t dvb_fields=0;
@@ -392,7 +432,7 @@ int config_save(const char *path, const AppConfig *s) {
     snprintf(temporary,n,"%s.tmp",path);
     FILE *f=config_open(temporary,1);
     if (!f) { free(temporary); return 0; }
-    int ok=fprintf(f,"# ATV contestnummer generator\nversion=3\n")>=0;
+    int ok=fprintf(f,"# ATV contestnummer generator\nversion=4\n")>=0;
     for (size_t i=0;i<CONFIG_FIELDS && ok;++i) {
         const ConfigField *field=&config_fields[i]; const char *value=(const char *)s+field->offset;
         ok=(field->size?fprintf(f,"%s=%s\n",field->key,value):

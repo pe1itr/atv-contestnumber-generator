@@ -120,3 +120,13 @@ build/test-dvb: checks/test_dvb.c src/core.c src/core.h src/datv.h
 	$(HOSTCC) $(CFLAGS) -Isrc checks/test_dvb.c src/core.c -o $@
 build/test-dvb.exe: checks/test_dvb.c src/core.c src/core.h src/datv.h
 	$(CC) $(CFLAGS) -static -Isrc checks/test_dvb.c src/core.c -o $@
+
+build/test-eit: checks/test_eit.cpp src/datv.cpp src/datv.h src/core.h build/core-linux.o build/openh264-linux/libopenh264.a
+	$(CXX) $(CXXFLAGS) -Isrc -Ibuild/openh264-linux/codec/api $< build/core-linux.o build/openh264-linux/libopenh264.a -lpthread -o $@
+build/test-eit.exe: checks/test_eit.cpp src/datv.cpp src/datv.h src/core.h build/core-windows.o build/openh264-windows/libopenh264.a
+	$(WINCXX) $(CXXFLAGS) -static -Isrc -Ibuild/openh264-windows/codec/api $< build/core-windows.o build/openh264-windows/libopenh264.a -lws2_32 -lwinmm -lwinpthread -lssp -o $@
+
+.PHONY: test-eit
+test-eit: build/test-eit
+	build/test-eit build/eit-linux
+	$(PYTHON) checks/check_eit.py build/eit-linux

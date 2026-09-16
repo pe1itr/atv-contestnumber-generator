@@ -6,10 +6,16 @@
 #include <thread>
 #include <vector>
 int main(int argc,char **argv) {
-    if (argc!=6) return 1;
+    if (argc!=6 && (argc!=7 || std::strcmp(argv[6],"eit"))) return 1;
     DatvUdpSettings s=datv_udp_defaults(); std::strcpy(s.ip,"127.0.0.1");
     s.port=std::atoi(argv[1]); double duration=std::atof(argv[2]);
     s.video.bitrate=std::atoi(argv[3]); s.video.fps=std::atoi(argv[4]); s.video.gop=std::atoi(argv[5]);
+    if (argc==7) {
+        s.video.eit_enabled=1; std::strcpy(s.video.locator,"JO21QK");
+        std::strcpy(s.video.station.city,"Eindhoven");
+        std::strcpy(s.video.station.operator_name,"René");
+        std::strcpy(s.video.station.description,"ATV-contest; 70 cm; antenne richting zuid.");
+    }
     std::vector<uint32_t> pixels(160*120);
     for (int y=0;y<120;++y) for (int x=0;x<160;++x)
         pixels[y*160+x]=((x/23+y/29)%2)?0xffff00:0x000080;

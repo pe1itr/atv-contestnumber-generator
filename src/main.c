@@ -23,6 +23,7 @@ static IWICImagingFactory *factory;
 static int ready;
 static wchar_t contest_square[7];
 static DatvSettings ts_settings;
+static StationInfo station_info;
 static DvbSettings ts_dvb, udp_dvb;
 static DatvUdpSettings udp_settings;
 static int genius_level=1;
@@ -256,7 +257,7 @@ static void ts_error(HWND window, const char *message) {
 typedef struct {
     HBITMAP bitmap;
     Resolution size;
-    char call[25];
+    char call[25], locator[49];
     DatvStream *stream;
 } UdpDialog;
 #include "quality_windows.h"
@@ -271,8 +272,8 @@ static void udp_poll(HWND window,UdpDialog *d) {
     char text[512]; datv_udp_status_text(udp_settings,status,text,sizeof(text));
     udp_status_message(window,text);
     BOOL busy=status.state==DATV_PREPARING || status.state==DATV_RUNNING;
-    const int fields[]={IDC_UDP_IP,IDC_UDP_PORT,IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP,IDC_UDP_START,IDC_UDP_APPLY,IDC_UDP_PREVIEW};
-    for (int i=0;i<8;++i) EnableWindow(GetDlgItem(window,fields[i]),!busy);
+    const int fields[]={IDC_UDP_IP,IDC_UDP_PORT,IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP,IDC_UDP_START,IDC_UDP_APPLY,IDC_UDP_PREVIEW,IDC_INCLUDE_EIT};
+    for (int i=0;i<9;++i) EnableWindow(GetDlgItem(window,fields[i]),!busy);
     dvb_window_enable(window,!busy);
     EnableWindow(GetDlgItem(window,IDC_UDP_STOP),busy);
 }
@@ -280,6 +281,7 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
     UdpDialog *d=(UdpDialog *)GetWindowLongPtrW(window,DWLP_USER);
     if (message==WM_INITDIALOG) {
         d=(UdpDialog *)lp; SetWindowLongPtrW(window,DWLP_USER,lp);
+        CheckDlgButton(window,IDC_INCLUDE_EIT,udp_settings.video.eit_enabled?BST_CHECKED:BST_UNCHECKED);
         SetDlgItemTextA(window,IDC_UDP_IP,udp_settings.ip);
         SendDlgItemMessageW(window,IDC_UDP_IP,EM_SETLIMITTEXT,15,0);
         SetDlgItemInt(window,IDC_UDP_PORT,udp_settings.port,FALSE);
@@ -319,11 +321,15 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         if ((LOWORD(wp)!=IDC_UDP_PREVIEW && !valid) || !datv_test_options(4,values,&s.video,&w,&h)) {
             udp_status_message(window,"Gebruik poort 1-65535, bitrate 32000-2000000 bit/s, 1-25 beelden/s en GOP 1-250."); return TRUE;
         }
+        s.video.eit_enabled=IsDlgButtonChecked(window,IDC_INCLUDE_EIT)==BST_CHECKED;
         DatvUdpSettings check=s;
         if (LOWORD(wp)==IDC_UDP_APPLY && !check.ip[0]) strcpy(check.ip,"127.0.0.1");
         const char *error=LOWORD(wp)==IDC_UDP_PREVIEW ? datv_validate(s.video,d->size.width,d->size.height) : datv_udp_validate(check,d->size.width,d->size.height);
         if (error) { udp_status_message(window,error); return TRUE; }
-        if (LOWORD(wp)==IDC_UDP_PREVIEW) { quality_compare(window,d->bitmap,d->size,d->call,s.video); return TRUE; }
+        if (LOWORD(wp)==IDC_UDP_PREVIEW) {
+            s.video.station=station_info; strcpy(s.video.locator,d->locator);
+            quality_compare(window,d->bitmap,d->size,d->call,s.video); return TRUE;
+        }
         udp_settings=s; udp_dvb=radio;
         if (LOWORD(wp)==IDC_UDP_APPLY) {
             KillTimer(window,1); EndDialog(window,0); return TRUE;
@@ -334,9 +340,10 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         }
         datv_udp_destroy(d->stream);
         char detail[256];
+        s.video.station=station_info; strcpy(s.video.locator,d->locator);
         d->stream=datv_udp_start(dib.dsBm.bmBits,d->size.width,d->size.height,dib.dsBm.bmWidthBytes,d->call,s,detail);
         if (!d->stream) udp_status_message(window,detail);
-        else { udp_settings=s; udp_poll(window,d); }
+        else { udp_poll(window,d); }
         return TRUE;
     }
     return FALSE;
@@ -355,6 +362,7 @@ static void output_udp(HWND window) {
     int band=(int)SendDlgItemMessageW(window,IDC_BAND,CB_GETCURSEL,0,0);
     if (band<0 || band>10) return;
     WideCharToMultiByte(CP_UTF8,0,call,-1,d.call,sizeof(d.call),NULL,NULL);
+    WideCharToMultiByte(CP_UTF8,0,locator,-1,d.locator,sizeof(d.locator),NULL,NULL);
     d.bitmap=pm?render_pattern(d.size,call,locator,selected_mode(window)):render(d.size.width,d.size.height,call,code,locator,show,bands[band],
         IsDlgButtonChecked(window,IDC_INVERSE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_SHOW_SUM)==BST_CHECKED,
         IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_BLUE_YELLOW)==BST_CHECKED,
@@ -420,6 +428,7 @@ static INT_PTR CALLBACK ts_options(HWND window, UINT message, WPARAM wp, LPARAM 
     (void)lp;
     if (message==WM_COMMAND && dvb_window_event(window,wp,IDC_TS_BITRATE)) return TRUE;
     if (message==WM_INITDIALOG) {
+        CheckDlgButton(window,IDC_INCLUDE_EIT,ts_settings.eit_enabled?BST_CHECKED:BST_UNCHECKED);
         dvb_window_init(window,IDC_TS_BITRATE,ts_dvb);
         SetDlgItemInt(window,IDC_TS_SECONDS,ts_settings.seconds,FALSE);
         SetDlgItemInt(window,IDC_TS_FPS,ts_settings.fps,FALSE);
@@ -436,6 +445,7 @@ static INT_PTR CALLBACK ts_options(HWND window, UINT message, WPARAM wp, LPARAM 
         if (!datv_test_options(4,values,&s,&w,&h)) {
             error(window,L"Gebruik bitrate 32000-2000000 bit/s, duur 1-60 s, 1-25 beelden/s en GOP 1-250."); return TRUE;
         }
+        s.eit_enabled=IsDlgButtonChecked(window,IDC_INCLUDE_EIT)==BST_CHECKED;
         ts_settings=s; ts_dvb=radio; EndDialog(window,IDOK); return TRUE;
     }
     if (message==WM_CLOSE || (message==WM_COMMAND && LOWORD(wp)==IDCANCEL)) { EndDialog(window,IDCANCEL); return TRUE; }
@@ -454,7 +464,8 @@ static void export_ts(HWND window) {
     if (invalid) { ts_error(window,invalid); return; }
     HINSTANCE instance=(HINSTANCE)GetWindowLongPtrW(window,GWLP_HINSTANCE);
     if (DialogBoxParamW(instance,MAKEINTRESOURCEW(IDD_TS),window,ts_options,0)!=IDOK) return;
-    TsJob job={0}; job.settings=ts_settings;
+    TsJob job={0}; job.settings=ts_settings; job.settings.station=station_info;
+    WideCharToMultiByte(CP_UTF8,0,locator,-1,job.settings.locator,sizeof(job.settings.locator),NULL,NULL);
     WideCharToMultiByte(CP_UTF8,0,call,-1,job.call,25,NULL,NULL);
     filename_call(safe,call);
     swprintf(job.path,MAX_PATH,L"%ls-%ls-%dx%d-%dbps.ts",safe,pm?image_modes[selected_mode(window)]:code,r.width,r.height,ts_settings.bitrate);
@@ -637,7 +648,7 @@ static AppConfig capture_config(HWND window) {
     s.top_code=IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED;
     s.ebu_top=IsDlgButtonChecked(window,IDC_EBU_TOP)==BST_CHECKED;
     s.ebu_bottom=IsDlgButtonChecked(window,IDC_EBU_BOTTOM)==BST_CHECKED;
-    s.genius=genius_level; s.ts=ts_settings; s.udp=udp_settings; s.ts_dvb=ts_dvb; s.udp_dvb=udp_dvb; return s;
+    s.station=station_info; s.genius=genius_level; s.ts=ts_settings; s.udp=udp_settings; s.ts_dvb=ts_dvb; s.udp_dvb=udp_dvb; return s;
 }
 static void apply_config(HWND window,const AppConfig *s) {
     ready=0; wchar_t text[97];
@@ -660,11 +671,48 @@ static void apply_config(HWND window,const AppConfig *s) {
     contest_square[0]=0;
     read_text(window,IDC_LOCATOR,text,LOCATOR_MAX_LENGTH+1);
     locator_square_changed(contest_square,text);
-    ts_settings=s->ts; udp_settings=s->udp; ts_dvb=s->ts_dvb; udp_dvb=s->udp_dvb;
+    station_info=s->station; ts_settings=s->ts; udp_settings=s->udp; ts_dvb=s->ts_dvb; udp_dvb=s->udp_dvb;
     SendDlgItemMessageW(window,IDC_CODE,EM_SETREADONLY,s->automatic,0);
     update_mode(window); ready=1;
     SendMessageW(window,WM_COMMAND,s->genius==2?IDM_LEVEL2:IDM_LEVEL1,0);
     InvalidateRect(GetDlgItem(window,IDC_PREVIEW),NULL,FALSE);
+}
+static INT_PTR CALLBACK eit_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp) {
+    (void)lp;
+    if (message==WM_INITDIALOG) {
+        wchar_t text[EIT_DESCRIPTION_LENGTH+1];
+        read_text(GetParent(window),IDC_CALL,text,25); SetDlgItemTextW(window,IDC_EIT_CALL,text);
+        read_text(GetParent(window),IDC_LOCATOR,text,LOCATOR_MAX_LENGTH+1); SetDlgItemTextW(window,IDC_EIT_LOCATOR,text);
+        MultiByteToWideChar(CP_UTF8,0,station_info.city,-1,text,EIT_DESCRIPTION_LENGTH+1);
+        SetDlgItemTextW(window,IDC_EIT_CITY,text);
+        MultiByteToWideChar(CP_UTF8,0,station_info.operator_name,-1,text,EIT_DESCRIPTION_LENGTH+1);
+        SetDlgItemTextW(window,IDC_EIT_OPERATOR,text);
+        MultiByteToWideChar(CP_UTF8,0,station_info.description,-1,text,EIT_DESCRIPTION_LENGTH+1);
+        SetDlgItemTextW(window,IDC_EIT_DESCRIPTION,text);
+        SendDlgItemMessageW(window,IDC_EIT_CITY,EM_SETLIMITTEXT,EIT_CITY_LENGTH,0);
+        SendDlgItemMessageW(window,IDC_EIT_OPERATOR,EM_SETLIMITTEXT,EIT_OPERATOR_LENGTH,0);
+        SendDlgItemMessageW(window,IDC_EIT_DESCRIPTION,EM_SETLIMITTEXT,EIT_DESCRIPTION_LENGTH,0);
+        return TRUE;
+    }
+    if (message==WM_COMMAND && LOWORD(wp)==IDOK) {
+        StationInfo station={0}; wchar_t text[EIT_DESCRIPTION_LENGTH+1];
+        GetDlgItemTextW(window,IDC_EIT_CITY,text,EIT_DESCRIPTION_LENGTH+1);
+        WideCharToMultiByte(CP_UTF8,0,text,-1,station.city,sizeof(station.city),NULL,NULL);
+        GetDlgItemTextW(window,IDC_EIT_OPERATOR,text,EIT_DESCRIPTION_LENGTH+1);
+        WideCharToMultiByte(CP_UTF8,0,text,-1,station.operator_name,sizeof(station.operator_name),NULL,NULL);
+        GetDlgItemTextW(window,IDC_EIT_DESCRIPTION,text,EIT_DESCRIPTION_LENGTH+1);
+        WideCharToMultiByte(CP_UTF8,0,text,-1,station.description,sizeof(station.description),NULL,NULL);
+        const char *error=station_validate(&station);
+        if (error) {
+            MultiByteToWideChar(CP_UTF8,0,error,-1,text,EIT_DESCRIPTION_LENGTH+1);
+            SetDlgItemTextW(window,IDC_EIT_STATUS,text); return TRUE;
+        }
+        station_info=station; EndDialog(window,IDOK); return TRUE;
+    }
+    if (message==WM_CLOSE || (message==WM_COMMAND && LOWORD(wp)==IDCANCEL)) {
+        EndDialog(window,IDCANCEL); return TRUE;
+    }
+    return FALSE;
 }
 static void save_config(HWND window) {
     AppConfig s=capture_config(window); char *path=config_path();
@@ -686,6 +734,7 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
     switch (message) {
     case WM_INITDIALOG: {
         ready = 0;
+        station_info=(StationInfo){0};
         ts_settings=datv_defaults(); udp_settings=datv_udp_defaults(); genius_level=1;
         ts_dvb=udp_dvb=dvb_defaults();
         ts_settings.bitrate=udp_settings.video.bitrate=dvb_bitrate(ts_dvb);
@@ -731,6 +780,11 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
             }
             CheckMenuRadioItem(GetSubMenu(menu,1),IDM_LEVEL1,IDM_LEVEL2,level==2?IDM_LEVEL2:IDM_LEVEL1,MF_BYCOMMAND);
             DrawMenuBar(window); return TRUE;
+        }
+        if (LOWORD(wp)==IDM_EIT) {
+            if (DialogBoxParamW((HINSTANCE)GetWindowLongPtrW(window,GWLP_HINSTANCE),MAKEINTRESOURCEW(IDD_EIT),window,eit_dialog,0)==-1)
+                error(window,L"Kan het EIT-venster niet openen.");
+            return TRUE;
         }
         if (LOWORD(wp)==IDM_SAVE_CONFIG) { save_config(window); return TRUE; }
         if (LOWORD(wp)==IDM_EXPORT_TS) { export_ts(window); return TRUE; }

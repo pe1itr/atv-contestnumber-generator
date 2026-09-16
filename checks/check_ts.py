@@ -129,32 +129,33 @@ def check(path, bitrate, fps, gop, width, height, seconds):
     print(f"OK {path.name}: {bitrate} bit/s, {width}x{height}, {fps} fps, GOP {gop}, {len(units)} beelden")
 
 
-if len(sys.argv) > 1:
-    check(Path(sys.argv[1]), *map(int, sys.argv[2:]))
-else:
-    with tempfile.TemporaryDirectory(prefix="atv-ts-check-") as temp:
-        for i, (bitrate, fps, gop, width, height) in enumerate([
-            (120000, 5, 5, 320, 240), (60000, 5, 5, 320, 240),
-            (32254, 1, 1, 160, 120), (33786, 1, 1, 160, 120),
-            (120665, 5, 5, 320, 240), (103676, 5, 5, 320, 240),
-            (60000, 2, 1, 320, 240), (60000, 5, 1, 160, 120),
-            (120000, 5, 5, 120, 68), (240000, 10, 10, 640, 360),
-            (120000, 10, 2, 240, 180), (120000, 10, 2, 240, 136),
-            (115196, 10, 2, 240, 180), (123607, 10, 2, 240, 136),
-        ]):
-            path = Path(temp)/f"test-{i}.ts"
-            run(["dist/atv-contestnummer", "--ts-test", str(path), str(bitrate), "6", str(fps), str(gop), str(width), str(height)])
-            check(path, bitrate, fps, gop, width, height, 6)
-        for width, height in ((320,240), (320,180)):
-            path = Path(temp)/f"pm5644-{width}x{height}.ts"
-            run(["dist/atv-contestnummer", "--ts-pm5644-test", str(path), "120000", "6", "5", "5", str(width), str(height)])
-            check(path, 120000, 5, 5, width, height, 6)
-        # Invalid input and existing output must fail without damaging files.
-        path = Path(temp)/"protected.ts"
-        path.write_bytes(b"keep me")
-        for value in ("120000", "0", "999999999999999999999"):
-            assert run(["dist/atv-contestnummer", "--ts-test", str(path), value], check=False).returncode != 0
-            assert path.read_bytes() == b"keep me"
-        impossible = Path(temp)/"too-large.ts"
-        assert run(["dist/atv-contestnummer", "--ts-test", str(impossible), "48000", "2", "25", "1", "640", "480"], check=False).returncode != 0
-        assert not impossible.exists()
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        check(Path(sys.argv[1]), *map(int, sys.argv[2:]))
+    else:
+        with tempfile.TemporaryDirectory(prefix="atv-ts-check-") as temp:
+            for i, (bitrate, fps, gop, width, height) in enumerate([
+                (120000, 5, 5, 320, 240), (60000, 5, 5, 320, 240),
+                (32254, 1, 1, 160, 120), (33786, 1, 1, 160, 120),
+                (120665, 5, 5, 320, 240), (103676, 5, 5, 320, 240),
+                (60000, 2, 1, 320, 240), (60000, 5, 1, 160, 120),
+                (120000, 5, 5, 120, 68), (240000, 10, 10, 640, 360),
+                (120000, 10, 2, 240, 180), (120000, 10, 2, 240, 136),
+                (115196, 10, 2, 240, 180), (123607, 10, 2, 240, 136),
+            ]):
+                path = Path(temp)/f"test-{i}.ts"
+                run(["dist/atv-contestnummer", "--ts-test", str(path), str(bitrate), "6", str(fps), str(gop), str(width), str(height)])
+                check(path, bitrate, fps, gop, width, height, 6)
+            for width, height in ((320,240), (320,180)):
+                path = Path(temp)/f"pm5644-{width}x{height}.ts"
+                run(["dist/atv-contestnummer", "--ts-pm5644-test", str(path), "120000", "6", "5", "5", str(width), str(height)])
+                check(path, 120000, 5, 5, width, height, 6)
+            # Invalid input and existing output must fail without damaging files.
+            path = Path(temp)/"protected.ts"
+            path.write_bytes(b"keep me")
+            for value in ("120000", "0", "999999999999999999999"):
+                assert run(["dist/atv-contestnummer", "--ts-test", str(path), value], check=False).returncode != 0
+                assert path.read_bytes() == b"keep me"
+            impossible = Path(temp)/"too-large.ts"
+            assert run(["dist/atv-contestnummer", "--ts-test", str(impossible), "48000", "2", "25", "1", "640", "480"], check=False).returncode != 0
+            assert not impossible.exists()

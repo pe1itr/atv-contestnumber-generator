@@ -18,9 +18,12 @@ int main(void) {
     original.band=10; original.show=0; original.inverse=1; original.blue_yellow=1;
     original.show_sum=1; original.top_code=1; original.genius=2;
     strcpy(original.call,"PE1ITR/P"); strcpy(original.locator,"JO21QK86DV12"); strcpy(original.code,"1957");
-    original.ts=(DatvSettings){60000,60,2,1};
+    original.ts=(DatvSettings){.bitrate=60000,.seconds=60,.fps=2,.gop=1};
     strcpy(original.udp.ip,"192.168.1.50"); original.udp.port=12345;
-    original.udp.video=(DatvSettings){240000,10,10,2};
+    original.udp.video=(DatvSettings){.bitrate=240000,.seconds=10,.fps=10,.gop=2};
+    original.ts.eit_enabled=original.udp.video.eit_enabled=1;
+    strcpy(original.station.city,"Eindhoven"); strcpy(original.station.operator_name,"René");
+    for (int i=0;i<EIT_DESCRIPTION_LENGTH;++i) strcat(original.station.description,"語");
     original.ts_dvb=(DvbSettings){DVB_S2,3,1,1,0,250};
     original.udp_dvb=(DvbSettings){DVB_T,4,2,0,1,333};
     original.ts.bitrate=dvb_bitrate(original.ts_dvb);
@@ -42,6 +45,8 @@ int main(void) {
     bad=original; strcpy(bad.call,"PE1\nITR"); assert(!config_save(TEST_PATH,&bad));
     bad=original; strcpy(bad.call,"\xc0\x80"); assert(!config_save(TEST_PATH,&bad));
     bad=original; strcpy(bad.call,"1234567890123456789012345"); assert(!config_save(TEST_PATH,&bad));
+    bad=original; strcpy(bad.station.operator_name,"\xf0\x9f\x98\x80"); assert(!config_save(TEST_PATH,&bad));
+    bad=original; strcpy(bad.station.city,"Stad\nextra=1"); assert(!config_save(TEST_PATH,&bad));
     /* Malformed, duplicate, unknown and unsupported data never partially apply. */
     const char *invalid[]={"version=1\n","version=2\n","udp.port=0\n","udp.port=999999999999999999999999\n","unknown=1\n","broken\n"};
     for (unsigned i=0;i<sizeof(invalid)/sizeof(invalid[0]);++i) {
@@ -108,6 +113,19 @@ int main(void) {
     assert(fputs(old_config,f)>=0); assert(!fclose(f));
     assert(config_load(TEST_PATH,&loaded)==-1);
     bad=original; bad.ts_dvb.bandwidth_khz=151; assert(!config_save(TEST_PATH,&bad));
+    /* Version 3 migrates without EIT; partial new groups remain invalid. */
+    assert(config_save(TEST_PATH,&original)); old_config[0]=0;
+    f=fopen(TEST_PATH,"rb"); assert(f);
+    while (fgets(line,sizeof(line),f)) {
+        if (!strncmp(line,"station.",8) || strstr(line,"eit_enabled=")) continue;
+        if (!strncmp(line,"version=",8)) strcpy(line,"version=3\n");
+        strcat(old_config,line);
+    }
+    assert(!fclose(f)); f=fopen(TEST_PATH,"wb"); assert(f);
+    assert(fputs(old_config,f)>=0); assert(!fclose(f));
+    assert(config_load(TEST_PATH,&loaded)==1);
+    assert(!loaded.ts.eit_enabled && !loaded.udp.video.eit_enabled && !loaded.station.city[0]);
+    append("station.city=Eindhoven\n"); assert(config_load(TEST_PATH,&loaded)==-1);
     assert(!remove(TEST_PATH));
     puts("Config: roundtrip, defaults, ranges, malformed files and protected previous settings OK.");
     return 0;

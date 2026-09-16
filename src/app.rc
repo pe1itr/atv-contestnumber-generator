@@ -15,6 +15,7 @@ BEGIN
         MENUITEM "Genius level &1 (standaard)", IDM_LEVEL1, CHECKED
         MENUITEM "Genius level &2", IDM_LEVEL2
         MENUITEM SEPARATOR
+        MENUITEM "&EIT...", IDM_EIT
         MENUITEM "Huidige instellingen &opslaan", IDM_SAVE_CONFIG
     END
     POPUP "&Info"
@@ -23,7 +24,7 @@ BEGIN
         MENUITEM "OpenH264-licentie", IDM_CODEC_LICENSE
     END
 END
-IDD_TS DIALOGEX 0, 0, 447, 310
+IDD_TS DIALOGEX 0, 0, 447, 332
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "DATV: TS-proefbestand"
 FONT 9, "Segoe UI"
@@ -50,8 +51,9 @@ BEGIN
     COMBOBOX IDC_DVB_GUARD, 210, 210, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT "DVB-S2: normale frames. DVB-T: SR/BW is bandbreedte in kHz.", -1, 12, 232, 410, 12
     LTEXT "Zonder audio. Service = roepnaam; ID = 1.\nHet bestand bevat ook 1 seconde aanloop voor de decoder.", -1, 12, 255, 410, 24
-    DEFPUSHBUTTON "Verder", IDOK, 300, 286, 65, 16
-    PUSHBUTTON "Annuleren", IDCANCEL, 370, 286, 65, 16
+    CONTROL "EIT-programma-informatie meesturen (Config > EIT)", IDC_INCLUDE_EIT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 284, 423, 16
+    DEFPUSHBUTTON "Verder", IDOK, 300, 308, 65, 16
+    PUSHBUTTON "Annuleren", IDCANCEL, 370, 308, 65, 16
 END
 IDD_TS_PROGRESS DIALOGEX 0, 0, 260, 45
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION
@@ -60,7 +62,7 @@ FONT 9, "Segoe UI"
 BEGIN
     LTEXT "TS maken en bitrate controleren...", -1, 12, 16, 236, 16
 END
-IDD_UDP DIALOGEX 0, 0, 447, 396
+IDD_UDP DIALOGEX 0, 0, 447, 420
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "DATV: UDP-uitvoer"
 FONT 9, "Segoe UI"
@@ -90,12 +92,13 @@ BEGIN
     LTEXT "DVB-S2: normale frames. DVB-T: SR/BW is bandbreedte in kHz.", -1, 12, 252, 410, 12
     LTEXT "Tip voor de contest: gebruik 4 fps en GOP 2.", -1, 12, 270, 423, 12
     LTEXT "Start zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.", -1, 12, 288, 423, 28
-    LTEXT "Vul het IP-adres van Portsdown in en kies Start.", IDC_UDP_STATUS, 12, 321, 423, 43
-    DEFPUSHBUTTON "Start", IDC_UDP_START, 12, 372, 50, 16
-    PUSHBUTTON "Stop", IDC_UDP_STOP, 68, 372, 50, 16
-    PUSHBUTTON "Toepassen en sluiten", IDC_UDP_APPLY, 124, 372, 123, 16
-    PUSHBUTTON "Beeld &controleren", IDC_UDP_PREVIEW, 253, 372, 110, 16
-    PUSHBUTTON "Sluiten", IDCANCEL, 369, 372, 66, 16
+    CONTROL "EIT-programma-informatie meesturen (Config > EIT)", IDC_INCLUDE_EIT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 320, 423, 16
+    LTEXT "Vul het IP-adres van Portsdown in en kies Start.", IDC_UDP_STATUS, 12, 345, 423, 43
+    DEFPUSHBUTTON "Start", IDC_UDP_START, 12, 396, 50, 16
+    PUSHBUTTON "Stop", IDC_UDP_STOP, 68, 396, 50, 16
+    PUSHBUTTON "Toepassen en sluiten", IDC_UDP_APPLY, 124, 396, 123, 16
+    PUSHBUTTON "Beeld &controleren", IDC_UDP_PREVIEW, 253, 396, 110, 16
+    PUSHBUTTON "Sluiten", IDCANCEL, 369, 396, 66, 16
 END
 IDD_MAIN DIALOGEX 0, 0, 460, 327
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
@@ -145,4 +148,24 @@ BEGIN
     LTEXT "Beeld voorbereiden en decoderen... Er wordt niets uitgezonden.", IDC_QUALITY_STATUS, 12, 288, 576, 26
     LTEXT "Eerste volledige videobeeld na H.264-compressie. Andere videobeelden kunnen verschillen.\nZonder ontvangstverliezen of beeldbewerking van je ontvanger. Scroll om details te bekijken.", -1, 12, 319, 576, 26
     DEFPUSHBUTTON "Sluiten", IDCANCEL, 518, 350, 70, 16
+END
+
+IDD_EIT DIALOGEX 0, 0, 447, 208
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "EIT-programma-informatie"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "Roepnaam (automatisch)", -1, 12, 14, 180, 12
+    EDITTEXT IDC_EIT_CALL, 205, 11, 230, 16, ES_READONLY | ES_AUTOHSCROLL
+    LTEXT "Locator (automatisch)", -1, 12, 38, 180, 12
+    EDITTEXT IDC_EIT_LOCATOR, 205, 35, 230, 16, ES_READONLY | ES_AUTOHSCROLL
+    LTEXT "Stad (max. 40 tekens)", -1, 12, 62, 180, 12
+    EDITTEXT IDC_EIT_CITY, 205, 59, 230, 16, ES_AUTOHSCROLL
+    LTEXT "Operatornaam (max. 40 tekens)", -1, 12, 86, 180, 12
+    EDITTEXT IDC_EIT_OPERATOR, 205, 83, 230, 16, ES_AUTOHSCROLL
+    LTEXT "Stationsomschrijving (max. 240 tekens)", -1, 12, 110, 190, 12
+    EDITTEXT IDC_EIT_DESCRIPTION, 205, 107, 230, 16, ES_AUTOHSCROLL
+    LTEXT "Schakel EIT in bij TS-export of UDP-uitvoer.\nBewaar via Config > Huidige instellingen opslaan.", IDC_EIT_STATUS, 12, 138, 423, 36
+    DEFPUSHBUTTON "Toepassen", IDOK, 290, 183, 70, 16
+    PUSHBUTTON "Annuleren", IDCANCEL, 365, 183, 70, 16
 END

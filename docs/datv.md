@@ -61,6 +61,57 @@ en ook de huidige DVB-grens. De oude 40-ms-beperking is in 2005 verwijderd;
 
 ## Afspelen en analyseren
 
+### EIT-programma-informatie
+
+Via **Config → EIT...** vul je optioneel **stad**, **operatornaam** (elk maximaal
+40 tekens) en **stationsomschrijving** (maximaal 240 tekens) in. Roepnaam en
+locator worden automatisch uit het hoofdvenster overgenomen, ook als de locator
+niet op de kaart wordt getoond. De velden zijn eenregelig; accenten en andere
+BMP-tekens zijn toegestaan, emoji niet. **Toepassen** bewaart de tekst deze sessie;
+**Config → Huidige instellingen opslaan** bewaart haar na herstart.
+
+Vink in **TS-proefbestand** of **DATV UDP-uitvoer** de optie
+**EIT-programma-informatie meesturen** aan. Beide keuzes worden afzonderlijk
+bewaard en staan standaard uit, ook bij het laden van oudere configuraties.
+De titel is `ROEPNAAM - LOCATOR`, de korte beschrijving is de stad en de uitgebreide
+beschrijving bevat operatornaam en stationsomschrijving. Lege extra velden
+worden weggelaten. Zonder locator wordt alleen de roepnaam als titel gebruikt.
+Dit is programma-/EPG-informatie, geen ondertitel of tekstlaag in de video.
+VLC kan deze informatie in de programmagids tonen; de precieze weergave verschilt
+per speler. Teletekst wordt nog niet meegestuurd.
+
+De muxer verstuurt EIT present/following actual op PID `0x12` en TDT op PID `0x14`.
+Er is één huidig stationinformatievenster van UTC-middernacht tot de volgende
+UTC-middernacht, plus een lege following-sectie; er is geen geplande volgende
+uitzending. De systeemklok bij Start/export bepaalt de datum. Tijdens UDP loopt
+de UTC-tijd mee met de transportklok. Bij UTC-middernacht veranderen event-ID en
+versie automatisch. Gewijzigde stationinformatie na Stop/Start krijgt binnen
+dezelfde programmasessie een nieuwe EIT-versie. Er is geen live tekstbewerking:
+stop de stream, wijzig de gegevens en start opnieuw.
+
+Tekst gebruikt UTF-8-selector `0x15` met `short_event_descriptor` en zo nodig
+meerdere `extended_event_descriptor`s. De muxer kan secties over meerdere
+TS-pakketten verdelen en controleert bij de voorbereiding en tijdens UDP de
+herhaling: PAT/PMT maximaal 500 ms, SDT en beide EIT-secties maximaal 2 s,
+TDT maximaal 30 s. Tussen EIT-secties zit minstens 25 ms. De totale ingestelde
+TS-bitrate blijft gelijk; extra tabellen kosten beschikbare transportcapaciteit.
+Bij onvoldoende ruimte volgt vóór de uitvoer een foutmelding. Verhoog dan de
+bitrate of verkort de omschrijving. Zeer lange teksten kunnen bij 32 kbit/s niet
+passen, ook bij een eenvoudig beeld.
+
+Referenties: [EN 300 468 V1.19.1](https://www.etsi.org/deliver/etsi_en/300400_300499/300468/01.19.01_60/en_300468v011901p.pdf)
+§§5.1.4.1, 5.2.3–5.2.5, 6.2.15, 6.2.37 en bijlage A;
+[TS 101 211 V1.13.1](https://www.etsi.org/deliver/etsi_ts/101200_101299/101211/01.13.01_60/ts_101211v011301p.pdf)
+§§4.1.4.1 en 4.4.1–4.4.2. Dit blijft een vereenvoudigd DATV-profiel: onder andere
+NIT ontbreekt. Deze toevoeging betekent geen volledige DVB-conformiteitsclaim.
+
+`make test-eit` controleert EIT/TDT, UTF-8, CRC, continuïteit, bitrategrenzen,
+lange teksten, UTC-dagovergang en versieaanpassing. De bijbehorende Windows-test
+is `build/test-eit.exe`; `checks/check_eit.py` analyseert beide uitvoerplatforms.
+`python3 checks/check_eit.py --udp [--windows]` controleert EIT via UDP-loopback.
+
+### Spelers en streamanalyse
+
 ```sh
 ffplay mijn-contest.ts
 vlc mijn-contest.ts

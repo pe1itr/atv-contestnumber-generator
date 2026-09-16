@@ -169,13 +169,71 @@ Bytes pat() {
 Bytes pmt() {
     Bytes b={2,0xb0,18,0,1,0xc1,0,0,0xe1,0,0xf0,0,0x1b,0xe1,0,0xf0,0}; crc(b); return b;
 }
-Bytes sdt(const char *call) {
+Bytes sdt(const char *call, bool eit=false, unsigned version=0) {
     size_t n=std::strlen(call);
     Bytes b={0x42,0xf0,0,0,1,0xc1,0,0,0,1,0xff,0,1,0xfc,0x80,
              static_cast<unsigned char>(5+2*n),0x48,static_cast<unsigned char>(3+2*n),0x16,
              static_cast<unsigned char>(n)};
     b.insert(b.end(), call, call+n); b.push_back(n); b.insert(b.end(),call,call+n);
-    b[2]=b.size()+1; crc(b); return b;
+    b[5]|=(version&31)<<1; b[13]|=eit?1:0; b[2]=b.size()+1; crc(b); return b;
+}
+// EN 300 468: DVB UTF-8 selector, short and extended event descriptors.
+Bytes dvb_text(const std::string &text) {
+    Bytes b;
+    if (!text.empty()) { b.push_back(0x15); b.insert(b.end(),text.begin(),text.end()); }
+    return b;
+}
+void sized(Bytes &out, const Bytes &value) {
+    out.push_back(static_cast<unsigned char>(value.size()));
+    out.insert(out.end(),value.begin(),value.end());
+}
+unsigned char bcd(unsigned value) { return ((value/10)<<4)|(value%10); }
+void utc_time(Bytes &out, int64_t seconds) {
+    int64_t mjd=seconds/86400+40587;
+    if (seconds<0 || mjd>65535) throw std::runtime_error("Systeemdatum valt buiten het DVB-datumbereik.");
+    out.push_back(mjd>>8); out.push_back(mjd);
+    out.push_back(bcd(seconds/3600%24)); out.push_back(bcd(seconds/60%60)); out.push_back(bcd(seconds%60));
+}
+Bytes eit(const char *call, const DatvSettings &s, int section, int64_t utc, unsigned version) {
+    int64_t day=utc/86400;
+    Bytes b={0x4e,0xf0,0,0,1,static_cast<unsigned char>(0xc1|((version&31)<<1)),
+             static_cast<unsigned char>(section),1,0,1,0,1,1,0x4e};
+    if (!section) {
+        // One daily station-information window. No following event is scheduled.
+        b.push_back(day>>8); b.push_back(day);
+        utc_time(b,day*86400); b.insert(b.end(),{0x24,0,0});
+        Bytes descriptors, short_event={'n','l','d'};
+        std::string title=call;
+        if (s.locator[0]) title+=" - "+std::string(s.locator);
+        sized(short_event,dvb_text(title)); sized(short_event,dvb_text(s.station.city));
+        descriptors.push_back(0x4d); sized(descriptors,short_event);
+        // Each extended descriptor holds at most 248 UTF-8 bytes plus selector.
+        std::string description;
+        if (s.station.operator_name[0]) description="Operator: "+std::string(s.station.operator_name);
+        if (s.station.description[0]) {
+            if (!description.empty()) description+=" | ";
+            description+=s.station.description;
+        }
+        std::vector<Bytes> chunks;
+        for (size_t offset=0;offset<description.size();) {
+            size_t end=std::min(offset+248,description.size());
+            while (end<description.size() && (static_cast<unsigned char>(description[end])&0xc0)==0x80) --end;
+            chunks.push_back(dvb_text(description.substr(offset,end-offset))); offset=end;
+        }
+        for (size_t i=0;i<chunks.size();++i) {
+            Bytes ext={static_cast<unsigned char>((i<<4)|(chunks.size()-1)),'n','l','d',0};
+            sized(ext,chunks[i]); descriptors.push_back(0x4e); sized(descriptors,ext);
+        }
+        b.push_back(0x80|(descriptors.size()>>8)); b.push_back(descriptors.size());
+        b.insert(b.end(),descriptors.begin(),descriptors.end());
+    }
+    size_t length=b.size()+1; b[1]|=length>>8; b[2]=length; crc(b); return b;
+}
+Bytes tdt(int64_t utc) {
+    Bytes b={0x70,0x70,5}; utc_time(b,utc); return b; // TDT has no CRC.
+}
+int64_t utc_now() {
+    return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 void header(unsigned char *p, int pid, bool start, int cc) {
     std::memset(p,255,188); p[0]=0x47; p[1]=(pid>>8)|(start?0x40:0); p[2]=pid; p[3]=0x10|cc;
@@ -190,20 +248,44 @@ void write_pcr(unsigned char *p, uint64_t packet, int bitrate) {
     p[0]=base>>25; p[1]=base>>17; p[2]=base>>9; p[3]=base>>1;
     p[4]=((base&1)<<7)|0x7e|(ext>>8); p[5]=ext;
 }
+// A receiver can retain SI across Stop/Start. A new content snapshot needs a
+// new version even within the same UTC day. Serialise only this small registry;
+// each in-flight section remains immutable until its last CRC byte is sent.
+unsigned si_version(bool is_eit, const std::string &key, int64_t day=0) {
+    struct State { bool seen=false; std::string key; int64_t day=0; unsigned version=0; };
+    static State states[2]; static std::mutex mutex;
+    std::lock_guard<std::mutex> lock(mutex);
+    State &state=states[is_eit?1:0];
+    if (state.seen && (state.key!=key || state.day!=day))
+        state.version=(state.version+1)&31;
+    state.seen=true; state.key=key; state.day=day;
+    return state.version;
+}
+std::string eit_key(const char *call, const DatvSettings &s) {
+    std::string key=call;
+    for (const char *field:{s.locator,s.station.city,s.station.operator_name,s.station.description}) {
+        key.push_back('\0'); key+=field;
+    }
+    return key;
+}
 class Mux {
     const std::vector<Frame> &frames;
     DatvSettings s;
-    Bytes tables[3], pes;
-    const int pids[3]={0,PMT,0x11};
-    uint64_t due[3]={0,0,0}, last_pcr_packet=0, index=0;
-    bool first_table[3]={true,true,true};
-    int cc[3]={0,0,0}, video_cc=0;
+    Bytes tables[5], pes;
+    const int pids[5]={0,PMT,0x11,0x12,0x14};
+    uint64_t due[5]={}, last_pcr_packet=0, index=0;
+    uint64_t completed[6]={}; // PAT, PMT, SDT, EIT present, TDT, EIT following
+    bool first_table[5]={true,true,true,true,true};
+    size_t table_offset[5]={};
+    int cc[5]={}, video_cc=0, eit_section=0;
+    std::string call;
+    int64_t epoch;
     size_t offset=0;
     bool repeat;
 public:
     uint64_t frame=0;
-    Mux(const std::vector<Frame> &f, DatvSettings settings, const char *call, bool loop=false)
-        : frames(f),s(settings),tables{pat(),pmt(),sdt(call)},repeat(loop) {}
+    Mux(const std::vector<Frame> &f, DatvSettings settings, const char *name, bool loop=false, int64_t utc=utc_now())
+        : frames(f),s(settings),tables{pat(),pmt(),sdt(name,settings.eit_enabled,si_version(false,std::string(name)+(settings.eit_enabled?"+EIT":"")))},call(name),epoch(utc),repeat(loop) {}
     bool next(unsigned char packet[188]) {
         uint64_t now=byte_time(index*188,CLOCK,s.bitrate);
         uint64_t end=byte_time((index+1)*188,CLOCK,s.bitrate);
@@ -214,7 +296,15 @@ public:
         const uint64_t pcr_packets=std::max(2,s.bitrate*40/(1504*1000));
         bool pcr=(index==0 || index-last_pcr_packet>=pcr_packets);
         int table=-1;
-        for (int t=0; t<3; ++t) if (now>=due[t]) { table=t; break; }
+        for (int t=0; t<(s.eit_enabled?5:3); ++t)
+            if (now>=due[t] && (table<0 || due[t]<due[table])) {
+                table=t; if (!s.eit_enabled) break;
+            }
+        if (s.eit_enabled) {
+            const uint64_t limits[]={CLOCK/2,CLOCK/2,2*CLOCK,2*CLOCK,30*CLOCK,2*CLOCK};
+            for (int t=0;t<6;++t) if (end-completed[t]>limits[t])
+                throw std::runtime_error("EIT en beeld passen niet binnen de TS-planning. Verhoog de bitrate of verkort de stationsomschrijving.");
+        }
         if (pcr || (ready && table<0)) {
             bool start=ready && offset==0;
             bool random=start && f->idr;
@@ -237,18 +327,32 @@ public:
                 if (offset==pes.size()) { ++frame; offset=0; }
             }
         } else if (table>=0) {
-            header(packet,pids[table],true,cc[table]); cc[table]=(cc[table]+1)&15;
+            bool start=table_offset[table]==0;
+            if (start && table==3) {
+                int64_t utc=epoch+now/CLOCK;
+                tables[3]=eit(call.c_str(),s,eit_section,utc,si_version(true,eit_key(call.c_str(),s),utc/86400));
+            }
+            if (start && table==4) tables[4]=tdt(epoch+now/CLOCK);
+            header(packet,pids[table],start,cc[table]); cc[table]=(cc[table]+1)&15;
             int payload=4;
             if (first_table[table]) {
                 packet[3]|=0x20; packet[4]=1; packet[5]=0x80;
                 payload=6; first_table[table]=false;
             }
-            packet[payload]=0; std::memcpy(packet+payload+1,tables[table].data(),tables[table].size());
-            // Request SDT after 800 ms, reserving packet-scheduling margin for
-            // its roughly one-second repetition even at 32 kbit/s. Keep relative
-            // deadlines: absolute 5+5+1 PSI packets/s would overload the slots
-            // left between PCR packets at the lowest supported bitrate.
-            due[table]=now+(table==2?CLOCK*4/5:CLOCK/5);
+            if (start) packet[payload++]=0; // pointer_field only on PUSI
+            size_t count=std::min<size_t>(188-payload,tables[table].size()-table_offset[table]);
+            std::memcpy(packet+payload,tables[table].data()+table_offset[table],count);
+            table_offset[table]+=count;
+            due[table]=now; // Allow other overdue PIDs between section fragments.
+            if (table_offset[table]==tables[table].size()) {
+                table_offset[table]=0;
+                completed[table==3 && eit_section?5:table]=end;
+                if (table==3) eit_section^=1;
+                // EIT section gap is >=500 ms from packet end (norm: >=25 ms).
+                due[table]=end+(table==4?20*CLOCK:table==3?CLOCK/2:table==2?CLOCK*4/5:CLOCK/5);
+                // Preserve the established no-EIT transport profile exactly.
+                if (!s.eit_enabled) due[table]=now+(table==2?CLOCK*4/5:CLOCK/5);
+            }
         } else header(packet,0x1fff,false,0);
         ++index;
         return true;
@@ -296,6 +400,7 @@ int datv_write(FILE *output, const uint32_t *rgb, int width, int height,
         }
         std::snprintf(error,256,"Beeld past niet binnen deze TS-bitrate en een seconde buffer. Kies een lagere resolutie, lagere beeldfrequentie of langere GOP.");
     } catch (const std::bad_alloc &) { std::snprintf(error,256,"Onvoldoende geheugen voor TS-export."); }
+    catch (const std::runtime_error &e) { std::snprintf(error,256,"%s",e.what()); }
     return 0;
 }
 

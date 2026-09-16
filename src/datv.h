@@ -6,7 +6,21 @@
 extern "C" {
 #endif
 
-typedef struct { int bitrate, seconds, fps, gop; } DatvSettings;
+#define EIT_CITY_LENGTH 40
+#define EIT_DESCRIPTION_LENGTH 240
+#define EIT_OPERATOR_LENGTH 40
+typedef struct {
+    char city[EIT_CITY_LENGTH*4+1], description[EIT_DESCRIPTION_LENGTH*4+1];
+    char operator_name[EIT_OPERATOR_LENGTH*4+1]; /* UTF-8 */
+} StationInfo;
+typedef struct {
+    int bitrate, seconds, fps, gop;
+    int eit_enabled;
+    /* Snapshot of the station at Start/export, owned by the worker. */
+    char locator[49];
+    StationInfo station;
+} DatvSettings;
+const char *station_validate(const StationInfo *station);
 typedef struct { int qp, frames, largest_idr; } DatvResult;
 typedef struct { char ip[16]; int port; DatvSettings video; } DatvUdpSettings;
 typedef struct DatvStream DatvStream;

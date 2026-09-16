@@ -11,6 +11,7 @@ static BOOL CALLBACK apply_udp(HWND window,LPARAM unused) {
     SendDlgItemMessageW(window,IDC_DVB_GUARD,CB_SETCURSEL,1,0);
     SendMessageW(window,WM_COMMAND,MAKEWPARAM(IDC_DVB_SYSTEM,CBN_SELCHANGE),0);
     SetDlgItemInt(window,IDC_UDP_FPS,12,FALSE); SetDlgItemInt(window,IDC_UDP_GOP,3,FALSE);
+    CheckDlgButton(window,IDC_INCLUDE_EIT,BST_CHECKED);
     PostMessageW(window,WM_COMMAND,IDC_UDP_APPLY,0); return TRUE;
 }
 static void CALLBACK drive_timer(HWND w,UINT m,UINT_PTR id,DWORD t) {
@@ -28,16 +29,19 @@ int wmain(void) {
     HWND w=open_app(); AppConfig initial=capture_config(w); assert(initial.genius==1 && !initial.call[0]);
     AppConfig wanted=config_defaults();
     strcpy(wanted.call,"PE1ITR/P"); strcpy(wanted.locator,"JO21QK86DV12"); strcpy(wanted.code,"1957");
+    strcpy(wanted.station.city,"Eindhoven"); strcpy(wanted.station.operator_name,"René");
+    strcpy(wanted.station.description,"70 cm ATV-station");
     wanted.aspect=1; wanted.resolution=1; wanted.band=10; wanted.genius=2;
     wanted.show=0; wanted.inverse=1; wanted.blue_yellow=1; wanted.show_sum=1; wanted.top_code=1; wanted.ebu_top=1; wanted.ebu_bottom=1;
-    wanted.ts=(DatvSettings){60000,30,2,1}; apply_config(w,&wanted);
+    wanted.ts=(DatvSettings){.bitrate=60000,.seconds=30,.fps=2,.gop=1,.eit_enabled=1}; apply_config(w,&wanted);
     UINT_PTR timer=SetTimer(NULL,0,100,drive_timer); assert(timer);
     SendMessageW(w,WM_COMMAND,IDM_UDP,0); KillTimer(NULL,timer);
     assert(udp_settings.port==12345 && udp_settings.video.fps==12 && udp_settings.video.gop==3);
     wanted.udp=udp_settings; wanted.udp_dvb=udp_dvb;
     assert(wanted.udp_dvb.system==DVB_T && wanted.udp_dvb.bandwidth_khz==333 && wanted.udp_dvb.guard==1);
     SendMessageW(w,WM_COMMAND,IDM_SAVE_CONFIG,0); DestroyWindow(w);
-    w=open_app(); AppConfig actual=capture_config(w); assert(!memcmp(&wanted,&actual,sizeof(wanted)));
+    w=open_app(); AppConfig actual=capture_config(w);
+    assert(!memcmp(&wanted,&actual,sizeof(wanted)));
     assert(GetMenuState(GetSubMenu(GetMenu(w),0),IDM_UDP,MF_BYCOMMAND)!=(UINT)-1);
     assert(GetWindowLongPtrW(GetDlgItem(w,IDC_CODE),GWL_STYLE)&ES_READONLY);
     wchar_t code[5];

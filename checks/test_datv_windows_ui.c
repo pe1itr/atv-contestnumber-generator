@@ -2,7 +2,7 @@
 #include "../src/main.c"
 #include <assert.h>
 #include <dlgs.h>
-static int stage;
+static int stage=-3;
 static wchar_t target[MAX_PATH];
 static SOCKET receiver;
 static int port, received;
@@ -39,11 +39,21 @@ static void receive_udp(void) {
 static BOOL CALLBACK drive_window(HWND window,LPARAM unused) {
     (void)unused;
     wchar_t title[100]; GetWindowTextW(window,title,100);
+    if (stage<0 && !wcscmp(title,L"EIT-programma-informatie")) {
+        assert(GetWindowLongPtrW(GetDlgItem(window,IDC_EIT_CALL),GWL_STYLE)&ES_READONLY);
+        wchar_t locator[32]; GetDlgItemTextW(window,IDC_EIT_LOCATOR,locator,32);
+        assert(!wcscmp(locator,L"JO21QK"));
+        SetDlgItemTextW(window,IDC_EIT_CITY,stage==-3?L"Eindhoven":L"Annuleren");
+        SetDlgItemTextW(window,IDC_EIT_OPERATOR,L"René");
+        SetDlgItemTextW(window,IDC_EIT_DESCRIPTION,L"70 cm ATV-station");
+        PostMessageW(window,WM_COMMAND,stage==-3?IDOK:IDCANCEL,0); ++stage;
+    }
     if (stage>=10 && !wcscmp(title,L"DATV: UDP-uitvoer")) {
         assert(GetTickCount64()<udp_deadline);
         wchar_t status[512]; GetDlgItemTextW(window,IDC_UDP_STATUS,status,512);
         if (stage==10) {
             check_dvb(window,IDC_UDP_BITRATE);
+            CheckDlgButton(window,IDC_INCLUDE_EIT,BST_CHECKED);
             assert(GetDlgItemInt(window,IDC_UDP_PORT,NULL,FALSE)==10000);
             SetDlgItemTextW(window,IDC_UDP_IP,L"999.1.2.3"); stage=11; PostMessageW(window,WM_COMMAND,IDC_UDP_START,0);
         } else if (stage==11) {
@@ -55,6 +65,7 @@ static BOOL CALLBACK drive_window(HWND window,LPARAM unused) {
                 assert(wcsstr(status,L"UDP-uitvoer actief")); assert(!IsWindowEnabled(GetDlgItem(window,IDC_UDP_IP)));
                 assert(!IsWindowEnabled(GetDlgItem(window,IDC_DVB_SYSTEM)));
                 assert(!IsWindowEnabled(GetDlgItem(window,IDC_DVB_FEC)));
+                assert(!IsWindowEnabled(GetDlgItem(window,IDC_INCLUDE_EIT)));
                 stage=13; PostMessageW(window,WM_COMMAND,IDC_UDP_STOP,0);
             }
         } else if (stage==13 && wcsstr(status,L"UDP gestopt")) {
@@ -67,6 +78,7 @@ static BOOL CALLBACK drive_window(HWND window,LPARAM unused) {
     if (stage==0 && !wcscmp(title,L"DATV: TS-proefbestand")) {
         SetDlgItemInt(window,IDC_TS_BITRATE,60000,FALSE);
         check_dvb(window,IDC_TS_BITRATE);
+        CheckDlgButton(window,IDC_INCLUDE_EIT,BST_CHECKED);
         SetDlgItemInt(window,IDC_TS_SECONDS,3,FALSE);
         SetDlgItemInt(window,IDC_TS_FPS,2,FALSE);
         SetDlgItemInt(window,IDC_TS_GOP,1,FALSE);
@@ -105,7 +117,11 @@ int wmain(void) {
     swprintf(target,MAX_PATH,L"%lsatv-ui-%lu-é.ts",temp,GetCurrentProcessId());
     assert(GetFileAttributesW(target)==INVALID_FILE_ATTRIBUTES);
     UINT_PTR timer=SetTimer(NULL,0,100,drive_timer); assert(timer);
+    SendMessageW(window,WM_COMMAND,IDM_EIT,0); SendMessageW(window,WM_COMMAND,IDM_EIT,0);
+    assert(!strcmp(station_info.city,"Eindhoven") && !strcmp(station_info.operator_name,"René"));
+    stage=0;
     SendMessageW(window,WM_COMMAND,IDM_EXPORT_TS,0); KillTimer(NULL,timer);
+    assert(ts_settings.eit_enabled);
     assert(stage==2 && ts_settings.bitrate==123607 && ts_settings.gop==1);
     wchar_t status[512],code[5];
     GetDlgItemTextW(window,IDC_STATUS,status,512); assert(wcsstr(status,L"TS opgeslagen:"));
@@ -121,7 +137,7 @@ int wmain(void) {
     timer=SetTimer(NULL,0,100,drive_timer); assert(timer);
     SendMessageW(window,WM_COMMAND,IDM_UDP,0); KillTimer(NULL,timer);
     assert(stage==15 && received>=8 && udp_settings.port==port);
-    assert(udp_settings.video.bitrate==115196);
+    assert(udp_settings.video.bitrate==115196 && udp_settings.video.eit_enabled);
     closesocket(receiver); WSACleanup();
     puts("Windows UDP UI: adresvalidatie, Start/Stop, opnieuw starten en sluiten tijdens uitzending OK.");
     DestroyWindow(window); pm5544_cleanup(); CoUninitialize();

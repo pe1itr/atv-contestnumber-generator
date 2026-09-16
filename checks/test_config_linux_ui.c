@@ -19,6 +19,7 @@ static gboolean apply_udp(gpointer unused) {
         gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,5)),1);
         gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,3)),12);
         gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,4)),3);
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(gtk_grid_get_child_at(grid,0,8)),TRUE);
         gtk_dialog_response(GTK_DIALOG(w),3); g_list_free(windows); return G_SOURCE_REMOVE;
     }
     g_list_free(windows); return G_SOURCE_CONTINUE;
@@ -34,9 +35,11 @@ int main(int argc,char **argv) {
     AppConfig initial=capture_config(&app); assert(initial.genius==1 && !initial.call[0]);
     AppConfig wanted=config_defaults();
     strcpy(wanted.call,"PE1ITR/P"); strcpy(wanted.locator,"JO21QK86DV12"); strcpy(wanted.code,"1957");
+    strcpy(wanted.station.city,"Eindhoven"); strcpy(wanted.station.operator_name,"René");
+    strcpy(wanted.station.description,"70 cm ATV-station");
     wanted.aspect=1; wanted.resolution=1; wanted.band=10; wanted.genius=2;
     wanted.show=0; wanted.inverse=1; wanted.blue_yellow=1; wanted.show_sum=1; wanted.top_code=1; wanted.ebu_top=1; wanted.ebu_bottom=1;
-    wanted.ts=(DatvSettings){60000,30,2,1};
+    wanted.ts=(DatvSettings){.bitrate=60000,.seconds=30,.fps=2,.gop=1,.eit_enabled=1};
     apply_config(&app,&wanted); gtk_widget_show_all(app.window);
     assert(gtk_widget_get_visible(app.udp_menu));
     g_timeout_add(100,apply_udp,NULL); output_udp(NULL,&app);

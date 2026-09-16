@@ -3,7 +3,7 @@
 #undef main
 #include <assert.h>
 
-static int stage;
+static int stage=-3;
 static char *directory;
 static GSocket *receiver;
 static int port, received;
@@ -49,6 +49,17 @@ static gboolean drive_dialogs(gpointer unused) {
         GtkWidget *w=p->data;
         if (!gtk_widget_get_visible(w)) continue;
         const char *title=gtk_window_get_title(GTK_WINDOW(w));
+        if (stage<0 && title && !strcmp(title,"EIT-programma-informatie")) {
+            GList *children=gtk_container_get_children(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(w))));
+            GtkGrid *grid=GTK_GRID(children->data); g_list_free(children);
+            assert(!gtk_editable_get_editable(GTK_EDITABLE(gtk_grid_get_child_at(grid,1,0))));
+            assert(!strcmp(gtk_entry_get_text(GTK_ENTRY(gtk_grid_get_child_at(grid,1,1))),"JO21QK"));
+            gtk_entry_set_text(GTK_ENTRY(gtk_grid_get_child_at(grid,1,2)),stage==-3?"Eindhoven":"Annuleren");
+            gtk_entry_set_text(GTK_ENTRY(gtk_grid_get_child_at(grid,1,3)),"René");
+            gtk_entry_set_text(GTK_ENTRY(gtk_grid_get_child_at(grid,1,4)),"70 cm ATV-station");
+            gtk_dialog_response(GTK_DIALOG(w),stage==-3?GTK_RESPONSE_ACCEPT:GTK_RESPONSE_CANCEL);
+            ++stage;
+        }
         if (stage>=10 && title && !strcmp(title,"DATV: UDP-uitvoer")) {
             assert(g_get_monotonic_time()<udp_deadline);
             GList *children=gtk_container_get_children(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(w))));
@@ -57,6 +68,7 @@ static gboolean drive_dialogs(gpointer unused) {
             const char *status=gtk_label_get_text(GTK_LABEL(gtk_grid_get_child_at(grid,0,7)));
             if (stage==10) {
                 check_dvb(grid,2);
+                gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(gtk_grid_get_child_at(grid,0,8)),TRUE);
                 assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(port_field))==10000);
                 gtk_entry_set_text(GTK_ENTRY(ip),"999.1.2.3"); stage=11; gtk_dialog_response(GTK_DIALOG(w),1);
             } else if (stage==11) {
@@ -69,6 +81,7 @@ static gboolean drive_dialogs(gpointer unused) {
                 if (received>=4) {
                     assert(strstr(status,"UDP-uitvoer actief")); assert(!gtk_widget_get_sensitive(ip));
                     assert(!gtk_widget_get_sensitive(gtk_grid_get_child_at(grid,0,5)));
+                    assert(!gtk_widget_get_sensitive(gtk_grid_get_child_at(grid,0,8)));
                     stage=13; gtk_dialog_response(GTK_DIALOG(w),2);
                 }
             } else if (stage==13 && strstr(status,"UDP gestopt")) {
@@ -84,6 +97,7 @@ static gboolean drive_dialogs(gpointer unused) {
             int values[]={60000,3,2,1};
             for (int i=1;i<4;++i) gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,i)),values[i]);
             check_dvb(grid,0);
+            gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(gtk_grid_get_child_at(grid,0,6)),TRUE);
             g_list_free(children); stage=1; gtk_dialog_response(GTK_DIALOG(w),GTK_RESPONSE_ACCEPT);
         } else if (stage==1 && GTK_IS_FILE_CHOOSER(w)) {
             gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(w),directory);
@@ -116,6 +130,9 @@ int main(int argc,char **argv) {
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app.blue_yellow),TRUE);
     gtk_combo_box_set_active(GTK_COMBO_BOX(app.resolution),1);
     guint timer=g_timeout_add(50,drive_dialogs,NULL);
+    edit_eit(NULL,&app); edit_eit(NULL,&app);
+    assert(!strcmp(app.station.city,"Eindhoven") && !strcmp(app.station.operator_name,"René"));
+    stage=0;
     g_signal_emit_by_name(app.ts_menu,"activate");
     gint64 deadline=g_get_monotonic_time()+15000000;
     while (!strstr(gtk_label_get_text(GTK_LABEL(app.status)),"TS opgeslagen:")) {
@@ -123,6 +140,7 @@ int main(int argc,char **argv) {
         g_main_context_iteration(NULL,FALSE); g_usleep(1000);
     }
     g_source_remove(timer);
+    assert(app.datv.eit_enabled);
     assert(stage==2 && app.datv.bitrate==123607 && app.datv.gop==1);
     char *path=g_build_filename(directory,"kaart-é.ts",NULL);
     assert(g_file_test(path,G_FILE_TEST_IS_REGULAR));
@@ -139,7 +157,7 @@ int main(int argc,char **argv) {
     timer=g_timeout_add(50,drive_dialogs,NULL);
     g_signal_emit_by_name(app.udp_menu,"activate"); g_source_remove(timer);
     assert(stage==15 && received>=8 && app.udp.port==port);
-    assert(app.udp.video.bitrate==115196);
+    assert(app.udp.video.bitrate==115196 && app.udp.video.eit_enabled);
     g_object_unref(receiver);
     g_print("Linux UDP UI: adresvalidatie, Start/Stop, opnieuw starten en sluiten tijdens uitzending OK.\n");
     g_signal_handlers_disconnect_by_func(app.window,gtk_main_quit,NULL);

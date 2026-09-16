@@ -33,7 +33,7 @@ int main(void) {
     for (int guard=0;guard<DVB_GUARD_COUNT;++guard) {
         s=(DvbSettings){system,sr,fec,0,guard,dvb_bandwidths[bw]};
         int rate=dvb_bitrate(s);
-        DatvSettings video={rate,1,1,1}; assert(!datv_validate(video,160,120));
+        DatvSettings video={.bitrate=rate,.seconds=1,.fps=1,.gop=1}; assert(!datv_validate(video,160,120));
         s.pilots=1;
         if (system==DVB_S2) assert(dvb_bitrate(s)<rate);
         else assert(dvb_bitrate(s)==rate);
