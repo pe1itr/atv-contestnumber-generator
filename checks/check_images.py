@@ -120,3 +120,22 @@ for width, height in sizes:
         assert not diff.crop((0,0,width,top)).getbbox()
         assert not diff.crop((0,bottom,width,height)).getbbox()
 print(f"{3*len(sizes)} FUBK JPEGs checked: both templates, left/right labels, six-character locator and intact surrounding pattern.")
+
+# PM5644 ROM-derived patterns: both aspect ratios, distinct from PM5544,
+# labels in the original name panels and no changes to the central grating.
+for width, height in sizes:
+    wide = width*3 != height*4
+    panels = ((303,59,416,101),(274,437,445,479)) if wide else ((285,55,434,97),(266,433,473,475))
+    with Image.open(directory/f"pm5644-{width}x{height}-0.jpg") as blank, Image.open(directory/f"pm5644-{width}x{height}-1.jpg") as text:
+        assert blank.format == text.format == "JPEG"
+        assert blank.size == text.size == (width,height)
+        r,g,b = blank.convert("RGB").split()
+        assert ImageChops.difference(r,g).getextrema()[1] > 100
+        diff = ImageChops.difference(blank.convert("RGB"),text.convert("RGB")).convert("L")
+        for x0,y0,x1,y1 in panels:
+            box = (x0*width//720,y0*height//576,x1*width//720,y1*height//576)
+            assert diff.crop(box).getextrema()[1] > 100, (width,height,box)
+        assert not diff.crop((0,height//3,width,height*2//3)).getbbox()
+        with Image.open(directory/f"pm-{width}x{height}-0.jpg") as old:
+            assert ImageChops.difference(blank.convert("RGB"),old.convert("RGB")).getbbox()
+print(f"{2*len(sizes)} PM5644 JPEGs checked: G00/G924, dimensions, color, name panels and unchanged central grating.")

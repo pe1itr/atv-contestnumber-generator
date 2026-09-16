@@ -167,7 +167,8 @@ static HBITMAP render(int width, int height, const wchar_t *call, const wchar_t 
 }
 
 static int selected_mode(HWND window) {
-    return (int)SendDlgItemMessageW(window, IDC_MODE, CB_GETCURSEL, 0, 0);
+    int row=(int)SendDlgItemMessageW(window, IDC_MODE, CB_GETCURSEL, 0, 0);
+    return row>=0 && row<IMAGE_MODE_COUNT ? image_mode_order[row] : IMAGE_CONTEST;
 }
 static int pattern_mode(HWND window) { return selected_mode(window)>IMAGE_CONTEST; }
 static void locator_changed(HWND window) {
@@ -196,7 +197,7 @@ static HBITMAP render_pattern(Resolution r, const wchar_t *call, const wchar_t *
     info.bmiHeader.biCompression = BI_RGB;
     void *pixels;
     HBITMAP bitmap = CreateDIBSection(NULL, &info, DIB_RGB_COLORS, &pixels, NULL, 0);
-    if (bitmap && !(mode==IMAGE_FUBK ? fubk_render : pm5544_render)(pixels, r.width, r.height, call, locator)) {
+    if (bitmap && !(mode==IMAGE_FUBK ? fubk_render : mode==IMAGE_PM5644 ? pm5644_render : pm5544_render)(pixels, r.width, r.height, call, locator)) {
         DeleteObject(bitmap); return NULL;
     }
     return bitmap;
@@ -631,7 +632,7 @@ static AppConfig capture_config(HWND window) {
     WideCharToMultiByte(CP_UTF8,0,text,-1,s.locator,sizeof(s.locator),NULL,NULL);
     GetDlgItemTextW(window,IDC_CODE,text,97);
     WideCharToMultiByte(CP_UTF8,0,text,-1,s.code,sizeof(s.code),NULL,NULL);
-    s.mode=(int)SendDlgItemMessageW(window,IDC_MODE,CB_GETCURSEL,0,0);
+    s.mode=selected_mode(window);
     s.aspect=(int)SendDlgItemMessageW(window,IDC_ASPECT,CB_GETCURSEL,0,0);
     s.resolution=(int)SendDlgItemMessageW(window,IDC_RESOLUTION,CB_GETCURSEL,0,0);
     s.band=(int)SendDlgItemMessageW(window,IDC_BAND,CB_GETCURSEL,0,0);
@@ -650,7 +651,7 @@ static void apply_config(HWND window,const AppConfig *s) {
     MultiByteToWideChar(CP_UTF8,0,s->call,-1,text,97); SetDlgItemTextW(window,IDC_CALL,text);
     MultiByteToWideChar(CP_UTF8,0,s->locator,-1,text,97); SetDlgItemTextW(window,IDC_LOCATOR,text);
     MultiByteToWideChar(CP_UTF8,0,s->code,-1,text,97); SetDlgItemTextW(window,IDC_CODE,text);
-    SendDlgItemMessageW(window,IDC_MODE,CB_SETCURSEL,s->mode,0);
+    SendDlgItemMessageW(window,IDC_MODE,CB_SETCURSEL,image_mode_row(s->mode),0);
     SendDlgItemMessageW(window,IDC_ASPECT,CB_SETCURSEL,s->aspect,0);
     update_resolutions(window);
     SendDlgItemMessageW(window,IDC_RESOLUTION,CB_SETCURSEL,s->resolution,0);
@@ -695,7 +696,7 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
         ts_settings=datv_defaults(); udp_settings=datv_udp_defaults(); genius_level=1;
         contest_square[0] = 0;
         for (int i=0; i<IMAGE_MODE_COUNT; ++i)
-            SendDlgItemMessageW(window, IDC_MODE, CB_ADDSTRING, 0, (LPARAM)image_modes[i]);
+            SendDlgItemMessageW(window, IDC_MODE, CB_ADDSTRING, 0, (LPARAM)image_modes[image_mode_order[i]]);
         SendDlgItemMessageW(window, IDC_MODE, CB_SETCURSEL, 0, 0);
         SendDlgItemMessageW(window, IDC_CALL, EM_SETLIMITTEXT, 24, 0);
         SendDlgItemMessageW(window, IDC_LOCATOR, EM_SETLIMITTEXT, LOCATOR_MAX_LENGTH, 0);
@@ -796,10 +797,11 @@ static int smoke_test(const wchar_t *directory) {
         HRESULT hr = save_jpeg(bitmap, path); DeleteObject(bitmap);
         if (FAILED(hr)) return 4;
     }
+    for (int philips=0; philips<2; ++philips)
     for (int aspect=0; aspect<2; ++aspect) for (int i=0; i<RESOLUTION_COUNT; ++i) for (int text=0; text<2; ++text) {
         Resolution r = (aspect ? resolutions169 : resolutions43)[i];
-        if (swprintf(path, MAX_PATH, L"%ls\\pm-%dx%d-%d.jpg", directory, r.width, r.height, text) < 0) return 2;
-        HBITMAP bitmap = render_pattern(r, text ? L"PE1ITR/P" : L"", text ? L"JO21QK86DV" : L"", IMAGE_PM5544);
+        if (swprintf(path, MAX_PATH, L"%ls\\%ls-%dx%d-%d.jpg", directory, philips ? L"pm5644" : L"pm", r.width, r.height, text) < 0) return 2;
+        HBITMAP bitmap = render_pattern(r, text ? L"PE1ITR/P" : L"", text ? L"JO21QK86DV" : L"", philips ? IMAGE_PM5644 : IMAGE_PM5544);
         if (!bitmap) return 6;
         HRESULT hr = save_jpeg(bitmap, path);
         DeleteObject(bitmap);
@@ -825,7 +827,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
     int result;
     int argc=0;
     LPWSTR *argv=CommandLineToArgvW(GetCommandLineW(),&argc);
-    if (argv && argc>=3 && (!wcscmp(argv[1],L"--ts-test") || !wcscmp(argv[1],L"--ts-ebu-test") || !wcscmp(argv[1],L"--ts-fubk-test"))) {
+    if (argv && argc>=3 && (!wcscmp(argv[1],L"--ts-test") || !wcscmp(argv[1],L"--ts-ebu-test") || !wcscmp(argv[1],L"--ts-fubk-test") || !wcscmp(argv[1],L"--ts-pm5644-test"))) {
         char text[6][32]; const char *values[6];
         result=1;
         if (argc<=9) {
@@ -839,7 +841,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
             DWORD length=GetFullPathNameW(argv[2],MAX_PATH,job.path,NULL);
             if (converted && length && length<MAX_PATH && datv_test_options(argc-3,values,&job.settings,&w,&h)) {
                 strcpy(job.call,"PE1ITR");
-                job.bitmap=!wcscmp(argv[1],L"--ts-fubk-test") ? render_pattern((Resolution){w,h},L"PE1ITR",L"JO21QK86DV",IMAGE_FUBK) : render(w,h,L"PE1ITR",L"1957",L"JO21QK",TRUE,L"436 MHz",FALSE,TRUE,TRUE,FALSE, !wcscmp(argv[1],L"--ts-ebu-test"), !wcscmp(argv[1],L"--ts-ebu-test"));
+                job.bitmap=!wcscmp(argv[1],L"--ts-pm5644-test") ? render_pattern((Resolution){w,h},L"PE1ITR",L"JO21QK86DV",IMAGE_PM5644) : !wcscmp(argv[1],L"--ts-fubk-test") ? render_pattern((Resolution){w,h},L"PE1ITR",L"JO21QK86DV",IMAGE_FUBK) : render(w,h,L"PE1ITR",L"1957",L"JO21QK",TRUE,L"436 MHz",FALSE,TRUE,TRUE,FALSE, !wcscmp(argv[1],L"--ts-ebu-test"), !wcscmp(argv[1],L"--ts-ebu-test"));
                 if (job.bitmap) { ts_worker(&job); DeleteObject(job.bitmap); result=job.ok?0:1; }
             }
         }

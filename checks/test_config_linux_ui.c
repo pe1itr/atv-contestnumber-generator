@@ -54,6 +54,16 @@ int main(int argc,char **argv) {
     actual=capture_config(&again); assert(!memcmp(&wanted,&actual,sizeof(wanted)));
     assert(!gtk_widget_get_visible(again.udp_menu)); assert(!gtk_widget_get_sensitive(again.code));
     close_app(&again);
+    wanted.mode=IMAGE_PM5644;
+    App pm={0}; pm.directory=directory; create_ui(&pm); apply_config(&pm,&wanted);
+    save_config(NULL,&pm); close_app(&pm);
+    App pm_reopened={0}; pm_reopened.directory=directory; create_ui(&pm_reopened); load_config(&pm_reopened);
+    actual=capture_config(&pm_reopened); assert(!memcmp(&wanted,&actual,sizeof(wanted)));
+    assert(pattern_mode(&pm_reopened) && !gtk_widget_get_sensitive(pm_reopened.code));
+    char *mode_text=gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(pm_reopened.mode));
+    assert(!strcmp(mode_text,"PM5644")); g_free(mode_text);
+    assert(gtk_combo_box_get_active(GTK_COMBO_BOX(pm_reopened.mode))==2);
+    close_app(&pm_reopened);
     char *path=g_build_filename(directory,CONFIG_FILENAME,NULL); assert(!remove(path)); g_free(path);
     assert(!rmdir(directory)); g_free(directory); pm5544_cleanup();
     puts("Linux config UI: save/reopen, all fields, UDP apply without Start, Genius visibility and automatic code preservation OK.");

@@ -5,7 +5,14 @@
 #include <errno.h>
 #include <limits.h>
 
-const wchar_t *const image_modes[IMAGE_MODE_COUNT] = {L"Contest", L"PM5544", L"FUBK"};
+const wchar_t *const image_modes[IMAGE_MODE_COUNT] = {L"Contest", L"PM5544", L"FUBK", L"PM5644"};
+/* Display order is independent of the persistent configuration IDs. */
+const int image_mode_order[IMAGE_MODE_COUNT] = {IMAGE_CONTEST, IMAGE_PM5544, IMAGE_PM5644, IMAGE_FUBK};
+int image_mode_row(int mode) {
+    for (int row=0; row<IMAGE_MODE_COUNT; ++row)
+        if (image_mode_order[row]==mode) return row;
+    return 0;
+}
 int valid_fubk_locator(const wchar_t *s) { return valid_locator(s) && wcslen(s)>=6; }
 
 DatvSettings datv_defaults(void) { return (DatvSettings){120000, 10, 5, 5}; }

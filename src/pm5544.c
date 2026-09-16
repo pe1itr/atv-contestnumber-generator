@@ -18,13 +18,13 @@ static const unsigned char glyphs[][7] = {
     {17,17,17,17,17,10,4}, {17,17,17,21,21,21,10}, {17,17,10,4,10,17,17},
     {17,17,10,4,4,4,4}, {31,1,2,4,8,16,31}, {1,2,2,4,8,8,16}
 };
-static uint32_t *backgrounds[4];
+static uint32_t *backgrounds[6];
 
 static uint32_t *decode(int index) {
     if (backgrounds[index]) return backgrounds[index];
-    const size_t counts[] = {720u*576u, 1280u*720u, 768u*576u, 2000u*1125u};
-    const size_t lengths[] = {sizeof(pm43), sizeof(pm169), sizeof(fubk43), sizeof(fubk169)};
-    const unsigned char *const sources[] = {pm43, pm169, fubk43, fubk169};
+    const size_t counts[] = {720u*576u, 1280u*720u, 768u*576u, 2000u*1125u, 720u*576u, 720u*576u};
+    const size_t lengths[] = {sizeof(pm43), sizeof(pm169), sizeof(fubk43), sizeof(fubk169), sizeof(pm5644_43), sizeof(pm5644_169)};
+    const unsigned char *const sources[] = {pm43, pm169, fubk43, fubk169, pm5644_43, pm5644_169};
     size_t count = counts[index], length = lengths[index];
     const unsigned char *data = sources[index];
     uint32_t *pixels = malloc(count*sizeof(*pixels));
@@ -112,6 +112,26 @@ int fubk_render(uint32_t *pixels, int width, int height,
     return 1;
 }
 
+/* Both ROM-derived rasters are 720x576; display aspect selects G00/G924.
+ * Variant 2 preserves the grid without unused date/time insert boxes. */
+int pm5644_render(uint32_t *pixels, int width, int height,
+                  const wchar_t *call, const wchar_t *locator) {
+    if (!pixels || width <= 0 || height <= 0) return 0;
+    int wide = width*3 != height*4;
+    uint32_t *source = decode(4+wide);
+    if (!source) return 0;
+    for (int y=0; y<height; ++y) for (int x=0; x<width; ++x)
+        pixels[y*width+x] = source[(y*576/height)*720+x*720/width];
+    if (wide) {
+        label(pixels,width,height,720,576,303,59,416,101,call,0);
+        label(pixels,width,height,720,576,274,437,445,479,locator,0);
+    } else {
+        label(pixels,width,height,720,576,285,55,434,97,call,0);
+        label(pixels,width,height,720,576,266,433,473,475,locator,0);
+    }
+    return 1;
+}
+
 void pm5544_cleanup(void) {
-    for (int i=0; i<4; ++i) { free(backgrounds[i]); backgrounds[i]=NULL; }
+    for (int i=0; i<6; ++i) { free(backgrounds[i]); backgrounds[i]=NULL; }
 }

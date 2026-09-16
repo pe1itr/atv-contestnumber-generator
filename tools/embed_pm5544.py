@@ -4,6 +4,7 @@ Pillow is a build dependency only. No decoder or asset files are needed at runti
 """
 from pathlib import Path
 from PIL import Image
+from pm5644_rom import rom_image
 
 root = Path(__file__).resolve().parent.parent
 target = root / "build/pm_assets.h"
@@ -14,8 +15,11 @@ with temporary.open("w") as out:
     for name, filename, expected in (("pm43", "pm5544.jpg", (720, 576)),
                                      ("pm169", "pm5544w.jpg", (1280, 720)),
                                      ("fubk43", "FuBK-Testbild.png", (768, 576)),
-                                     ("fubk169", "FuBK_wide.jpg", (2000, 1125))):
-        with Image.open(root / "assets" / filename) as image:
+                                     ("fubk169", "FuBK_wide.jpg", (2000, 1125)),
+                                     ("pm5644_43", "pm5644g00", (720, 576)),
+                                     ("pm5644_169", "pm5644g924", (720, 576))):
+        with (rom_image(filename) if filename.startswith("pm5644g")
+              else Image.open(root / "assets" / filename)) as image:
             assert image.size == expected, (filename, image.size)
             pixels = list(image.convert("RGB").getdata())
         runs = bytearray()

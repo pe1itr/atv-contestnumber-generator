@@ -17,7 +17,7 @@ dist/atv-contestnummer: src/linux.c src/quality_linux.h src/core.c src/core.h sr
 	mkdir -p dist
 	$(HOSTCC) $(CFLAGS) src/linux.c src/core.c src/app_info.c build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -o $@ $(shell pkg-config --cflags --libs gtk+-3.0 pangocairo) -lstdc++ -lpthread -lm
 
-build/pm_assets.h: tools/embed_pm5544.py assets/pm5544.jpg assets/pm5544w.jpg assets/FuBK-Testbild.png assets/FuBK_wide.jpg
+build/pm_assets.h: tools/embed_pm5544.py tools/pm5644_rom.py $(wildcard assets/pm5644/*.inc.h) assets/pm5544.jpg assets/pm5544w.jpg assets/FuBK-Testbild.png assets/FuBK_wide.jpg
 	$(PYTHON) tools/embed_pm5544.py
 
 build/pm5544-linux.o: src/pm5544.c src/pm5544.h build/pm_assets.h
@@ -58,9 +58,10 @@ build/test-core: checks/test_core.c src/core.c src/core.h src/datv.h
 	mkdir -p build
 	$(HOSTCC) $(CFLAGS) -Isrc checks/test_core.c src/core.c -o $@
 
-test-linux: linux build/test-core build/test-config
+test-linux: linux build/test-core build/test-config build/test-pm5644
 	build/test-core
 	build/test-config
+	build/test-pm5644
 	$(PYTHON) tools/test_linux_images.py
 
 test-ts: linux
@@ -105,3 +106,10 @@ build/test-quality-linux-ui: checks/test_quality_linux_ui.c src/linux.c src/qual
 
 build/test-quality-windows-ui.exe: checks/test_quality_windows_ui.c src/main.c src/quality_windows.h src/core.c src/app_info.c src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
 	$(CC) $(CFLAGS) -municode -static -Isrc checks/test_quality_windows_ui.c src/core.c src/app_info.c build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a -o $@ $(LDLIBS) -lstdc++ -lwinpthread -lssp -lshell32
+
+
+build/test-pm5644: checks/test_pm5644.c src/core.c src/core.h src/pm5544.h build/pm5544-linux.o
+	$(HOSTCC) $(CFLAGS) -Isrc checks/test_pm5644.c src/core.c build/pm5544-linux.o -o $@
+
+build/test-pm5644.exe: checks/test_pm5644.c src/core.c src/core.h src/pm5544.h build/pm5544-windows.o
+	$(CC) $(CFLAGS) -static -Isrc checks/test_pm5644.c src/core.c build/pm5544-windows.o -o $@

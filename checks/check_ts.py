@@ -143,6 +143,10 @@ else:
             path = Path(temp)/f"test-{i}.ts"
             run(["dist/atv-contestnummer", "--ts-test", str(path), str(bitrate), "6", str(fps), str(gop), str(width), str(height)])
             check(path, bitrate, fps, gop, width, height, 6)
+        for width, height in ((320,240), (320,180)):
+            path = Path(temp)/f"pm5644-{width}x{height}.ts"
+            run(["dist/atv-contestnummer", "--ts-pm5644-test", str(path), "120000", "6", "5", "5", str(width), str(height)])
+            check(path, 120000, 5, 5, width, height, 6)
         # Invalid input and existing output must fail without damaging files.
         path = Path(temp)/"protected.ts"
         path.write_bytes(b"keep me")

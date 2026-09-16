@@ -23,6 +23,13 @@ int main(void) {
     original.udp.video=(DatvSettings){240000,10,10,2};
     assert(config_save(TEST_PATH,&original)); assert(config_load(TEST_PATH,&loaded)==1);
     assert(!memcmp(&original,&loaded,sizeof(original)));
+    /* Appended modes roundtrip without renumbering existing saved choices. */
+    assert(IMAGE_CONTEST==0 && IMAGE_PM5544==1 && IMAGE_FUBK==2 && IMAGE_PM5644==3);
+    for (int mode=0; mode<IMAGE_MODE_COUNT; ++mode) {
+        original.mode=mode;
+        assert(config_save(TEST_PATH,&original)); assert(config_load(TEST_PATH,&loaded)==1);
+        assert(!memcmp(&original,&loaded,sizeof(original)));
+    }
     /* Invalid saves preserve the earlier file. */
     AppConfig bad=original; bad.ts.seconds=61;
     assert(!config_save(TEST_PATH,&bad)); assert(config_load(TEST_PATH,&loaded)==1);

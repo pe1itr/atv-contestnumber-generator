@@ -43,6 +43,13 @@ int wmain(void) {
     w=open_app(); actual=capture_config(w); assert(!memcmp(&wanted,&actual,sizeof(wanted)));
     assert(GetMenuState(GetSubMenu(GetMenu(w),0),IDM_UDP,MF_BYCOMMAND)==(UINT)-1);
     assert(!IsWindowEnabled(GetDlgItem(w,IDC_CODE))); DestroyWindow(w);
+    wanted.mode=IMAGE_PM5644; w=open_app(); apply_config(w,&wanted);
+    SendMessageW(w,WM_COMMAND,IDM_SAVE_CONFIG,0); DestroyWindow(w);
+    w=open_app(); actual=capture_config(w); assert(!memcmp(&wanted,&actual,sizeof(wanted)));
+    assert(pattern_mode(w) && !IsWindowEnabled(GetDlgItem(w,IDC_CODE)));
+    wchar_t mode_text[32]; GetDlgItemTextW(w,IDC_MODE,mode_text,32);
+    assert(!wcscmp(mode_text,L"PM5644"));
+    assert(SendDlgItemMessageW(w,IDC_MODE,CB_GETCURSEL,0,0)==2); DestroyWindow(w);
     wchar_t wide[32768]; assert(MultiByteToWideChar(CP_UTF8,0,path,-1,wide,32768));
     assert(DeleteFileW(wide)); free(path); pm5544_cleanup(); CoUninitialize();
     puts("Windows config UI: save/reopen, all fields, UDP apply without Start, Genius visibility and automatic code preservation OK.");

@@ -1,6 +1,6 @@
 # ATV contestnummer generator
 
-Een programma voor Windows en Linux dat een contestkaart of PM5544-testbeeld als JPG maakt. Genius level 2 kan ook H.264/MPEG-TS-bestanden maken en UDP naar een DATV-zender sturen. Er worden standaard **altijd beide builds** gemaakt.
+Een programma voor Windows en Linux dat een contestkaart of PM5544-, PM5644- of FUBK-testbeeld als JPG maakt. Genius level 2 kan ook H.264/MPEG-TS-bestanden maken en UDP naar een DATV-zender sturen. Er worden standaard **altijd beide builds** gemaakt.
 
 Download de nieuwste Windows-versie: [atv-contestnummer.exe](https://github.com/pe1itr/atv-contestnumber-generator/releases/latest/download/atv-contestnummer.exe). Alle uitgaven staan bij [GitHub Releases](https://github.com/pe1itr/atv-contestnumber-generator/releases).
 
@@ -211,3 +211,27 @@ make build/test-quality-linux-ui build/test-quality-windows-ui.exe
 build/test-quality-linux-ui
 wine build/test-quality-windows-ui.exe
 ```
+
+
+## PM5644 uit EPROM-afgeleide beelddata
+
+Kies **PM5644** bij **Beeldtype**. Voor 4:3 gebruikt het programma de Philips
+PM5644 G00; voor 16:9 de G924. Roepnaam en volledige locator verschijnen in
+hun oorspronkelijke zwarte naamvelden. Contestopties zijn uitgeschakeld.
+JPG-export, kwaliteitsvoorbeeld, TS-export en UDP gebruiken hetzelfde beeld.
+De bestandsnaam bevat `PM5644`, bijvoorbeeld
+`PE1ITR-JO21QK-PM5644-320x240.jpg`. De keuze wordt in de configuratie bewaard;
+bestaande keuzes behouden hun opgeslagen nummer.
+
+De bron is de EPROM-afgeleide YCbCr-beelddata uit PAL-sign, **geen JPG of opname
+van de analoge uitgang**. De build decodeert de meegeleverde tabellen naar RGB
+zonder JPEG-tussenstap. Beide uitvoeringen gebruiken variant 2 zonder
+klok-/datuminserts. Zie [herkomst, verwerking en licentie](assets/pm5644/README.md).
+Alle data worden ingebouwd in zowel Linux als de zelfstandige Windows-exe.
+De meegeleverde tabellen volstaan; de PAL-sign-checkout is niet nodig.
+
+De uitgangsrasters zijn 720×576 met verschillende weergaveverhoudingen. Schalen
+naar de gekozen resolutie en JPEG/H.264-compressie kunnen de fijne testpatronen
+veranderen; dit is geen gekalibreerde analoge PAL-signaalgenerator.
+`--ts-pm5644-test` accepteert dezelfde argumenten als `--ts-test` en maakt een
+PM5644-proefbestand zonder GUI of netwerkuitzending.
