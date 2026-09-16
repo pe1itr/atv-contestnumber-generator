@@ -47,7 +47,7 @@ standaardinstellingen. Bij een ongeldig of onleesbaar bestand volgt een melding 
 blijven de standaardinstellingen actief. Opnieuw opslaan vervangt het eerdere bestand;
 de map moet beschrijfbaar zijn. Linux en Windows gebruiken hetzelfde bestandsformaat.
 Oudere configuraties worden bij laden omgezet naar de nieuwe resolutievolgorde;
-de gekozen beeldafmetingen blijven behouden. Opslaan gebruikt formaatversie 2.
+de gekozen beeldafmetingen blijven behouden. Opslaan gebruikt formaatversie 3.
 
 In het UDP-venster bewaart **Toepassen en sluiten** de ingevoerde instellingen voor
 de huidige sessie zonder te zenden. Kies daarna **Config → Huidige instellingen
@@ -56,7 +56,7 @@ toegepaste wijzigingen en stopt een eventuele stream. Na opstarten staat UDP alt
 uit; je start het uitzenden zelf. Ook een automatisch contestnummer wordt bij laden
 behouden. Alleen de huidige kaart wordt opgeslagen, geen afzonderlijke nummers per band.
 
-**Info → Over dit programma** toont het doel, uitleg over het gebruik, de auteur, het versienummer en de compilatiedatum. De huidige versie is **1.6.0**. Versie en auteur staan centraal in `src/app_info.h`; de datum wordt tijdens compilatie vastgelegd en is niet de datum waarop je het programma start.
+**Info → Over dit programma** toont het doel, uitleg over het gebruik, de auteur, het versienummer en de compilatiedatum. De huidige versie is **1.7.0**. Versie en auteur staan centraal in `src/app_info.h`; de datum wordt tijdens compilatie vastgelegd en is niet de datum waarop je het programma start.
 
 ## Gebruik: Contest
 
