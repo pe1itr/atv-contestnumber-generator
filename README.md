@@ -224,6 +224,13 @@ met het FUBK-beeld.
 
 ## Leesbaarheid vóór het uitzenden beoordelen
 
+Voor DATV-contests raden we **wit op zwart** aan. Bij de onderzochte
+160 × 120-kaart besloeg een zelfstandig beeld in het berekende DVB-S2-model
+gemiddeld circa 21% minder frames dan geel op blauw. Dit is geen gemeten
+ontvangstwinst; bij 2–3 seconden goede ontvangst kunnen beide bruikbaar zijn.
+Zie [kleurkeuze, metingen en betekenis bij korte reflecties](docs/contest-kleurkeuze.md)
+voor de instellingen, berekening en beperkingen.
+
 Open **DATV: UDP-uitvoer** (via Genius level 2), stel zendparameters, beelden per seconde
 en GOP in en klik **Beeld controleren**. Je hoeft hiervoor geen IP-adres of
 poort in te vullen. Links staat het originele beeld; rechts hetzelfde beeld na

@@ -778,6 +778,7 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
     switch (message) {
     case WM_INITDIALOG: {
         ready = 0;
+        SetDlgItemTextW(window, IDC_COLOR_ADVICE, contest_color_advice);
         station_info=(StationInfo){0};
         ts_settings=datv_defaults(); udp_settings=datv_udp_defaults(); genius_level=1;
         ts_dvb=udp_dvb=dvb_defaults();

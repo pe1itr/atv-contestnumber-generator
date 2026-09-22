@@ -9,6 +9,7 @@ extern "C" {
 enum { IMAGE_CONTEST, IMAGE_PM5544, IMAGE_FUBK, IMAGE_PM5644, IMAGE_MODE_COUNT };
 extern const wchar_t *const image_modes[IMAGE_MODE_COUNT];
 extern const int image_mode_order[IMAGE_MODE_COUNT];
+extern const wchar_t contest_color_advice[];
 int image_mode_row(int mode);
 int valid_fubk_locator(const wchar_t *s);
 #define CONFIG_FILENAME "atv-contestnummer.conf"

@@ -25,6 +25,10 @@ De export draait op een achtergrondthread en publiceert pas een compleet bestand
 
 ## Encoder en transport
 
+Voor de aanbeveling wit op zwart, de vergelijking bij 125 ksym/s en de
+betekenis voor reflecties van 2–3 seconden, zie
+[Kleurkeuze voor een DATV-contestbeeld](contest-kleurkeuze.md).
+
 **OpenH264 2.6.0** is statisch ingebouwd. De MPEG-TS-muxer is eigen gedeelde code in
 `src/datv.cpp`. Er worden geen FFmpeg-programma's of FFmpeg-bibliotheken gebruikt.
 Windows blijft één verspreidbare executable, zonder losse codec-DLL.

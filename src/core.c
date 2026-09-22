@@ -257,6 +257,8 @@ void filename_call(wchar_t *out, const wchar_t *in) {
     do { *out++ = *in == L'/' ? L'_' : *in; } while (*in++);
 }
 
+const wchar_t contest_color_advice[] = L"DATV-contest: wit op zwart aanbevolen.";
+
 ContestPalette contest_palette(int blue_yellow, int inverse) {
     ContestPalette palette = blue_yellow
         ? (ContestPalette){{0, 0, 128}, {255, 255, 0}}
