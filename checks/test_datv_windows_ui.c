@@ -13,6 +13,27 @@ static void select_dvb(HWND window,int id,int index) {
 }
 static void check_dvb(HWND window,int field) {
     assert(GetWindowLongPtrW(GetDlgItem(window,field),GWL_STYLE)&ES_READONLY);
+    select_dvb(window,IDC_DVB_SR,9); select_dvb(window,IDC_DVB_SYSTEM,DVB_S2);
+    select_dvb(window,IDC_DVB_FEC,0);
+    assert(GetDlgItemInt(window,field,NULL,FALSE)==30654);
+    CheckDlgButton(window,IDC_DVB_PILOTS,BST_CHECKED);
+    SendMessageW(window,WM_COMMAND,MAKEWPARAM(IDC_DVB_PILOTS,BN_CLICKED),0);
+    assert(dvb_window_read(window).fec==7);
+    select_dvb(window,IDC_DVB_SR,10); select_dvb(window,IDC_DVB_FEC,0);
+    assert(GetDlgItemInt(window,field,NULL,FALSE)==30890);
+    select_dvb(window,IDC_DVB_SR,7);
+    assert(GetDlgItemInt(window,field,NULL,FALSE)==34800);
+    CheckDlgButton(window,IDC_DVB_PILOTS,BST_UNCHECKED);
+    SendMessageW(window,WM_COMMAND,MAKEWPARAM(IDC_DVB_PILOTS,BN_CLICKED),0);
+    select_dvb(window,IDC_DVB_SR,2);
+    const UINT rates[]={30718,36862,40549};
+    select_dvb(window,IDC_DVB_SYSTEM,DVB_S); select_dvb(window,IDC_DVB_FEC,0);
+    for (int i=0;i<3;++i) {
+        select_dvb(window,IDC_DVB_SR,6+i);
+        assert(GetDlgItemInt(window,field,NULL,FALSE)==rates[i]);
+        assert(SendDlgItemMessageW(window,IDC_DVB_FEC,CB_GETCOUNT,0,0)==(i<2?4:5));
+        assert(dvb_window_read(window).fec==1);
+    }
     select_dvb(window,IDC_DVB_SR,2); select_dvb(window,IDC_DVB_FEC,0);
     select_dvb(window,IDC_DVB_SYSTEM,DVB_S);
     assert(GetDlgItemInt(window,field,NULL,FALSE)==115196);
@@ -52,6 +73,7 @@ static BOOL CALLBACK drive_window(HWND window,LPARAM unused) {
         assert(GetTickCount64()<udp_deadline);
         wchar_t status[512]; GetDlgItemTextW(window,IDC_UDP_STATUS,status,512);
         if (stage==10) {
+            stage=-10; /* Synchronous control changes may dispatch the timer again. */
             check_dvb(window,IDC_UDP_BITRATE);
             CheckDlgButton(window,IDC_INCLUDE_EIT,BST_CHECKED);
             assert(GetDlgItemInt(window,IDC_UDP_PORT,NULL,FALSE)==10000);
@@ -76,6 +98,7 @@ static BOOL CALLBACK drive_window(HWND window,LPARAM unused) {
         }
     }
     if (stage==0 && !wcscmp(title,L"DATV: TS-proefbestand")) {
+        stage=-10; /* Avoid re-entering this long sequence of UI assertions. */
         SetDlgItemInt(window,IDC_TS_BITRATE,60000,FALSE);
         check_dvb(window,IDC_TS_BITRATE);
         CheckDlgButton(window,IDC_INCLUDE_EIT,BST_CHECKED);

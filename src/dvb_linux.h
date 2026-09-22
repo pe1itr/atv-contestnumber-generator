@@ -1,12 +1,14 @@
 /* Shared DVB controls for file export and UDP, using the core calculator. */
 typedef struct {
     GtkWidget *box, *system, *sr, *bw, *fec, *pilots, *guard, *bitrate;
+    int fec_ids[DVB_FEC_COUNT], updating;
 } DvbControls;
 static DvbSettings dvb_controls_read(DvbControls *d) {
     DvbSettings s=dvb_defaults();
     s.system=gtk_combo_box_get_active(GTK_COMBO_BOX(d->system));
     s.symbol_rate=gtk_combo_box_get_active(GTK_COMBO_BOX(d->sr));
-    s.fec=gtk_combo_box_get_active(GTK_COMBO_BOX(d->fec));
+    int fec_row=gtk_combo_box_get_active(GTK_COMBO_BOX(d->fec));
+    s.fec=fec_row>=0 && fec_row<DVB_FEC_COUNT?d->fec_ids[fec_row]:-1;
     s.guard=gtk_combo_box_get_active(GTK_COMBO_BOX(d->guard));
     s.pilots=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(d->pilots));
     int bw=gtk_combo_box_get_active(GTK_COMBO_BOX(d->bw));
@@ -15,7 +17,19 @@ static DvbSettings dvb_controls_read(DvbControls *d) {
 }
 static void dvb_controls_changed(GtkWidget *widget,gpointer data) {
     (void)widget; DvbControls *d=data;
+    if (d->updating) return;
     DvbSettings s=dvb_controls_read(d);
+    d->updating=1;
+    int count=dvb_fec_choices(s,d->fec_ids), selected=0;
+    gtk_combo_box_text_remove_all(GTK_COMBO_BOX_TEXT(d->fec));
+    for (int i=0;i<count;++i) {
+        char *text=utf8(dvb_fec_names[d->fec_ids[i]]);
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(d->fec),text); g_free(text);
+        if (s.fec==d->fec_ids[i]) selected=i;
+    }
+    gtk_combo_box_set_active(GTK_COMBO_BOX(d->fec),count?selected:-1);
+    s.fec=count?d->fec_ids[selected]:-1;
+    d->updating=0;
     gtk_widget_set_sensitive(d->sr,s.system!=DVB_T);
     gtk_widget_set_sensitive(d->bw,s.system==DVB_T);
     gtk_widget_set_sensitive(d->guard,s.system==DVB_T);
@@ -23,6 +37,8 @@ static void dvb_controls_changed(GtkWidget *widget,gpointer data) {
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(d->bitrate),dvb_bitrate(s));
 }
 static void dvb_controls_init(DvbControls *d,GtkWidget *bitrate,DvbSettings s) {
+    for (int i=0;i<DVB_FEC_COUNT;++i) d->fec_ids[i]=i;
+    d->updating=0;
     d->bitrate=bitrate; d->box=gtk_grid_new();
     gtk_grid_set_row_spacing(GTK_GRID(d->box),6);
     gtk_grid_set_column_spacing(GTK_GRID(d->box),12);

@@ -16,11 +16,25 @@ int image_mode_row(int mode) {
 int valid_fubk_locator(const wchar_t *s) { return valid_locator(s) && wcslen(s)>=6; }
 
 const wchar_t *const dvb_system_names[DVB_SYSTEM_COUNT]={L"DVB-S",L"DVB-S2",L"DVB-T"};
-const int dvb_symbol_rates[DVB_SYMBOL_RATE_COUNT]={35,66,125,150,333,500};
+/* Indices are stored in configuration files: append new rates. */
+const int dvb_symbol_rates[DVB_SYMBOL_RATE_COUNT]={35,66,125,150,333,500,25,30,33,31,32};
 const int dvb_bandwidths[DVB_BANDWIDTH_COUNT]={150,250,333,500};
-const wchar_t *const dvb_fec_names[DVB_FEC_COUNT]={L"1/2",L"2/3",L"3/4"};
+/* Preserve existing FEC IDs 0..2. The added choices match Portsdown menus. */
+const wchar_t *const dvb_fec_names[DVB_FEC_COUNT]={L"1/2",L"2/3",L"3/4",L"5/6",L"7/8",L"1/4",L"1/3",L"3/5",L"8/9",L"9/10"};
+static const int fec_num[DVB_FEC_COUNT]={1,2,3,5,7,1,1,3,8,9};
+static const int fec_den[DVB_FEC_COUNT]={2,3,4,6,8,4,3,5,9,10};
+static const int fec_kbch[DVB_FEC_COUNT]={32208,43040,48408,53840,0,16008,21408,38688,57472,58192};
 const wchar_t *const dvb_guard_names[DVB_GUARD_COUNT]={L"1/8",L"1/16",L"1/32"};
 DvbSettings dvb_defaults(void) { return (DvbSettings){DVB_S,2,0,0,2,500}; }
+int dvb_fec_choices(DvbSettings s, int ids[DVB_FEC_COUNT]) {
+    const int order[]={5,6,0,7,1,2,3,4,8,9};
+    int count=0;
+    for (int i=0;i<DVB_FEC_COUNT;++i) {
+        s.fec=order[i]; int rate=dvb_bitrate(s);
+        if (rate>=DATV_MIN_BITRATE && rate<=2000000) ids[count++]=s.fec;
+    }
+    return count;
+}
 int dvb_bitrate(DvbSettings s) {
     if (s.system<0 || s.system>=DVB_SYSTEM_COUNT || s.symbol_rate<0 ||
         s.symbol_rate>=DVB_SYMBOL_RATE_COUNT || s.fec<0 || s.fec>=DVB_FEC_COUNT ||
@@ -29,24 +43,23 @@ int dvb_bitrate(DvbSettings s) {
     int bandwidth_ok=0;
     for (int i=0;i<DVB_BANDWIDTH_COUNT;++i) bandwidth_ok|=s.bandwidth_khz==dvb_bandwidths[i];
     if (!bandwidth_ok) return 0;
-    const int numerator[]={1,2,3}, denominator[]={2,3,4};
+    if (s.system==DVB_S2 ? fec_kbch[s.fec]==0 : s.fec>4) return 0;
     int64_t rate=(int64_t)dvb_symbol_rates[s.symbol_rate]*1000;
     int64_t top, bottom;
     if (s.system==DVB_S) {
         /* EN 300 421: QPSK, convolutional code and RS(204,188). */
-        top=rate*2*numerator[s.fec]*188; bottom=denominator[s.fec]*204;
+        top=rate*2*fec_num[s.fec]*188; bottom=fec_den[s.fec]*204;
     } else if (s.system==DVB_S2) {
         /* EN 302 307-1: normal 64800-bit FECFRAME, 80-bit BBHEADER,
          * 90-symbol PLHEADER and 22 pilot blocks of 36 symbols for QPSK.
          * Full DATAFIELD, CCM, no ISSY or null-packet deletion. */
-        const int kbch[]={32208,43040,48408};
-        top=rate*(kbch[s.fec]-80); bottom=32400+90+s.pilots*22*36;
+        top=rate*(fec_kbch[s.fec]-80); bottom=32400+90+s.pilots*22*36;
     } else {
         /* EN 300 744: 1512 data carriers, Tu=2048*7/(8*B), RS188/204.
          * 423/544 includes carriers, useful-symbol time and outer FEC. */
         const int guard[]={8,16,32};
-        top=(int64_t)s.bandwidth_khz*1000*423*2*numerator[s.fec]*guard[s.guard];
-        bottom=(int64_t)544*denominator[s.fec]*(guard[s.guard]+1);
+        top=(int64_t)s.bandwidth_khz*1000*423*2*fec_num[s.fec]*guard[s.guard];
+        bottom=(int64_t)544*fec_den[s.fec]*(guard[s.guard]+1);
     }
     return (int)(top/bottom);
 }
@@ -100,14 +113,67 @@ int datv_test_options(int count, const char *const *values, DatvSettings *s, int
     }
     return datv_validate(*s,*w,*h)==NULL;
 }
+/* Level 1 Latin G0 invariant characters. National-option positions are
+ * rejected rather than silently displaying another glyph on receivers. */
+static int teletext_character(unsigned char c) {
+    return c>=32 && c<=126 && !strchr("#@[\\]^_`{|}~",c);
+}
+const char *teletext_validate(const TeletextSettings *s) {
+    if (s->enabled!=0 && s->enabled!=1) return "Ongeldige teletekstkeuze.";
+    size_t n=0;
+    while (n<sizeof(s->text) && s->text[n]) {
+        if (!teletext_character((unsigned char)s->text[n++]))
+            return "Gebruik voor teletekst letters zonder accenten, cijfers en eenvoudige leestekens.";
+    }
+    if (n!=0 && n!=TELETEXT_CELLS) return "Ongeldige teletekstpagina.";
+    return NULL;
+}
+const char *teletext_from_text(TeletextSettings *s, const char *text) {
+    TeletextSettings page={0}; page.enabled=s->enabled;
+    memset(page.text,' ',TELETEXT_CELLS);
+    int row=0,col=0;
+    for (const unsigned char *p=(const unsigned char *)text;*p;++p) {
+        if (*p=='\r' && p[1]=='\n') continue;
+        if (*p=='\n') { ++row; col=0; continue; }
+        if (row>=TELETEXT_ROWS || col>=TELETEXT_COLUMNS)
+            return "Gebruik maximaal 23 regels van elk 40 tekens; druk op Enter voor een nieuwe regel.";
+        if (!teletext_character(*p))
+            return "Gebruik voor teletekst letters zonder accenten, cijfers en eenvoudige leestekens.";
+        page.text[row*TELETEXT_COLUMNS+col++]=(char)*p;
+    }
+    if (row>=TELETEXT_ROWS && !(row==TELETEXT_ROWS && !col))
+        return "Gebruik maximaal 23 regels van elk 40 tekens.";
+    *s=page; return NULL;
+}
+void teletext_to_text(const TeletextSettings *s, char out[TELETEXT_INPUT_SIZE], int crlf) {
+    size_t pos=0;
+    if (!s->text[0]) { out[0]=0; return; }
+    int last=TELETEXT_ROWS-1;
+    while (last>0) {
+        int i=0; while (i<TELETEXT_COLUMNS && s->text[last*TELETEXT_COLUMNS+i]==' ') ++i;
+        if (i<TELETEXT_COLUMNS) break;
+        --last;
+    }
+    for (int row=0;row<=last;++row) {
+        int len=TELETEXT_COLUMNS;
+        while (len && s->text[row*TELETEXT_COLUMNS+len-1]==' ') --len;
+        memcpy(out+pos,s->text+row*TELETEXT_COLUMNS,(size_t)len); pos+=(size_t)len;
+        if (row<last) { if (crlf) out[pos++]='\r'; out[pos++]='\n'; }
+    }
+    out[pos]=0;
+}
 const char *datv_validate(DatvSettings s, int width, int height) {
-    if (s.bitrate < 32000 || s.bitrate > 2000000)
-        return "TS-bitrate moet tussen 32000 en 2000000 bit/s liggen.";
+    if (s.bitrate < DATV_MIN_BITRATE || s.bitrate > 2000000)
+        return "TS-bitrate moet tussen 30080 en 2000000 bit/s liggen. Kies een beschikbare combinatie van systeem, symbolrate, FEC en pilots.";
     if (s.seconds < 1 || s.seconds > 60) return "Duur moet tussen 1 en 60 seconden liggen.";
     if (s.fps < 1 || s.fps > 25) return "Beeldfrequentie moet tussen 1 en 25 beelden/s liggen.";
     if (s.gop < 1 || s.gop > 250) return "GOP moet tussen 1 en 250 beelden liggen (1 = alleen IDR).";
     if (width < 16 || height < 16 || width > 640 || height > 480 || width % 2 || height % 2)
         return "Kies voor deze TS-proef een even resolutie van maximaal 640 x 480.";
+    const char *tt_error=teletext_validate(&s.teletext);
+    if (tt_error) return tt_error;
+    if (s.teletext.enabled && s.bitrate<60000)
+        return "Gebruik voor teletekst een TS-bitrate van minimaal 60000 bit/s.";
     if (s.eit_enabled!=0 && s.eit_enabled!=1) return "Ongeldige EIT-keuze.";
     if (s.eit_enabled) {
         const char *error=station_validate(&s.station);
@@ -249,12 +315,13 @@ static const ConfigField config_fields[]={
     CONFIG_INT_FIELD(show,0,1), CONFIG_INT_FIELD(inverse,0,1), CONFIG_INT_FIELD(blue_yellow,0,1),
     CONFIG_INT_FIELD(ebu_top,0,1), CONFIG_INT_FIELD(ebu_bottom,0,1),
     CONFIG_INT_FIELD(show_sum,0,1), CONFIG_INT_FIELD(top_code,0,1), CONFIG_INT_FIELD(genius,1,2),
-    CONFIG_INT_FIELD(ts.bitrate,32000,2000000), CONFIG_INT_FIELD(ts.seconds,1,60),
+    CONFIG_INT_FIELD(ts.bitrate,DATV_MIN_BITRATE,2000000), CONFIG_INT_FIELD(ts.seconds,1,60),
     CONFIG_INT_FIELD(ts.fps,1,25), CONFIG_INT_FIELD(ts.gop,1,250),
     CONFIG_INT_FIELD(ts.eit_enabled,0,1), CONFIG_INT_FIELD(udp.video.eit_enabled,0,1),
+    CONFIG_INT_FIELD(teletext.enabled,0,1), CONFIG_TEXT_FIELD(teletext.text),
     CONFIG_TEXT_FIELD(station.city), CONFIG_TEXT_FIELD(station.description), CONFIG_TEXT_FIELD(station.operator_name),
     CONFIG_TEXT_FIELD(udp.ip), CONFIG_INT_FIELD(udp.port,1,65535),
-    CONFIG_INT_FIELD(udp.video.bitrate,32000,2000000), CONFIG_INT_FIELD(udp.video.fps,1,25),
+    CONFIG_INT_FIELD(udp.video.bitrate,DATV_MIN_BITRATE,2000000), CONFIG_INT_FIELD(udp.video.fps,1,25),
     CONFIG_INT_FIELD(udp.video.gop,1,250),
     CONFIG_INT_FIELD(ts_dvb.system,0,DVB_SYSTEM_COUNT-1),
     CONFIG_INT_FIELD(ts_dvb.symbol_rate,0,DVB_SYMBOL_RATE_COUNT-1),
@@ -326,11 +393,12 @@ static int config_valid(const AppConfig *s) {
             size_t characters=0;
             for (const unsigned char *p=(const unsigned char *)value; *p; ++p)
                 if ((*p&0xc0)!=0x80) ++characters;
-            size_t limit=f->size==16?15:(f->size-1)/4;
+            size_t limit=f->offset==offsetof(AppConfig,teletext.text)?TELETEXT_CELLS:f->size==16?15:(f->size-1)/4;
             if (characters>limit) return 0;
         }
         else if (*(const int *)value<f->min || *(const int *)value>f->max) return 0;
     }
+    if (teletext_validate(&s->teletext)) return 0;
     if (station_validate(&s->station)) return 0;
     DatvUdpSettings udp=s->udp;
     if (!udp.ip[0]) strcpy(udp.ip,"127.0.0.1"); /* An unused destination may be empty. */
@@ -366,7 +434,7 @@ int config_load(const char *path, AppConfig *out) {
         char *value=strchr(line,'=');
         if (!value) { ok=0; break; } *value++=0;
         if (!strcmp(line,"version")) {
-            if (version || (strcmp(value,"1") && strcmp(value,"2") && strcmp(value,"3") && strcmp(value,"4"))) { ok=0; break; }
+            if (version || (strcmp(value,"1") && strcmp(value,"2") && strcmp(value,"3") && strcmp(value,"4") && strcmp(value,"5"))) { ok=0; break; }
             version=value[0]-'0'; continue;
         }
         size_t i;
@@ -390,6 +458,10 @@ int config_load(const char *path, AppConfig *out) {
     for (size_t i=0; i<CONFIG_FIELDS; ++i)
         if (config_fields[i].offset==offsetof(AppConfig,ebu_top) ||
             config_fields[i].offset==offsetof(AppConfig,ebu_bottom)) required &= ~(UINT64_C(1)<<i);
+    uint64_t tt_fields=0;
+    for (size_t i=0;i<CONFIG_FIELDS;++i)
+        if (!strncmp(config_fields[i].key,"teletext.",9)) tt_fields|=UINT64_C(1)<<i;
+    if (version<5 && !(seen&tt_fields)) required&=~tt_fields;
     uint64_t eit_fields=0;
     for (size_t i=0;i<CONFIG_FIELDS;++i)
         if (!strcmp(config_fields[i].key,"ts.eit_enabled") ||
@@ -432,7 +504,7 @@ int config_save(const char *path, const AppConfig *s) {
     snprintf(temporary,n,"%s.tmp",path);
     FILE *f=config_open(temporary,1);
     if (!f) { free(temporary); return 0; }
-    int ok=fprintf(f,"# ATV contestnummer generator\nversion=4\n")>=0;
+    int ok=fprintf(f,"# ATV contestnummer generator\nversion=5\n")>=0;
     for (size_t i=0;i<CONFIG_FIELDS && ok;++i) {
         const ConfigField *field=&config_fields[i]; const char *value=(const char *)s+field->offset;
         ok=(field->size?fprintf(f,"%s=%s\n",field->key,value):

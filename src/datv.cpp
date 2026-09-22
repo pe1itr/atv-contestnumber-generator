@@ -166,8 +166,10 @@ void crc(Bytes &b) {
 Bytes pat() {
     Bytes b={0,0xb0,13,0,1,0xc1,0,0,0,1,0xf0,0}; crc(b); return b;
 }
-Bytes pmt() {
-    Bytes b={2,0xb0,18,0,1,0xc1,0,0,0xe1,0,0xf0,0,0x1b,0xe1,0,0xf0,0}; crc(b); return b;
+Bytes pmt(bool teletext=false, unsigned version=0) {
+    Bytes b={2,0xb0,18,0,1,0xc1,0,0,0xe1,0,0xf0,0,0x1b,0xe1,0,0xf0,0};
+    if (teletext) b.insert(b.end(),{0x06,0xe1,0x01,0xf0,7,0x56,5,'n','l','d',0x09,0x00});
+    b[5]|=(version&31)<<1; b[2]=b.size()+1; crc(b); return b;
 }
 Bytes sdt(const char *call, bool eit=false, unsigned version=0) {
     size_t n=std::strlen(call);
@@ -251,11 +253,11 @@ void write_pcr(unsigned char *p, uint64_t packet, int bitrate) {
 // A receiver can retain SI across Stop/Start. A new content snapshot needs a
 // new version even within the same UTC day. Serialise only this small registry;
 // each in-flight section remains immutable until its last CRC byte is sent.
-unsigned si_version(bool is_eit, const std::string &key, int64_t day=0) {
+unsigned si_version(int kind, const std::string &key, int64_t day=0) {
     struct State { bool seen=false; std::string key; int64_t day=0; unsigned version=0; };
-    static State states[2]; static std::mutex mutex;
+    static State states[3]; static std::mutex mutex;
     std::lock_guard<std::mutex> lock(mutex);
-    State &state=states[is_eit?1:0];
+    State &state=states[kind];
     if (state.seen && (state.key!=key || state.day!=day))
         state.version=(state.version+1)&31;
     state.seen=true; state.key=key; state.day=day;
@@ -268,6 +270,44 @@ std::string eit_key(const char *call, const DatvSettings &s) {
     }
     return key;
 }
+// EN 300 472: one 184-byte PES per TS; three 46-byte data units.
+// Header alone allows page erasure before the body (EN 300 706 Annex B).
+unsigned char reverse_bits(unsigned char v) {
+    v=((v&0x55)<<1)|((v>>1)&0x55);
+    v=((v&0x33)<<2)|((v>>2)&0x33);
+    return (v<<4)|(v>>4);
+}
+unsigned char hamming(int v) {
+    static const unsigned char code[]={0x15,0x02,0x49,0x5e,0x64,0x73,0x38,0x2f,
+                                      0xd0,0xc7,0x8c,0x9b,0xa1,0xb6,0xfd,0xea};
+    return reverse_bits(code[v&15]);
+}
+unsigned char odd_parity(unsigned char v) {
+    unsigned char p=v; p^=p>>4; p^=p>>2; p^=p>>1;
+    return reverse_bits(v|((!(p&1))<<7));
+}
+Bytes teletext_pes(const TeletextSettings &s, int part, uint64_t pts) {
+    Bytes b={0,0,1,0xbd,0,178,0x84,0x80,0x24}; timestamp(b,pts);
+    b.resize(45,0xff); b.push_back(0x10);
+    for (int unit=0;unit<3;++unit) {
+        int row=(part && part!=9)?1+(part-1)*3+unit:unit?24:0;
+        if (row>23) { b.push_back(0xff); b.push_back(44); b.insert(b.end(),44,0xff); continue; }
+        b.insert(b.end(),{0x02,44,0xe0,0xe4}); // Undefined VBI line; first field.
+        int address=1+(row<<3);
+        b.push_back(hamming(address)); b.push_back(hamming(address>>4));
+        if (!row) {
+            // Page 100, subcode 0000, C4 erase, C11 serial, English G0.
+            for (int nibble:{part==9?15:0,part==9?15:0,0,part==9?0:8,0,0,0,1}) b.push_back(hamming(nibble));
+            const char title[]="ATV TELETEKST 100";
+            for (int col=0;col<32;++col)
+                b.push_back(odd_parity(col<int(sizeof(title)-1)?title[col]:' '));
+        } else {
+            for (int col=0;col<40;++col)
+                b.push_back(odd_parity(s.text[0]?s.text[(row-1)*40+col]:' '));
+        }
+    }
+    return b;
+}
 class Mux {
     const std::vector<Frame> &frames;
     DatvSettings s;
@@ -278,6 +318,9 @@ class Mux {
     bool first_table[5]={true,true,true,true,true};
     size_t table_offset[5]={};
     int cc[5]={}, video_cc=0, eit_section=0;
+    int teletext_cc=0, teletext_part=0;
+    bool teletext_first=true;
+    uint64_t teletext_due=0, teletext_cycle=0, teletext_last_end=0;
     std::string call;
     int64_t epoch;
     size_t offset=0;
@@ -285,7 +328,7 @@ class Mux {
 public:
     uint64_t frame=0;
     Mux(const std::vector<Frame> &f, DatvSettings settings, const char *name, bool loop=false, int64_t utc=utc_now())
-        : frames(f),s(settings),tables{pat(),pmt(),sdt(name,settings.eit_enabled,si_version(false,std::string(name)+(settings.eit_enabled?"+EIT":"")))},call(name),epoch(utc),repeat(loop) {}
+        : frames(f),s(settings),tables{pat(),pmt(settings.teletext.enabled,si_version(2,settings.teletext.enabled?"TTX":"")),sdt(name,settings.eit_enabled,si_version(false,std::string(name)+(settings.eit_enabled?"+EIT":"")))},call(name),epoch(utc),repeat(loop) {}
     bool next(unsigned char packet[188]) {
         uint64_t now=byte_time(index*188,CLOCK,s.bitrate);
         uint64_t end=byte_time((index+1)*188,CLOCK,s.bitrate);
@@ -293,19 +336,33 @@ public:
         bool ready=(repeat || frame<frames.size()) && release<=now;
         if (ready && end>release+CLOCK) return false;
         const Frame *f=ready?&frames[frame%frames.size()]:nullptr;
-        const uint64_t pcr_packets=std::max(2,s.bitrate*40/(1504*1000));
+        const uint64_t pcr_packets=std::max(2,s.bitrate*(s.teletext.enabled?80:40)/(1504*1000));
         bool pcr=(index==0 || index-last_pcr_packet>=pcr_packets);
         int table=-1;
         for (int t=0; t<(s.eit_enabled?5:3); ++t)
             if (now>=due[t] && (table<0 || due[t]<due[table])) {
-                table=t; if (!s.eit_enabled) break;
+                table=t; // Oldest deadline first, also without EIT: avoid SDT starvation.
             }
         if (s.eit_enabled) {
             const uint64_t limits[]={CLOCK/2,CLOCK/2,2*CLOCK,2*CLOCK,30*CLOCK,2*CLOCK};
             for (int t=0;t<6;++t) if (end-completed[t]>limits[t])
                 throw std::runtime_error("EIT en beeld passen niet binnen de TS-planning. Verhoog de bitrate of verkort de stationsomschrijving.");
         }
-        if (pcr || (ready && table<0)) {
+        bool ttx=s.teletext.enabled && now>=teletext_due;
+        if (!pcr && ttx && teletext_first) {
+            header(packet,0x101,false,15); packet[3]=0x2f; packet[4]=183; packet[5]=0x80;
+            teletext_first=false;
+        } else if (!pcr && ttx) {
+            if (teletext_part && end-teletext_last_end>CLOCK/10)
+                throw std::runtime_error("Teletekst past niet binnen de TS-planning. Verhoog de bitrate.");
+            header(packet,0x101,true,teletext_cc); teletext_cc=(teletext_cc+1)&15;
+            Bytes data=teletext_pes(s.teletext,teletext_part,end+CLOCK/200);
+            std::memcpy(packet+4,data.data(),184);
+            if (!teletext_part) teletext_cycle=now;
+            teletext_last_end=end;
+            if (++teletext_part==10) { teletext_part=0; teletext_due=teletext_cycle+CLOCK*2; }
+            else teletext_due=end+CLOCK/50; // >=20 ms erase time; <=100 ms packet gap.
+        } else if (pcr || (ready && table<0)) {
             bool start=ready && offset==0;
             bool random=start && f->idr;
             if (start) {
@@ -350,8 +407,12 @@ public:
                 if (table==3) eit_section^=1;
                 // EIT section gap is >=500 ms from packet end (norm: >=25 ms).
                 due[table]=end+(table==4?20*CLOCK:table==3?CLOCK/2:table==2?CLOCK*4/5:CLOCK/5);
-                // Preserve the established no-EIT transport profile exactly.
-                if (!s.eit_enabled) due[table]=now+(table==2?CLOCK*4/5:CLOCK/5);
+                // Compact no-EIT profile with extra scheduling margin at low rates.
+                if (!s.eit_enabled) {
+                    // Leave room for PCR and SDT while retaining <=300 ms PAT/PMT gaps.
+                    uint64_t psi_period=s.bitrate<40000?CLOCK*3/20:CLOCK/5;
+                    due[table]=now+(table==2?CLOCK*4/5:psi_period);
+                }
             }
         } else header(packet,0x1fff,false,0);
         ++index;

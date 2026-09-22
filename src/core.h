@@ -13,9 +13,9 @@ int image_mode_row(int mode);
 int valid_fubk_locator(const wchar_t *s);
 #define CONFIG_FILENAME "atv-contestnummer.conf"
 enum { DVB_S, DVB_S2, DVB_T, DVB_SYSTEM_COUNT };
-#define DVB_SYMBOL_RATE_COUNT 6
+#define DVB_SYMBOL_RATE_COUNT 11
 #define DVB_BANDWIDTH_COUNT 4
-#define DVB_FEC_COUNT 3
+#define DVB_FEC_COUNT 10
 #define DVB_GUARD_COUNT 3
 typedef struct {
     int system, symbol_rate, fec, pilots, guard, bandwidth_khz;
@@ -29,6 +29,9 @@ DvbSettings dvb_defaults(void);
 /* QPSK, S2 normal FECFRAME, T 2K non-hierarchical. Complete 188-byte TS
  * capacity, rounded down to whole bit/s; zero means invalid parameters. */
 int dvb_bitrate(DvbSettings s);
+/* Selectable persistent FEC IDs, strongest correction first. */
+int dvb_fec_choices(DvbSettings s, int ids[DVB_FEC_COUNT]);
+#define DATV_MIN_BITRATE 30080
 typedef struct {
     char call[97], locator[49], code[17]; /* UTF-8 */
     int mode, automatic, aspect, resolution, band;
@@ -36,6 +39,7 @@ typedef struct {
     DatvSettings ts;
     DatvUdpSettings udp;
     StationInfo station;
+    TeletextSettings teletext;
     DvbSettings ts_dvb, udp_dvb;
 } AppConfig;
 AppConfig config_defaults(void);

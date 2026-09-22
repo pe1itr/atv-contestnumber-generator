@@ -16,6 +16,32 @@ static void check_dvb(GtkGrid *grid,int row) {
     GtkWidget *fec=gtk_grid_get_child_at(radio,1,3), *pilots=gtk_grid_get_child_at(radio,1,4);
     GtkWidget *guard=gtk_grid_get_child_at(radio,1,5);
     assert(!gtk_editable_get_editable(GTK_EDITABLE(field)) && !gtk_widget_get_sensitive(field));
+    /* 31k half is available only without pilots; 32k half supports both. */
+    gtk_combo_box_set_active(GTK_COMBO_BOX(sr),9);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(system),DVB_S2);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(fec),0);
+    assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(field))==30654);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(pilots),TRUE);
+    char *selected=gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(fec));
+    assert(!strcmp(selected,"3/5")); g_free(selected);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(sr),10);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(fec),0);
+    assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(field))==30890);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(sr),7);
+    assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(field))==34800);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(pilots),FALSE);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(sr),2);
+    const int rates[]={30718,36862,40549};
+    gtk_combo_box_set_active(GTK_COMBO_BOX(system),DVB_S);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(fec),0);
+    for (int i=0;i<3;++i) {
+        gtk_combo_box_set_active(GTK_COMBO_BOX(sr),6+i);
+        assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(field))==rates[i]);
+        GtkTreeModel *model=gtk_combo_box_get_model(GTK_COMBO_BOX(fec));
+        assert(gtk_tree_model_iter_n_children(model,NULL)==(i<2?4:5));
+        char *text=gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(fec));
+        assert(!strcmp(text,"2/3")); g_free(text);
+    }
     gtk_combo_box_set_active(GTK_COMBO_BOX(sr),2);
     gtk_combo_box_set_active(GTK_COMBO_BOX(fec),0);
     gtk_combo_box_set_active(GTK_COMBO_BOX(system),DVB_S);

@@ -19,7 +19,7 @@ bewaart de huidige kaart en TS-/UDP-instellingen in `atv-contestnummer.conf` naa
 het programma. Bij opstarten wordt dit bestand automatisch geladen, zonder UDP
 te starten. Zonder bestand blijven de normale standaardinstellingen gelden.
 
-Grenzen: bitrate 32000–2000000 bit/s, beeldduur 1–60 s, 1–25 beelden/s, GOP 1–250
+Grenzen: bitrate 30080–2000000 bit/s, beeldduur 1–60 s, 1–25 beelden/s, GOP 1–250
 beelden. Het gekozen beeld moet even afmetingen hebben, maximaal 640 × 480.
 De export draait op een achtergrondthread en publiceert pas een compleet bestand.
 
@@ -78,7 +78,17 @@ beschrijving bevat operatornaam en stationsomschrijving. Lege extra velden
 worden weggelaten. Zonder locator wordt alleen de roepnaam als titel gebruikt.
 Dit is programma-/EPG-informatie, geen ondertitel of tekstlaag in de video.
 VLC kan deze informatie in de programmagids tonen; de precieze weergave verschilt
-per speler. Teletekst wordt nog niet meegestuurd.
+per speler.
+
+### Teletekstpagina 100
+
+Open **Config → Teletekst** om de tekst van pagina 100 te bewerken (maximaal 23
+regels van 40 tekens). **Opslaan** bewaart de pagina meteen in
+`atv-contestnummer.conf`. In zowel **TS-proefbestand** als **DATV UDP-uitvoer**
+staat **Teletekstpagina 100 meesturen** direct onder de EIT-keuze. De pagina
+wordt dan als DVB-teletekst in de MPEG-TS opgenomen en elke twee seconden
+herhaald. Hiervoor gaat ongeveer 7,5 kbit/s van de ingestelde TS-bitrate naar
+teletekst; de totale TS-bitrate blijft gelijk.
 
 De muxer verstuurt EIT present/following actual op PID `0x12` en TDT op PID `0x14`.
 Er is één huidig stationinformatievenster van UTC-middernacht tot de volgende

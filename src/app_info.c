@@ -46,6 +46,8 @@ const char *app_info_text(void) {
         "Kies DVB-S/S2/T, SR/BW, FEC en pilots of GI; de TS-bitrate wordt berekend (QPSK). "
         "Dit maakt H.264-video zonder audio met ingebouwde OpenH264. "
         "File > DATV UDP-uitvoer zendt het huidige beeld naar een IP-adres en poort. "
+        "Config > Teletekst bewerkt pagina 100; Opslaan bewaart de tekst direct. "
+        "In de TS- en UDP-instellingen staat Teletekstpagina 100 meesturen naast EIT. "
         "Start/Stop bedienen de uitzending; sluiten stopt ook. Beeld controleren toont het origineel naast het gecomprimeerde beeld zonder te zenden. "
         "Zie Info > OpenH264-licentie voor de bibliotheeklicentie.\n\n"
         "Config > Huidige instellingen opslaan bewaart alles in atv-contestnummer.conf "

@@ -18,6 +18,7 @@ typedef struct {
     gboolean restoring;
     DatvSettings datv;
     StationInfo station;
+    TeletextSettings teletext;
     DvbSettings ts_dvb, udp_dvb;
     GtkWidget *udp_menu;
     DatvUdpSettings udp;
@@ -369,7 +370,7 @@ static gboolean keep_progress(GtkWidget *widget, GdkEvent *event, gpointer data)
 #include "dvb_linux.h"
 typedef struct {
     App *app;
-    GtkWidget *dialog, *fields[5], *status, *eit;
+    GtkWidget *dialog, *fields[5], *status, *eit, *teletext;
     DvbControls dvb;
     DatvStream *stream;
 } UdpDialog;
@@ -383,6 +384,7 @@ static gboolean udp_poll(gpointer data) {
     for (int i=0;i<5;++i) gtk_widget_set_sensitive(d->fields[i],i!=2 && !busy);
     gtk_widget_set_sensitive(d->dvb.box,!busy);
     gtk_widget_set_sensitive(d->eit,!busy);
+    gtk_widget_set_sensitive(d->teletext,!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),4,!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),1,!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),3,!busy);
@@ -437,6 +439,9 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     d.eit=gtk_check_button_new_with_label("EIT-programma-informatie meesturen (Config → EIT)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(d.eit),app->udp.video.eit_enabled);
     gtk_grid_attach(GTK_GRID(grid),d.eit,0,8,3,1);
+    d.teletext=gtk_check_button_new_with_label("Teletekstpagina 100 meesturen (tekst via Config → Teletekst)");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(d.teletext),app->teletext.enabled);
+    gtk_grid_attach(GTK_GRID(grid),d.teletext,0,9,3,1);
     d.status=gtk_label_new("Vul het IP-adres van Portsdown in en kies Start.");
     gtk_label_set_line_wrap(GTK_LABEL(d.status),TRUE); gtk_label_set_max_width_chars(GTK_LABEL(d.status),65);
     gtk_label_set_xalign(GTK_LABEL(d.status),0); gtk_grid_attach(GTK_GRID(grid),d.status,0,7,3,1);
@@ -452,7 +457,8 @@ static void output_udp(GtkWidget *widget, gpointer data) {
             if (status.state==DATV_PREPARING || status.state==DATV_RUNNING) continue;
             datv_udp_destroy(d.stream); d.stream=NULL;
         }
-        DatvUdpSettings s=app->udp;
+        DatvUdpSettings s=app->udp; s.video.teletext=app->teletext;
+        s.video.teletext.enabled=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(d.teletext));
         g_strlcpy(s.ip,gtk_entry_get_text(GTK_ENTRY(d.fields[0])),sizeof(s.ip));
         for (int i=1;i<5;++i) if (i!=2) gtk_spin_button_update(GTK_SPIN_BUTTON(d.fields[i]));
         s.port=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[1]));
@@ -465,16 +471,17 @@ static void output_udp(GtkWidget *widget, gpointer data) {
         if (response==3 && !check.ip[0]) g_strlcpy(check.ip,"127.0.0.1",sizeof(check.ip));
         invalid=response==4 ? datv_validate(s.video,r.width,r.height) : datv_udp_validate(check,r.width,r.height);
         if (invalid) { gtk_label_set_text(GTK_LABEL(d.status),invalid); continue; }
+        app->teletext.enabled=s.video.teletext.enabled;
         if (response==4) {
-            s.video.station=app->station;
+            s.video.teletext=app->teletext; s.video.station=app->station;
             char *loc=entry_text(app->locator); g_strlcpy(s.video.locator,loc,sizeof(s.video.locator)); g_free(loc);
             quality_compare(GTK_WINDOW(d.dialog),im,r,call,s.video); continue;
         }
-        app->udp=s; app->udp_dvb=radio;
+        app->udp=s; app->udp.video.teletext=(TeletextSettings){0}; app->udp_dvb=radio;
         if (response==3) break;
         datv_udp_destroy(d.stream); d.stream=NULL;
         char error[256];
-        s.video.station=app->station;
+        s.video.teletext=app->teletext; s.video.station=app->station;
         char *loc=entry_text(app->locator); g_strlcpy(s.video.locator,loc,sizeof(s.video.locator)); g_free(loc);
         d.stream=datv_udp_start((uint32_t *)cairo_image_surface_get_data(im),r.width,r.height,
             cairo_image_surface_get_stride(im),call,s,error);
@@ -523,6 +530,9 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     GtkWidget *eit=gtk_check_button_new_with_label("EIT-programma-informatie meesturen (Config → EIT)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(eit),app->datv.eit_enabled);
     gtk_grid_attach(GTK_GRID(grid),eit,0,6,3,1);
+    GtkWidget *teletext=gtk_check_button_new_with_label("Teletekstpagina 100 meesturen (tekst via Config → Teletekst)");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(teletext),app->teletext.enabled);
+    gtk_grid_attach(GTK_GRID(grid),teletext,0,7,3,1);
     gtk_widget_show_all(dialog);
     if (gtk_dialog_run(GTK_DIALOG(dialog))!=GTK_RESPONSE_ACCEPT) {
         gtk_widget_destroy(dialog); g_free(call); return;
@@ -533,7 +543,10 @@ static void export_ts(GtkWidget *widget, gpointer data) {
         .seconds=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[1])),
         .fps=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[2])),
         .gop=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[3])),
-        .eit_enabled=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(eit))};
+        .eit_enabled=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(eit)),
+        .teletext=app->teletext};
+    app->teletext.enabled=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(teletext));
+    app->datv.teletext.enabled=app->teletext.enabled;
     gtk_widget_destroy(dialog);
     GtkWidget *picker=gtk_file_chooser_dialog_new("TS opslaan",GTK_WINDOW(app->window),GTK_FILE_CHOOSER_ACTION_SAVE,
         "_Annuleren",GTK_RESPONSE_CANCEL,"_Opslaan",GTK_RESPONSE_ACCEPT,NULL);
@@ -568,7 +581,7 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     }
     TsJob *job=g_new0(TsJob,1);
     job->app=app; job->call=call; job->path=path; job->image=image; job->settings=app->datv;
-    job->settings.station=app->station;
+    job->settings.teletext=app->teletext; job->settings.station=app->station;
     char *loc=entry_text(app->locator); g_strlcpy(job->settings.locator,loc,sizeof(job->settings.locator)); g_free(loc);
     job->overwrite=overwrite;
     job->progress=gtk_message_dialog_new(GTK_WINDOW(app->window),GTK_DIALOG_MODAL,
@@ -713,7 +726,7 @@ static AppConfig capture_config(App *app) {
     s.ebu_top=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->ebu_top));
     s.ebu_bottom=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->ebu_bottom));
     s.genius=gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level2))?2:1;
-    s.station=app->station; s.ts=app->datv; s.udp=app->udp; s.ts_dvb=app->ts_dvb; s.udp_dvb=app->udp_dvb; return s;
+    s.teletext=app->teletext; s.station=app->station; s.ts=app->datv; s.udp=app->udp; s.ts_dvb=app->ts_dvb; s.udp_dvb=app->udp_dvb; return s;
 }
 static void apply_config(App *app, const AppConfig *s) {
     app->restoring=TRUE;
@@ -736,9 +749,49 @@ static void apply_config(App *app, const AppConfig *s) {
     app->contest_square[0]=0;
     wchar_t locator[LOCATOR_MAX_LENGTH+1]; read_locator(app,locator);
     locator_square_changed(app->contest_square,locator);
-    app->station=s->station; app->datv=s->ts; app->udp=s->udp; app->ts_dvb=s->ts_dvb; app->udp_dvb=s->udp_dvb;
+    app->teletext=s->teletext; app->station=s->station; app->datv=s->ts; app->udp=s->udp; app->ts_dvb=s->ts_dvb; app->udp_dvb=s->udp_dvb;
     gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(s->genius==2?app->level2:app->level1),TRUE);
     app->restoring=FALSE; toggled(NULL,app);
+}
+static void edit_teletext(GtkWidget *widget, gpointer data) {
+    (void)widget; App *app=data;
+    GtkWidget *dialog=gtk_dialog_new_with_buttons("Teletekst - pagina 100",GTK_WINDOW(app->window),
+        GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,"_Annuleren",GTK_RESPONSE_CANCEL,"_Opslaan",GTK_RESPONSE_ACCEPT,NULL);
+    GtkWidget *box=gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    gtk_container_set_border_width(GTK_CONTAINER(box),12);
+    GtkWidget *note=gtk_label_new("23 regels van 40 tekens. Gebruik Enter voor een nieuwe regel.\nLetters zonder accenten, cijfers en eenvoudige leestekens.");
+    gtk_box_pack_start(GTK_BOX(box),note,FALSE,FALSE,4);
+    GtkWidget *scroll=gtk_scrolled_window_new(NULL,NULL), *view=gtk_text_view_new();
+    gtk_text_view_set_monospace(GTK_TEXT_VIEW(view),TRUE);
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(view),GTK_WRAP_NONE);
+    gtk_container_add(GTK_CONTAINER(scroll),view);
+    gtk_widget_set_size_request(scroll,500,400);
+    gtk_box_pack_start(GTK_BOX(box),scroll,TRUE,TRUE,4);
+    char text[TELETEXT_INPUT_SIZE]; teletext_to_text(&app->teletext,text,0);
+    GtkTextBuffer *buffer=gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
+    gtk_text_buffer_set_text(buffer,text,-1);
+    GtkWidget *status=gtk_label_new(""); gtk_label_set_line_wrap(GTK_LABEL(status),TRUE);
+    gtk_box_pack_start(GTK_BOX(box),status,FALSE,FALSE,4);
+    gtk_widget_show_all(dialog);
+    while (gtk_dialog_run(GTK_DIALOG(dialog))==GTK_RESPONSE_ACCEPT) {
+        GtkTextIter start,end; gtk_text_buffer_get_bounds(buffer,&start,&end);
+        char *input=gtk_text_buffer_get_text(buffer,&start,&end,FALSE);
+        TeletextSettings page=app->teletext;
+        const char *error=teletext_from_text(&page,input); g_free(input);
+        if (error) { gtk_label_set_text(GTK_LABEL(status),error); continue; }
+        TeletextSettings previous=app->teletext; app->teletext=page;
+        AppConfig settings=capture_config(app);
+        char *path=g_build_filename(app->directory,CONFIG_FILENAME,NULL);
+        gboolean saved=config_save(path,&settings); g_free(path);
+        if (!saved) {
+            app->teletext=previous;
+            gtk_label_set_text(GTK_LABEL(status),"Opslaan mislukt. Controleer schrijfrechten naast het programma.");
+            continue;
+        }
+        gtk_label_set_text(GTK_LABEL(app->status),"Teletekstpagina opgeslagen in atv-contestnummer.conf.");
+        break;
+    }
+    gtk_widget_destroy(dialog);
 }
 static void edit_eit(GtkWidget *widget, gpointer data) {
     (void)widget; App *app=data;
@@ -826,6 +879,9 @@ static void create_ui(App *app) {
     g_signal_connect(save,"activate",G_CALLBACK(save_config),app);
     gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),level1); gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),level2);
     gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),gtk_separator_menu_item_new());
+    GtkWidget *ttx_item=gtk_menu_item_new_with_label("Teletekst...");
+    g_signal_connect(ttx_item,"activate",G_CALLBACK(edit_teletext),app);
+    gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),ttx_item);
     GtkWidget *eit_item=gtk_menu_item_new_with_label("EIT...");
     g_signal_connect(eit_item,"activate",G_CALLBACK(edit_eit),app);
     gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),eit_item);

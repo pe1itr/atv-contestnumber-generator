@@ -2,6 +2,21 @@
 #include "../src/linux.c"
 #undef main
 #include <assert.h>
+static gboolean apply_teletext(gpointer unused) {
+    (void)unused;
+    GList *windows=gtk_window_list_toplevels();
+    for (GList *p=windows;p;p=p->next) {
+        GtkWidget *w=p->data;
+        if (g_strcmp0(gtk_window_get_title(GTK_WINDOW(w)),"Teletekst - pagina 100")) continue;
+        GList *children=gtk_container_get_children(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(w))));
+        GtkWidget *scroll=g_list_nth_data(children,1);
+        GtkWidget *view=gtk_bin_get_child(GTK_BIN(scroll));
+        gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(view)),"ATV CONTEST\nPagina 100",-1);
+        g_list_free(children); gtk_dialog_response(GTK_DIALOG(w),GTK_RESPONSE_ACCEPT);
+        g_list_free(windows); return G_SOURCE_REMOVE;
+    }
+    g_list_free(windows); return G_SOURCE_CONTINUE;
+}
 static gboolean apply_udp(gpointer unused) {
     (void)unused;
     GList *windows=gtk_window_list_toplevels();
@@ -20,6 +35,7 @@ static gboolean apply_udp(gpointer unused) {
         gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,3)),12);
         gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,4)),3);
         gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(gtk_grid_get_child_at(grid,0,8)),TRUE);
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(gtk_grid_get_child_at(grid,0,9)),TRUE);
         gtk_dialog_response(GTK_DIALOG(w),3); g_list_free(windows); return G_SOURCE_REMOVE;
     }
     g_list_free(windows); return G_SOURCE_CONTINUE;
@@ -44,6 +60,9 @@ int main(int argc,char **argv) {
     assert(gtk_widget_get_visible(app.udp_menu));
     g_timeout_add(100,apply_udp,NULL); output_udp(NULL,&app);
     assert(app.udp.port==12345 && app.udp.video.fps==12 && app.udp.video.gop==3);
+    g_timeout_add(50,apply_teletext,NULL); edit_teletext(NULL,&app);
+    assert(app.teletext.enabled && !strncmp(app.teletext.text,"ATV CONTEST",11));
+    wanted.teletext=app.teletext;
     wanted.udp=app.udp; wanted.udp_dvb=app.udp_dvb;
     assert(wanted.udp_dvb.system==DVB_T && wanted.udp_dvb.bandwidth_khz==333 && wanted.udp_dvb.guard==1);
     save_config(NULL,&app); close_app(&app);

@@ -9,11 +9,12 @@ eindresultaat naar beneden af op hele bit/s.
 
 ## Ondersteund profiel
 
-- DVB-S: QPSK, SR 35/66/125/150/333/500 ksym/s, FEC 1/2, 2/3, 3/4.
-- DVB-S2: dezelfde keuzes, normale 64800-bit FECFRAME, pilots aan/uit,
+- DVB-S: QPSK, SR 25/30/31/32/33/35/66/125/150/333/500 ksym/s; FEC 1/2, 2/3, 3/4, 5/6, 7/8.
+- DVB-S2: dezelfde SR-keuzes; FEC 1/4, 1/3, 1/2, 3/5, 2/3, 3/4, 5/6, 8/9, 9/10.
+  Normale 64800-bit FECFRAME, pilots aan/uit,
   CCM en een volledig gevulde DATAFIELD, zonder ISSY of null-packet deletion.
   Short frames en 8PSK zijn niet geïmplementeerd.
-- DVB-T: QPSK, 2K, niet-hiërarchisch, dezelfde FEC-keuzes, GI 1/8, 1/16,
+- DVB-T: QPSK, 2K, niet-hiërarchisch, FEC 1/2, 2/3, 3/4, 5/6, 7/8 (zoals DVB-S), GI 1/8, 1/16,
   1/32. Portsdown SR/BW 150k/250k/333k/500k staat voor respectievelijk
   150/250/333/500 kHz kanaalbandbreedte, niet voor OFDM-symbolen per seconde.
   Dit zijn geschaalde amateurbandbreedtes; geen claim dat deze kanalen onder
@@ -37,6 +38,15 @@ S2: de LDPC/BCH-overhead zit al in deze verhouding. CRC8 vervangt de TS-syncbyte
 
 Voor T combineert 423/544 de 1512 datacarriers, Tu=2048×7/(8B) en RS188/204.
 De pilot- en TPS-carriers worden dus niet nog eens afgetrokken.
+
+De aanvullende S2-Kbch-waarden zijn 16008 (1/4), 21408 (1/3),
+38688 (3/5), 53840 (5/6), 57472 (8/9) en 58192 (9/10).
+De keuzelijsten volgen de Portsdown-menu's: 2/5 en 4/5 staan wel in de
+DVB-S2-norm maar niet in deze onderzochte menu's. 7/8 bestaat alleen voor S/T.
+FEC-ID's 0, 1 en 2 behouden hun bestaande betekenis; nieuwe ID's zijn toegevoegd.
+De interface sorteert op toenemende code rate en toont alleen geldige keuzes
+met een berekende TS-capaciteit van minimaal 30080 bit/s. Een nog geldige keuze
+blijft geselecteerd; anders kiest de interface de laagste beschikbare code rate.
 
 Bronnen:
 
@@ -83,7 +93,88 @@ standaard DVB-keuzes als uitgangspunt. In de dialoog is altijd de nieuwe
 berekende waarde zichtbaar; pas accepteren/toepassen/starten neemt die over.
 De test-CLI blijft een expliciete bitrate accepteren voor transporttests.
 
-De transportondergrens is 32000 bit/s, zodat DVB-S 35k FEC 1/2 past.
-Bij 32000 bit/s geven twee TS-pakketten 94 ms tussen PCR's. SDT wordt na 800 ms opnieuw aangevraagd om ook bij lage bitrates marge voor
+De transportondergrens is 30080 bit/s: twee TS-pakketten duren dan precies
+100 ms. Daaronder kan deze CBR-muxer de MPEG-TS-PCR-grens niet halen naast PSI/SI.
+Bij 25 ksym/s is 2/3 de laagste beschikbare code rate voor S en S2.
+Bij 30 ksym/s is dat 2/3 voor S, maar 3/5 voor S2.
+S2 met FEC 1/2 past vanaf 31 ksym/s zonder pilots of 32 ksym/s met pilots;
+S met FEC 1/2 past vanaf 33 ksym/s. De filtering volgt de berekening, inclusief
+pilots, en geen vaste symbolrateblokkade. De calculator kan lagere uitkomsten
+berekenen; export en UDP weigeren die.
+De nieuwe keuzes zijn achteraan toegevoegd om opgeslagen keuze-indexen te behouden.
+40 ms blijft een streefwaarde; de huidige MPEG-TS/DVB-PCR-grens is 100 ms
+(ETSI TR 101 290 V1.4.1, §5.2.2, tabel 5.0b en noot 2).
+Teletekst blijft minimaal 60000 bit/s vereisen.
+SDT wordt na 800 ms opnieuw aangevraagd om ook bij lage bitrates marge voor
 pakketplanning te houden. De bestaande encoder-fitcontrole blijft vereist: een geldige RF-combinatie garandeert niet
 dat een complexe kaart bij iedere resolutie, fps en GOP verzonden kan worden.
+
+## Portsdown 2019, 2020 en 4: broncodeonderzoek
+
+Onderzocht op 23 september 2026, als broncodeanalyse zonder fysieke RF-test:
+
+| Versie | Repository en onderzochte commit |
+|---|---|
+| 2019 (Stretch) | [BATC/portsdown, e93bb2d](https://github.com/BritishAmateurTelevisionClub/portsdown/tree/e93bb2de1cba5a013527fa2ac54315700c1ab319) |
+| 2020 (Buster) | [BATC/portsdown-buster, 6fa1c02](https://github.com/BritishAmateurTelevisionClub/portsdown-buster/tree/6fa1c02345ef8e0cdf6a1cc3b17dd0d2cf2039b9) |
+| 4 | [davecrump/portsdown4, 2bc70af](https://github.com/davecrump/portsdown4/tree/2bc70af268a09dbac21884858c1119aa49306e54) |
+| Externe encoder voor 2020/4 | [F5OEO/libdvbmod, eff68b3](https://github.com/F5OEO/libdvbmod/tree/eff68b37047196e5bc732b08fa7f73c2bf94107e) |
+
+Dit zijn concrete bronversies; een anders bijgewerkte SD-kaart of externe
+Pluto-/Express-firmware kan hiervan afwijken. Installatiescripts van 2020/4
+halen libdvbmod zonder vaste commit op. De onderzochte bibliotheek zet
+`broadcasting=1`, `ccm_acm=CCM`, `issyi=0` en `npd=0`
+(`libdvbmod.cpp`, `DVB-S2/DVB2.cpp`). Er is dus geen ingeschakelde
+standaardconforme null-pakketverwijdering met reconstructie die de TS-grens omzeilt.
+
+In alle drie GUI-bronnen heeft `SRCheck` bij het instellen van TX-presets een
+ondergrens van **30 ksym/s**. 25 ksym/s kan deze generator berekenen en uitvoeren,
+maar is geen via dat ongewijzigde touchscreen instelbare waarde. Handmatige
+configuratie is geen bewijs dat de aangesloten modulator/ontvanger die SR aankan.
+31 en 32 zijn wel via die menu's invoerbaar.
+
+`scripts/a.sh` geeft `IPTSIN` door via netcat en `videots` aan de modulator.
+Bij 2020/4 gebruikt het Lime-pad `limesdr_dvb`; de null-verwijdering in die bron
+is uitgecommentarieerd. Pilots en normale/korte frames komen via `-p`/`-v` mee.
+Kies **normale frames** voor de capaciteit die deze generator aangeeft.
+Portsdown 4 heeft daarnaast `IPTSIN264/265` met FFmpeg-remux en een Pluto-pad
+via FLV/RTMP. Die veranderen de TS of verplaatsen de muxing naar externe firmware;
+ze zijn niet gelijk aan directe doorvoer van onze gecontroleerde TS.
+
+**2019-aandachtspunt:** het Lime-IPTS-pad gebruikt `dvb2iq2`, gebouwd uit
+`src/DvbTsToIQ/DvbTsToIQ2.cpp`. Regels 207–208 verwijderen null-pakketten;
+het live-underflowpad voegt andere null-pakketten in en vermeldt zelf dat PCR
+opnieuw gestempeld zou moeten worden. ISSY/NPD staan ook in de meegeleverde
+2019-bibliotheek uit. Zodra null-pakketten tussen PCR's verdwijnen, kan dit de
+CBR-PCR-timing veranderen. Dit is geen standaardconforme NPD-oplossing en geen
+reden om 25/30 met FEC 1/2 beschikbaar te maken. Onze uitgangstests bewijzen
+niet de timing na die oude modulator.
+
+### Ondergrens: transport tegenover bedieningsmenu
+
+Onderstaande gehele ksym/s-grenzen zijn berekend uit 30080 bit/s, QPSK en
+normale S2-frames. Het zijn noodzakelijke transportgrenzen, geen garantie voor
+beeldfit of RF-ontvangst. Een modulator-/ontvangergrens kan hoger liggen.
+
+| FEC | DVB-S | DVB-S2 zonder pilots | DVB-S2 met pilots |
+|---|---:|---:|---:|
+| 1/4 | — | 62 | 63 |
+| 1/3 | — | 46 | 47 |
+| 1/2 | 33 | 31 | 32 |
+| 3/5 | — | 26 | 26 |
+| 2/3 | 25 | 23 | 24 |
+| 3/4 | 22 | 21 | 21 |
+| 5/6 | 20 | 19 | 19 |
+| 7/8 | 19 | — | — |
+| 8/9 | — | 18 | 18 |
+| 9/10 | — | 17 | 18 |
+
+De theoretische minima 17/18/19 ksym/s vallen onder de onderzochte
+Portsdown-menuondergrens en zijn daarom geen nieuwe bedieningskeuzes in deze app.
+Voor ongewijzigde Portsdown-menu's is het laagste onderzochte startpunt **30 ksym/s**:
+S met minimaal FEC 2/3 of S2 met minimaal FEC 3/5. Voor FEC 1/2 zijn 31/32 S2
+of 33 S de relevante nieuwe/bestaande keuzes.
+
+De 100-ms-grens staat in [ETSI TS 101 154 V2.9.1, §4.1.5.3](https://www.etsi.org/deliver/etsi_ts/101100_101199/101154/02.09.01_60/ts_101154v020901p.pdf).
+Volledige DVB-SI/AVC- en fysieke RF-conformiteit wordt hiermee niet geclaimd;
+zie ook het beperkte serviceprofiel in `docs/datv.md`.

@@ -1,5 +1,14 @@
 #include "../src/main.c"
 #include <assert.h>
+static BOOL CALLBACK apply_teletext(HWND window,LPARAM unused) {
+    (void)unused; wchar_t title[80]; GetWindowTextW(window,title,80);
+    if (wcscmp(title,L"Teletekst - pagina 100")) return TRUE;
+    SetDlgItemTextW(window,IDC_TELETEXT_TEXT,L"ATV CONTEST\r\nPagina 100");
+    PostMessageW(window,WM_COMMAND,IDOK,0); return TRUE;
+}
+static void CALLBACK teletext_timer(HWND w,UINT m,UINT_PTR id,DWORD t) {
+    (void)w; (void)m; (void)id; (void)t; EnumThreadWindows(GetCurrentThreadId(),apply_teletext,0);
+}
 static BOOL CALLBACK apply_udp(HWND window,LPARAM unused) {
     (void)unused; wchar_t title[80]; GetWindowTextW(window,title,80);
     if (wcscmp(title,L"DATV: UDP-uitvoer")) return TRUE;
@@ -12,6 +21,7 @@ static BOOL CALLBACK apply_udp(HWND window,LPARAM unused) {
     SendMessageW(window,WM_COMMAND,MAKEWPARAM(IDC_DVB_SYSTEM,CBN_SELCHANGE),0);
     SetDlgItemInt(window,IDC_UDP_FPS,12,FALSE); SetDlgItemInt(window,IDC_UDP_GOP,3,FALSE);
     CheckDlgButton(window,IDC_INCLUDE_EIT,BST_CHECKED);
+    CheckDlgButton(window,IDC_INCLUDE_TELETEXT,BST_CHECKED);
     PostMessageW(window,WM_COMMAND,IDC_UDP_APPLY,0); return TRUE;
 }
 static void CALLBACK drive_timer(HWND w,UINT m,UINT_PTR id,DWORD t) {
@@ -37,6 +47,10 @@ int wmain(void) {
     UINT_PTR timer=SetTimer(NULL,0,100,drive_timer); assert(timer);
     SendMessageW(w,WM_COMMAND,IDM_UDP,0); KillTimer(NULL,timer);
     assert(udp_settings.port==12345 && udp_settings.video.fps==12 && udp_settings.video.gop==3);
+    timer=SetTimer(NULL,0,100,teletext_timer); assert(timer);
+    SendMessageW(w,WM_COMMAND,IDM_TELETEXT,0); KillTimer(NULL,timer);
+    assert(teletext_settings.enabled && !strncmp(teletext_settings.text,"ATV CONTEST",11));
+    wanted.teletext=teletext_settings;
     wanted.udp=udp_settings; wanted.udp_dvb=udp_dvb;
     assert(wanted.udp_dvb.system==DVB_T && wanted.udp_dvb.bandwidth_khz==333 && wanted.udp_dvb.guard==1);
     SendMessageW(w,WM_COMMAND,IDM_SAVE_CONFIG,0); DestroyWindow(w);

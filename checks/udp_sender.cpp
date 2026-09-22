@@ -6,10 +6,14 @@
 #include <thread>
 #include <vector>
 int main(int argc,char **argv) {
-    if (argc!=6 && (argc!=7 || std::strcmp(argv[6],"eit"))) return 1;
+    if (argc!=6 && (argc!=7 || (std::strcmp(argv[6],"eit") && std::strcmp(argv[6],"teletext")))) return 1;
     DatvUdpSettings s=datv_udp_defaults(); std::strcpy(s.ip,"127.0.0.1");
     s.port=std::atoi(argv[1]); double duration=std::atof(argv[2]);
     s.video.bitrate=std::atoi(argv[3]); s.video.fps=std::atoi(argv[4]); s.video.gop=std::atoi(argv[5]);
+    if (argc==7 && !std::strcmp(argv[6],"teletext")) {
+        s.video.teletext.enabled=1;
+        if (teletext_from_text(&s.video.teletext,"ATV CONTEST\nPagina 100\n\n73 de PE1ITR")) return 1;
+    }
     if (argc==7) {
         s.video.eit_enabled=1; std::strcpy(s.video.locator,"JO21QK");
         std::strcpy(s.video.station.city,"Eindhoven");

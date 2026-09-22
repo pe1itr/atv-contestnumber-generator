@@ -80,7 +80,7 @@ def check(path, bitrate, fps, gop, width, height, seconds):
     assert set(tables) == {0, 17, 4096}
     assert len(clocks) > seconds*10
     for (_, a), (_, b) in zip(clocks, clocks[1:]):
-        assert 0 < (b-a)/27000000 < 0.1  # MPEG-TS ceiling; low packet rates exceed DVB's 40 ms.
+        assert 0 < (b-a)/27000000 <= 0.1  # TR 101 290 V1.4.1 table 5.0b: maximum 100 ms (inclusive).
     for pid, positions in tables.items():
         maximum = 1.1 if pid == 17 else 0.3
         assert max((b-a)*1504/bitrate for a, b in zip(positions, positions[1:])) <= maximum
@@ -136,6 +136,11 @@ if __name__ == "__main__":
         with tempfile.TemporaryDirectory(prefix="atv-ts-check-") as temp:
             for i, (bitrate, fps, gop, width, height) in enumerate([
                 (120000, 5, 5, 320, 240), (60000, 5, 5, 320, 240),
+                (30654, 1, 1, 160, 120), (30890, 1, 1, 160, 120),
+                (35649, 1, 1, 160, 120), (34800, 1, 1, 160, 120),
+                (31586, 1, 1, 160, 120),
+                (30080, 1, 1, 160, 120), (30718, 1, 1, 160, 120),
+                (36862, 1, 1, 160, 120), (30411, 1, 1, 160, 120),
                 (32254, 1, 1, 160, 120), (33786, 1, 1, 160, 120),
                 (120665, 5, 5, 320, 240), (103676, 5, 5, 320, 240),
                 (60000, 2, 1, 320, 240), (60000, 5, 1, 160, 120),

@@ -44,7 +44,7 @@ def verify(data, bitrate, fps, gop, path):
     assert len(pts)>fps*3
     for (ia,a),(ib,b) in zip(pcrs,pcrs[1:]):
         assert b>a and abs((b-a)-(ib-ia)*1504*27000000/bitrate)<1.1
-        assert (b-a)/27000000<0.1
+        assert (b-a)/27000000<=0.1
     # Stop may cut the final PES. Remove that incomplete access unit for decoding.
     path.write_bytes(data[:starts[-1]*188])
     if shutil.which("ffprobe"):
@@ -214,6 +214,8 @@ if __name__=="__main__":
         subprocess.run(["wine", "build/test-udp-errors.exe"], check=True, timeout=30,
                        env=dict(os.environ, WINEPREFIX="/tmp/atv-contest-wine", WINEDEBUG="-all"))
     reference_hashes = capture(windows,13,120000,10,2)
+    for bitrate in (30080,30718,36862,30411,30654,30890,34800,31586):
+        capture(windows,6,bitrate,1,1)
     capture(windows,5,60000,2,1)
     capture(windows,5,240000,10,1)
     capture(windows,5,115196,10,2)

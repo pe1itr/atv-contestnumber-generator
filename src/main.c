@@ -24,6 +24,7 @@ static int ready;
 static wchar_t contest_square[7];
 static DatvSettings ts_settings;
 static StationInfo station_info;
+static TeletextSettings teletext_settings;
 static DvbSettings ts_dvb, udp_dvb;
 static DatvUdpSettings udp_settings;
 static int genius_level=1;
@@ -272,8 +273,8 @@ static void udp_poll(HWND window,UdpDialog *d) {
     char text[512]; datv_udp_status_text(udp_settings,status,text,sizeof(text));
     udp_status_message(window,text);
     BOOL busy=status.state==DATV_PREPARING || status.state==DATV_RUNNING;
-    const int fields[]={IDC_UDP_IP,IDC_UDP_PORT,IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP,IDC_UDP_START,IDC_UDP_APPLY,IDC_UDP_PREVIEW,IDC_INCLUDE_EIT};
-    for (int i=0;i<9;++i) EnableWindow(GetDlgItem(window,fields[i]),!busy);
+    const int fields[]={IDC_UDP_IP,IDC_UDP_PORT,IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP,IDC_UDP_START,IDC_UDP_APPLY,IDC_UDP_PREVIEW,IDC_INCLUDE_EIT,IDC_INCLUDE_TELETEXT};
+    for (int i=0;i<10;++i) EnableWindow(GetDlgItem(window,fields[i]),!busy);
     dvb_window_enable(window,!busy);
     EnableWindow(GetDlgItem(window,IDC_UDP_STOP),busy);
 }
@@ -282,6 +283,7 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
     if (message==WM_INITDIALOG) {
         d=(UdpDialog *)lp; SetWindowLongPtrW(window,DWLP_USER,lp);
         CheckDlgButton(window,IDC_INCLUDE_EIT,udp_settings.video.eit_enabled?BST_CHECKED:BST_UNCHECKED);
+        CheckDlgButton(window,IDC_INCLUDE_TELETEXT,teletext_settings.enabled?BST_CHECKED:BST_UNCHECKED);
         SetDlgItemTextA(window,IDC_UDP_IP,udp_settings.ip);
         SendDlgItemMessageW(window,IDC_UDP_IP,EM_SETLIMITTEXT,15,0);
         SetDlgItemInt(window,IDC_UDP_PORT,udp_settings.port,FALSE);
@@ -308,7 +310,8 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
             if (status.state==DATV_PREPARING || status.state==DATV_RUNNING) return TRUE;
             datv_udp_destroy(d->stream); d->stream=NULL;
         }
-        DatvUdpSettings s=udp_settings;
+        DatvUdpSettings s=udp_settings; s.video.teletext=teletext_settings;
+        s.video.teletext.enabled=IsDlgButtonChecked(window,IDC_INCLUDE_TELETEXT)==BST_CHECKED;
         DvbSettings radio=dvb_window_read(window);
         SetDlgItemInt(window,IDC_UDP_BITRATE,dvb_bitrate(radio),FALSE);
         GetDlgItemTextA(window,IDC_UDP_IP,s.ip,sizeof(s.ip));
@@ -319,7 +322,7 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         int w,h; BOOL valid=FALSE;
         s.port=(int)GetDlgItemInt(window,IDC_UDP_PORT,&valid,FALSE);
         if ((LOWORD(wp)!=IDC_UDP_PREVIEW && !valid) || !datv_test_options(4,values,&s.video,&w,&h)) {
-            udp_status_message(window,"Gebruik poort 1-65535, bitrate 32000-2000000 bit/s, 1-25 beelden/s en GOP 1-250."); return TRUE;
+            udp_status_message(window,"Gebruik poort 1-65535, bitrate 30080-2000000 bit/s, 1-25 beelden/s en GOP 1-250."); return TRUE;
         }
         s.video.eit_enabled=IsDlgButtonChecked(window,IDC_INCLUDE_EIT)==BST_CHECKED;
         DatvUdpSettings check=s;
@@ -327,10 +330,10 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         const char *error=LOWORD(wp)==IDC_UDP_PREVIEW ? datv_validate(s.video,d->size.width,d->size.height) : datv_udp_validate(check,d->size.width,d->size.height);
         if (error) { udp_status_message(window,error); return TRUE; }
         if (LOWORD(wp)==IDC_UDP_PREVIEW) {
-            s.video.station=station_info; strcpy(s.video.locator,d->locator);
+            s.video.teletext=teletext_settings; s.video.station=station_info; strcpy(s.video.locator,d->locator);
             quality_compare(window,d->bitmap,d->size,d->call,s.video); return TRUE;
         }
-        udp_settings=s; udp_dvb=radio;
+        udp_settings=s; udp_settings.video.teletext=(TeletextSettings){0}; udp_dvb=radio;
         if (LOWORD(wp)==IDC_UDP_APPLY) {
             KillTimer(window,1); EndDialog(window,0); return TRUE;
         }
@@ -340,7 +343,7 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         }
         datv_udp_destroy(d->stream);
         char detail[256];
-        s.video.station=station_info; strcpy(s.video.locator,d->locator);
+        s.video.teletext=teletext_settings; s.video.station=station_info; strcpy(s.video.locator,d->locator);
         d->stream=datv_udp_start(dib.dsBm.bmBits,d->size.width,d->size.height,dib.dsBm.bmWidthBytes,d->call,s,detail);
         if (!d->stream) udp_status_message(window,detail);
         else { udp_poll(window,d); }
@@ -429,6 +432,7 @@ static INT_PTR CALLBACK ts_options(HWND window, UINT message, WPARAM wp, LPARAM 
     if (message==WM_COMMAND && dvb_window_event(window,wp,IDC_TS_BITRATE)) return TRUE;
     if (message==WM_INITDIALOG) {
         CheckDlgButton(window,IDC_INCLUDE_EIT,ts_settings.eit_enabled?BST_CHECKED:BST_UNCHECKED);
+        CheckDlgButton(window,IDC_INCLUDE_TELETEXT,teletext_settings.enabled?BST_CHECKED:BST_UNCHECKED);
         dvb_window_init(window,IDC_TS_BITRATE,ts_dvb);
         SetDlgItemInt(window,IDC_TS_SECONDS,ts_settings.seconds,FALSE);
         SetDlgItemInt(window,IDC_TS_FPS,ts_settings.fps,FALSE);
@@ -443,9 +447,12 @@ static INT_PTR CALLBACK ts_options(HWND window, UINT message, WPARAM wp, LPARAM 
         for (int i=0; i<4; ++i) { GetDlgItemTextA(window,ids[i],text[i],32); values[i]=text[i]; }
         DatvSettings s; int w,h;
         if (!datv_test_options(4,values,&s,&w,&h)) {
-            error(window,L"Gebruik bitrate 32000-2000000 bit/s, duur 1-60 s, 1-25 beelden/s en GOP 1-250."); return TRUE;
+            error(window,L"Gebruik bitrate 30080-2000000 bit/s, duur 1-60 s, 1-25 beelden/s en GOP 1-250."); return TRUE;
         }
         s.eit_enabled=IsDlgButtonChecked(window,IDC_INCLUDE_EIT)==BST_CHECKED;
+        s.teletext=teletext_settings;
+        s.teletext.enabled=IsDlgButtonChecked(window,IDC_INCLUDE_TELETEXT)==BST_CHECKED;
+        teletext_settings.enabled=s.teletext.enabled;
         ts_settings=s; ts_dvb=radio; EndDialog(window,IDOK); return TRUE;
     }
     if (message==WM_CLOSE || (message==WM_COMMAND && LOWORD(wp)==IDCANCEL)) { EndDialog(window,IDCANCEL); return TRUE; }
@@ -464,7 +471,7 @@ static void export_ts(HWND window) {
     if (invalid) { ts_error(window,invalid); return; }
     HINSTANCE instance=(HINSTANCE)GetWindowLongPtrW(window,GWLP_HINSTANCE);
     if (DialogBoxParamW(instance,MAKEINTRESOURCEW(IDD_TS),window,ts_options,0)!=IDOK) return;
-    TsJob job={0}; job.settings=ts_settings; job.settings.station=station_info;
+    TsJob job={0}; job.settings=ts_settings; job.settings.teletext=teletext_settings; job.settings.station=station_info;
     WideCharToMultiByte(CP_UTF8,0,locator,-1,job.settings.locator,sizeof(job.settings.locator),NULL,NULL);
     WideCharToMultiByte(CP_UTF8,0,call,-1,job.call,25,NULL,NULL);
     filename_call(safe,call);
@@ -648,7 +655,7 @@ static AppConfig capture_config(HWND window) {
     s.top_code=IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED;
     s.ebu_top=IsDlgButtonChecked(window,IDC_EBU_TOP)==BST_CHECKED;
     s.ebu_bottom=IsDlgButtonChecked(window,IDC_EBU_BOTTOM)==BST_CHECKED;
-    s.station=station_info; s.genius=genius_level; s.ts=ts_settings; s.udp=udp_settings; s.ts_dvb=ts_dvb; s.udp_dvb=udp_dvb; return s;
+    s.teletext=teletext_settings; s.station=station_info; s.genius=genius_level; s.ts=ts_settings; s.udp=udp_settings; s.ts_dvb=ts_dvb; s.udp_dvb=udp_dvb; return s;
 }
 static void apply_config(HWND window,const AppConfig *s) {
     ready=0; wchar_t text[97];
@@ -671,11 +678,48 @@ static void apply_config(HWND window,const AppConfig *s) {
     contest_square[0]=0;
     read_text(window,IDC_LOCATOR,text,LOCATOR_MAX_LENGTH+1);
     locator_square_changed(contest_square,text);
-    station_info=s->station; ts_settings=s->ts; udp_settings=s->udp; ts_dvb=s->ts_dvb; udp_dvb=s->udp_dvb;
+    teletext_settings=s->teletext; station_info=s->station; ts_settings=s->ts; udp_settings=s->udp; ts_dvb=s->ts_dvb; udp_dvb=s->udp_dvb;
     SendDlgItemMessageW(window,IDC_CODE,EM_SETREADONLY,s->automatic,0);
     update_mode(window); ready=1;
     SendMessageW(window,WM_COMMAND,s->genius==2?IDM_LEVEL2:IDM_LEVEL1,0);
     InvalidateRect(GetDlgItem(window,IDC_PREVIEW),NULL,FALSE);
+}
+static INT_PTR CALLBACK teletext_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp) {
+    (void)lp;
+    if (message==WM_INITDIALOG) {
+        char text[TELETEXT_INPUT_SIZE]; wchar_t wide[TELETEXT_INPUT_SIZE];
+        teletext_to_text(&teletext_settings,text,1);
+        MultiByteToWideChar(CP_UTF8,0,text,-1,wide,TELETEXT_INPUT_SIZE);
+        SetDlgItemTextW(window,IDC_TELETEXT_TEXT,wide);
+        SendDlgItemMessageW(window,IDC_TELETEXT_TEXT,WM_SETFONT,(WPARAM)GetStockObject(ANSI_FIXED_FONT),TRUE);
+        SendDlgItemMessageW(window,IDC_TELETEXT_TEXT,EM_SETLIMITTEXT,TELETEXT_INPUT_SIZE-1,0);
+        return TRUE;
+    }
+    if (message==WM_COMMAND && LOWORD(wp)==IDOK) {
+        wchar_t wide[TELETEXT_INPUT_SIZE]; char text[TELETEXT_INPUT_SIZE*4];
+        GetDlgItemTextW(window,IDC_TELETEXT_TEXT,wide,TELETEXT_INPUT_SIZE);
+        WideCharToMultiByte(CP_UTF8,0,wide,-1,text,sizeof(text),NULL,NULL);
+        TeletextSettings page=teletext_settings;
+        const char *invalid=teletext_from_text(&page,text);
+        if (invalid) {
+            MultiByteToWideChar(CP_UTF8,0,invalid,-1,wide,TELETEXT_INPUT_SIZE);
+            SetDlgItemTextW(window,IDC_TELETEXT_STATUS,wide); return TRUE;
+        }
+        TeletextSettings previous=teletext_settings; teletext_settings=page;
+        AppConfig settings=capture_config(GetParent(window)); char *path=config_path();
+        int saved=path && config_save(path,&settings); free(path);
+        if (!saved) {
+            teletext_settings=previous;
+            SetDlgItemTextW(window,IDC_TELETEXT_STATUS,L"Opslaan mislukt. Controleer schrijfrechten naast het programma.");
+            return TRUE;
+        }
+        SetDlgItemTextW(GetParent(window),IDC_STATUS,L"Teletekstpagina opgeslagen in atv-contestnummer.conf.");
+        EndDialog(window,IDOK); return TRUE;
+    }
+    if (message==WM_CLOSE || (message==WM_COMMAND && LOWORD(wp)==IDCANCEL)) {
+        EndDialog(window,IDCANCEL); return TRUE;
+    }
+    return FALSE;
 }
 static INT_PTR CALLBACK eit_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp) {
     (void)lp;
@@ -780,6 +824,11 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
             }
             CheckMenuRadioItem(GetSubMenu(menu,1),IDM_LEVEL1,IDM_LEVEL2,level==2?IDM_LEVEL2:IDM_LEVEL1,MF_BYCOMMAND);
             DrawMenuBar(window); return TRUE;
+        }
+        if (LOWORD(wp)==IDM_TELETEXT) {
+            if (DialogBoxParamW((HINSTANCE)GetWindowLongPtrW(window,GWLP_HINSTANCE),MAKEINTRESOURCEW(IDD_TELETEXT),window,teletext_dialog,0)==-1)
+                error(window,L"Kan het teletekstvenster niet openen.");
+            return TRUE;
         }
         if (LOWORD(wp)==IDM_EIT) {
             if (DialogBoxParamW((HINSTANCE)GetWindowLongPtrW(window,GWLP_HINSTANCE),MAKEINTRESOURCEW(IDD_EIT),window,eit_dialog,0)==-1)

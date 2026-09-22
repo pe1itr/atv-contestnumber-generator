@@ -42,7 +42,8 @@ int main(void) {
     assert(!datv_validate(settings,320,240));
     assert(datv_validate(settings,641,480));
     assert(datv_validate(settings,120,67));
-    settings.bitrate=31999; assert(datv_validate(settings,320,240));
+    settings.bitrate=30080; assert(!datv_validate(settings,320,240));
+    settings.bitrate=30079; assert(datv_validate(settings,320,240));
     const char *args[]={"60000","10","2","1","160","120"}; int width,height;
     assert(datv_test_options(6,args,&settings,&width,&height));
     assert(settings.bitrate==60000 && settings.gop==1 && width==160 && height==120);

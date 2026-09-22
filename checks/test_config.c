@@ -22,6 +22,8 @@ int main(void) {
     strcpy(original.udp.ip,"192.168.1.50"); original.udp.port=12345;
     original.udp.video=(DatvSettings){.bitrate=240000,.seconds=10,.fps=10,.gop=2};
     original.ts.eit_enabled=original.udp.video.eit_enabled=1;
+    original.teletext.enabled=1;
+    assert(!teletext_from_text(&original.teletext,"ATV CONTEST\nPagina 100\n\n73 de PE1ITR"));
     strcpy(original.station.city,"Eindhoven"); strcpy(original.station.operator_name,"René");
     for (int i=0;i<EIT_DESCRIPTION_LENGTH;++i) strcat(original.station.description,"語");
     original.ts_dvb=(DvbSettings){DVB_S2,3,1,1,0,250};
@@ -37,6 +39,26 @@ int main(void) {
         assert(config_save(TEST_PATH,&original)); assert(config_load(TEST_PATH,&loaded)==1);
         assert(!memcmp(&original,&loaded,sizeof(original)));
     }
+    /* New symbol-rate IDs and reduced-rate cached values survive save/load. */
+    for (int sr=6;sr<9;++sr) {
+        AppConfig low=config_defaults();
+        low.ts_dvb.symbol_rate=low.udp_dvb.symbol_rate=sr;
+        low.ts_dvb.fec=low.udp_dvb.fec=1;
+        low.ts.bitrate=dvb_bitrate(low.ts_dvb);
+        low.udp.video.bitrate=dvb_bitrate(low.udp_dvb);
+        assert(config_save(TEST_PATH,&low)); assert(config_load(TEST_PATH,&loaded)==1);
+        assert(!memcmp(&low,&loaded,sizeof(low)));
+    }
+    for (int fec=3;fec<DVB_FEC_COUNT;++fec) {
+        AppConfig expanded=config_defaults();
+        expanded.ts_dvb.system=expanded.udp_dvb.system=fec==4?DVB_S:DVB_S2;
+        expanded.ts_dvb.fec=expanded.udp_dvb.fec=fec;
+        expanded.ts.bitrate=dvb_bitrate(expanded.ts_dvb);
+        expanded.udp.video.bitrate=dvb_bitrate(expanded.udp_dvb);
+        assert(config_save(TEST_PATH,&expanded)); assert(config_load(TEST_PATH,&loaded)==1);
+        assert(!memcmp(&expanded,&loaded,sizeof(expanded)));
+    }
+    assert(config_save(TEST_PATH,&original));
     /* Invalid saves preserve the earlier file. */
     AppConfig bad=original; bad.ts.seconds=61;
     assert(!config_save(TEST_PATH,&bad)); assert(config_load(TEST_PATH,&loaded)==1);

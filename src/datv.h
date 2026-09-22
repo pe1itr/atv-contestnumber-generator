@@ -6,6 +6,16 @@
 extern "C" {
 #endif
 
+#define TELETEXT_ROWS 23
+#define TELETEXT_COLUMNS 40
+#define TELETEXT_CELLS (TELETEXT_ROWS*TELETEXT_COLUMNS)
+#define TELETEXT_INPUT_SIZE (TELETEXT_CELLS+TELETEXT_ROWS*2+1)
+typedef struct { int enabled; char text[TELETEXT_CELLS+1]; } TeletextSettings;
+/* Flat, space-padded rows in settings; LF/CRLF in the editor. */
+const char *teletext_validate(const TeletextSettings *s);
+const char *teletext_from_text(TeletextSettings *s, const char *text);
+void teletext_to_text(const TeletextSettings *s, char out[TELETEXT_INPUT_SIZE], int crlf);
+
 #define EIT_CITY_LENGTH 40
 #define EIT_DESCRIPTION_LENGTH 240
 #define EIT_OPERATOR_LENGTH 40
@@ -16,6 +26,7 @@ typedef struct {
 typedef struct {
     int bitrate, seconds, fps, gop;
     int eit_enabled;
+    TeletextSettings teletext;
     /* Snapshot of the station at Start/export, owned by the worker. */
     char locator[49];
     StationInfo station;

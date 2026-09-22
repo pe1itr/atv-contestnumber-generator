@@ -15,6 +15,7 @@ BEGIN
         MENUITEM "Genius level &1 (standaard)", IDM_LEVEL1, CHECKED
         MENUITEM "Genius level &2", IDM_LEVEL2
         MENUITEM SEPARATOR
+        MENUITEM "&Teletekst...", IDM_TELETEXT
         MENUITEM "&EIT...", IDM_EIT
         MENUITEM "Huidige instellingen &opslaan", IDM_SAVE_CONFIG
     END
@@ -24,7 +25,7 @@ BEGIN
         MENUITEM "OpenH264-licentie", IDM_CODEC_LICENSE
     END
 END
-IDD_TS DIALOGEX 0, 0, 447, 332
+IDD_TS DIALOGEX 0, 0, 447, 354
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "DATV: TS-proefbestand"
 FONT 9, "Segoe UI"
@@ -52,8 +53,9 @@ BEGIN
     LTEXT "DVB-S2: normale frames. DVB-T: SR/BW is bandbreedte in kHz.", -1, 12, 232, 410, 12
     LTEXT "Zonder audio. Service = roepnaam; ID = 1.\nHet bestand bevat ook 1 seconde aanloop voor de decoder.", -1, 12, 255, 410, 24
     CONTROL "EIT-programma-informatie meesturen (Config > EIT)", IDC_INCLUDE_EIT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 284, 423, 16
-    DEFPUSHBUTTON "Verder", IDOK, 300, 308, 65, 16
-    PUSHBUTTON "Annuleren", IDCANCEL, 370, 308, 65, 16
+    CONTROL "Teletekstpagina 100 meesturen", IDC_INCLUDE_TELETEXT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 304, 423, 16
+    DEFPUSHBUTTON "Verder", IDOK, 300, 330, 65, 16
+    PUSHBUTTON "Annuleren", IDCANCEL, 370, 330, 65, 16
 END
 IDD_TS_PROGRESS DIALOGEX 0, 0, 260, 45
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION
@@ -93,7 +95,8 @@ BEGIN
     LTEXT "Tip voor de contest: gebruik 4 fps en GOP 2.", -1, 12, 270, 423, 12
     LTEXT "Start zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.", -1, 12, 288, 423, 28
     CONTROL "EIT-programma-informatie meesturen (Config > EIT)", IDC_INCLUDE_EIT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 320, 423, 16
-    LTEXT "Vul het IP-adres van Portsdown in en kies Start.", IDC_UDP_STATUS, 12, 345, 423, 43
+    CONTROL "Teletekstpagina 100 meesturen", IDC_INCLUDE_TELETEXT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 340, 423, 16
+    LTEXT "Vul het IP-adres van Portsdown in en kies Start.", IDC_UDP_STATUS, 12, 359, 423, 30
     DEFPUSHBUTTON "Start", IDC_UDP_START, 12, 396, 50, 16
     PUSHBUTTON "Stop", IDC_UDP_STOP, 68, 396, 50, 16
     PUSHBUTTON "Toepassen en sluiten", IDC_UDP_APPLY, 124, 396, 123, 16
@@ -168,4 +171,16 @@ BEGIN
     LTEXT "Schakel EIT in bij TS-export of UDP-uitvoer.\nBewaar via Config > Huidige instellingen opslaan.", IDC_EIT_STATUS, 12, 138, 423, 36
     DEFPUSHBUTTON "Toepassen", IDOK, 290, 183, 70, 16
     PUSHBUTTON "Annuleren", IDCANCEL, 365, 183, 70, 16
+END
+
+IDD_TELETEXT DIALOGEX 0, 0, 390, 365
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Teletekst - pagina 100"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "23 regels van 40 tekens. Gebruik Enter voor een nieuwe regel.\nLetters zonder accenten, cijfers en eenvoudige leestekens.\nDe pagina wordt opgeslagen met Opslaan.", -1, 12, 10, 366, 48
+    EDITTEXT IDC_TELETEXT_TEXT, 12, 66, 366, 228, ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_WANTRETURN | WS_VSCROLL | WS_HSCROLL
+    LTEXT "", IDC_TELETEXT_STATUS, 12, 301, 366, 26
+    DEFPUSHBUTTON "Opslaan", IDOK, 254, 339, 58, 16
+    PUSHBUTTON "Annuleren", IDCANCEL, 320, 339, 58, 16
 END

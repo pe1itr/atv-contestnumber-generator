@@ -43,7 +43,7 @@ python3 checks/check_udp.py --windows
 
 Het laatste commando vereist Wine. De UDP-test gebruikt loopback; zend voor de review niet naar de ingestelde externe zender. Vermeld ontbrekende tools en overgeslagen platformtests. Controleer expliciet beschikbaarheid en versie van FFmpeg, ffprobe en TSDuck: de Python-tests slaan hun controles stilzwijgend over wanneer deze tools ontbreken. Gebruik passende onafhankelijke analyse voor ontbrekende normdekking en bewaar relevante logs/captures onder `build/` of een tijdelijke map.
 
-Let specifiek op de huidige PCR-testgrens van 100 ms: die is geen bewijs dat ook de DVB-meetgrens van 40 ms wordt gehaald. Controleer de bron en de werkelijke intervallen bij lage bitrates. Een bestaande groene test of codecommentaar is nooit de autoriteit voor een normgrens. Behandel andere vaste testwaarden eveneens als te verifiëren aannames.
+Let specifiek op de PCR-testgrens van maximaal 100 ms (inclusief): ETSI TR 101 290 V1.4.1 §5.2.2, tabel 5.0b en noot 2 vermelden dat de oude DVB-grens van 40 ms in 2005 is verwijderd. 40 ms is hier een streefwaarde. Controleer de bron en de werkelijke intervallen bij lage bitrates. Een bestaande groene test of codecommentaar is nooit de autoriteit voor een normgrens. Behandel andere vaste testwaarden eveneens als te verifiëren aannames.
 
 ## Rapport
 
