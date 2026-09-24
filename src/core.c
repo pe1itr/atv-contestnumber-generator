@@ -17,7 +17,14 @@ int valid_fubk_locator(const wchar_t *s) { return valid_locator(s) && wcslen(s)>
 
 const wchar_t *const dvb_system_names[DVB_SYSTEM_COUNT]={L"DVB-S",L"DVB-S2",L"DVB-T"};
 /* Indices are stored in configuration files: append new rates. */
-const int dvb_symbol_rates[DVB_SYMBOL_RATE_COUNT]={35,66,125,150,333,500,25,30,33,31,32};
+const int dvb_symbol_rates[DVB_SYMBOL_RATE_COUNT]={35,66,125,150,333,500,25,30,33};
+/* Sorted display order keeps the persistent IDs of remaining rates intact. */
+const int dvb_symbol_rate_order[DVB_SYMBOL_RATE_COUNT]={6,7,8,0,1,2,3,4,5};
+int dvb_symbol_rate_row(int id) {
+    for (int row=0;row<DVB_SYMBOL_RATE_COUNT;++row)
+        if (dvb_symbol_rate_order[row]==id) return row;
+    return -1;
+}
 const int dvb_bandwidths[DVB_BANDWIDTH_COUNT]={150,250,333,500};
 /* Preserve existing FEC IDs 0..2. The added choices match Portsdown menus. */
 const wchar_t *const dvb_fec_names[DVB_FEC_COUNT]={L"1/2",L"2/3",L"3/4",L"5/6",L"7/8",L"1/4",L"1/3",L"3/5",L"8/9",L"9/10"};
@@ -427,7 +434,7 @@ int config_load(const char *path, AppConfig *out) {
     FILE *f=config_open(path,0);
     if (!f) return errno==ENOENT?0:-1;
     AppConfig s=config_defaults(); uint64_t seen=0;
-    int version=0, ok=1; char line[1200];
+    int version=0, ok=1, migrated_ts=0, migrated_udp=0; char line[1200];
     while (fgets(line,sizeof(line),f)) {
         size_t n=strlen(line);
         if (!n || (line[n-1]!='\n' && !feof(f))) { ok=0; break; }
@@ -449,6 +456,14 @@ int config_load(const char *path, AppConfig *out) {
             strcpy(target,value);
         } else {
             char *end; errno=0; long v=strtol(value,&end,10);
+            /* Retired 31/32 ksym/s IDs migrate to the next supported rate. */
+            if (!errno && *value && !*end && (v==9 || v==10)) {
+                if (field->offset==offsetof(AppConfig,ts_dvb.symbol_rate)) {
+                    v=8; migrated_ts=1;
+                } else if (field->offset==offsetof(AppConfig,udp_dvb.symbol_rate)) {
+                    v=8; migrated_udp=1;
+                }
+            }
             if (errno || !*value || *end || v<field->min || v>field->max) { ok=0; break; }
             *(int *)target=(int)v;
         }
@@ -491,6 +506,8 @@ int config_load(const char *path, AppConfig *out) {
             }
         }
     }
+    if (migrated_ts) s.ts.bitrate=dvb_bitrate(s.ts_dvb);
+    if (migrated_udp) s.udp.video.bitrate=dvb_bitrate(s.udp_dvb);
     if (!ok || !version || (seen&required)!=required || !config_valid(&s)) return -1;
     /* Version 1 stored 240px at index 10; version 2 sorts by width. */
     if (version==1) {

@@ -32,6 +32,30 @@ int main(void) {
     original.udp.video.bitrate=dvb_bitrate(original.udp_dvb);
     assert(config_save(TEST_PATH,&original)); assert(config_load(TEST_PATH,&loaded)==1);
     assert(!memcmp(&original,&loaded,sizeof(original)));
+    /* Retired 31/32 ksym/s choices preserve the rest of an old config. */
+    for (int retired=9;retired<=10;++retired) {
+        assert(config_save(TEST_PATH,&original));
+        FILE *legacy=fopen(TEST_PATH,"rb"); assert(legacy);
+        char contents[8192]; size_t size=fread(contents,1,sizeof(contents)-1,legacy);
+        contents[size]=0; assert(!fclose(legacy));
+        const char *keys[]={"ts_dvb.symbol_rate=","udp_dvb.symbol_rate="};
+        legacy=fopen(TEST_PATH,"wb"); assert(legacy);
+        char *cursor=contents;
+        for (int i=0;i<2;++i) {
+            char *value=strstr(cursor,keys[i]); assert(value);
+            value+=strlen(keys[i]);
+            assert(fwrite(cursor,1,(size_t)(value-cursor),legacy)==(size_t)(value-cursor));
+            assert(fprintf(legacy,"%d",retired)>0);
+            cursor=strchr(value,'\n'); assert(cursor);
+        }
+        assert(fputs(cursor,legacy)>=0); assert(!fclose(legacy));
+        assert(config_load(TEST_PATH,&loaded)==1);
+        AppConfig expected=original;
+        expected.ts_dvb.symbol_rate=expected.udp_dvb.symbol_rate=8;
+        expected.ts.bitrate=dvb_bitrate(expected.ts_dvb);
+        expected.udp.video.bitrate=dvb_bitrate(expected.udp_dvb);
+        assert(!memcmp(&expected,&loaded,sizeof(expected)));
+    }
     /* Appended modes roundtrip without renumbering existing saved choices. */
     assert(IMAGE_CONTEST==0 && IMAGE_PM5544==1 && IMAGE_FUBK==2 && IMAGE_PM5644==3);
     for (int mode=0; mode<IMAGE_MODE_COUNT; ++mode) {

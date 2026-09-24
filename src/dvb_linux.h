@@ -6,7 +6,8 @@ typedef struct {
 static DvbSettings dvb_controls_read(DvbControls *d) {
     DvbSettings s=dvb_defaults();
     s.system=gtk_combo_box_get_active(GTK_COMBO_BOX(d->system));
-    s.symbol_rate=gtk_combo_box_get_active(GTK_COMBO_BOX(d->sr));
+    int sr_row=gtk_combo_box_get_active(GTK_COMBO_BOX(d->sr));
+    s.symbol_rate=sr_row>=0 && sr_row<DVB_SYMBOL_RATE_COUNT?dvb_symbol_rate_order[sr_row]:-1;
     int fec_row=gtk_combo_box_get_active(GTK_COMBO_BOX(d->fec));
     s.fec=fec_row>=0 && fec_row<DVB_FEC_COUNT?d->fec_ids[fec_row]:-1;
     s.guard=gtk_combo_box_get_active(GTK_COMBO_BOX(d->guard));
@@ -53,7 +54,7 @@ static void dvb_controls_init(DvbControls *d,GtkWidget *bitrate,DvbSettings s) {
         gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combos[n]),text); g_free(text);
     }
     for (int i=0;i<DVB_SYMBOL_RATE_COUNT;++i) {
-        char text[24]; g_snprintf(text,sizeof(text),"%d ksym/s",dvb_symbol_rates[i]);
+        char text[24]; g_snprintf(text,sizeof(text),"%d ksym/s",dvb_symbol_rates[dvb_symbol_rate_order[i]]);
         gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(d->sr),text);
     }
     int bw=0;
@@ -63,7 +64,7 @@ static void dvb_controls_init(DvbControls *d,GtkWidget *bitrate,DvbSettings s) {
         if (s.bandwidth_khz==dvb_bandwidths[i]) bw=i;
     }
     gtk_combo_box_set_active(GTK_COMBO_BOX(d->system),s.system);
-    gtk_combo_box_set_active(GTK_COMBO_BOX(d->sr),s.symbol_rate);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(d->sr),dvb_symbol_rate_row(s.symbol_rate));
     gtk_combo_box_set_active(GTK_COMBO_BOX(d->bw),bw);
     gtk_combo_box_set_active(GTK_COMBO_BOX(d->fec),s.fec);
     gtk_combo_box_set_active(GTK_COMBO_BOX(d->guard),s.guard);

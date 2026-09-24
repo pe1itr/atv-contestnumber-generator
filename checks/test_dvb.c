@@ -3,6 +3,14 @@
 #include <stdio.h>
 
 int main(void) {
+    int previous=0;
+    for (int row=0;row<DVB_SYMBOL_RATE_COUNT;++row) {
+        int id=dvb_symbol_rate_order[row], rate=dvb_symbol_rates[id];
+        assert(rate>previous && rate!=31 && rate!=32);
+        assert(dvb_symbol_rate_row(id)==row);
+        previous=rate;
+    }
+    assert(dvb_symbol_rate_row(9)==-1 && dvb_symbol_rate_row(10)==-1);
     DvbSettings s=dvb_defaults();
     assert(dvb_bitrate(s)==115196); /* Portsdown: S, 125k, 1/2. */
     s.system=DVB_S2;
@@ -67,9 +75,8 @@ int main(void) {
     s=dvb_defaults(); s.system=DVB_S2; s.symbol_rate=7; s.fec=7;
     assert(dvb_bitrate(s)==35649); s.pilots=1; assert(dvb_bitrate(s)==34800);
     s.symbol_rate=6; assert(dvb_bitrate(s)<DATV_MIN_BITRATE);
-    s.symbol_rate=9; s.fec=0; s.pilots=0; assert(dvb_bitrate(s)==30654);
-    s.pilots=1; assert(dvb_bitrate(s)<DATV_MIN_BITRATE);
-    s.symbol_rate=10; assert(dvb_bitrate(s)==30890);
+    s.symbol_rate=9; assert(dvb_bitrate(s)==0);
+    s.symbol_rate=10; assert(dvb_bitrate(s)==0);
     s.symbol_rate=1; s.fec=5; assert(dvb_bitrate(s)==31586);
     s.system=DVB_S; assert(dvb_bitrate(s)==0);
     s.fec=4; assert(dvb_bitrate(s)>0); s.system=DVB_S2; assert(dvb_bitrate(s)==0);

@@ -13,28 +13,24 @@ static void select_dvb(HWND window,int id,int index) {
 }
 static void check_dvb(HWND window,int field) {
     assert(GetWindowLongPtrW(GetDlgItem(window,field),GWL_STYLE)&ES_READONLY);
-    select_dvb(window,IDC_DVB_SR,9); select_dvb(window,IDC_DVB_SYSTEM,DVB_S2);
-    select_dvb(window,IDC_DVB_FEC,0);
-    assert(GetDlgItemInt(window,field,NULL,FALSE)==30654);
-    CheckDlgButton(window,IDC_DVB_PILOTS,BST_CHECKED);
-    SendMessageW(window,WM_COMMAND,MAKEWPARAM(IDC_DVB_PILOTS,BN_CLICKED),0);
-    assert(dvb_window_read(window).fec==7);
-    select_dvb(window,IDC_DVB_SR,10); select_dvb(window,IDC_DVB_FEC,0);
-    assert(GetDlgItemInt(window,field,NULL,FALSE)==30890);
-    select_dvb(window,IDC_DVB_SR,7);
-    assert(GetDlgItemInt(window,field,NULL,FALSE)==34800);
-    CheckDlgButton(window,IDC_DVB_PILOTS,BST_UNCHECKED);
-    SendMessageW(window,WM_COMMAND,MAKEWPARAM(IDC_DVB_PILOTS,BN_CLICKED),0);
-    select_dvb(window,IDC_DVB_SR,2);
+    const int expected[]={25,30,33,35,66,125,150,333,500};
+    assert(SendDlgItemMessageW(window,IDC_DVB_SR,CB_GETCOUNT,0,0)==9);
+    for (int row=0;row<9;++row) {
+        wchar_t text[24], wanted[24];
+        SendDlgItemMessageW(window,IDC_DVB_SR,CB_GETLBTEXT,row,(LPARAM)text);
+        swprintf(wanted,24,L"%d ksym/s",expected[row]);
+        assert(!wcscmp(text,wanted));
+    }
+    select_dvb(window,IDC_DVB_SR,5);
     const UINT rates[]={30718,36862,40549};
     select_dvb(window,IDC_DVB_SYSTEM,DVB_S); select_dvb(window,IDC_DVB_FEC,0);
     for (int i=0;i<3;++i) {
-        select_dvb(window,IDC_DVB_SR,6+i);
+        select_dvb(window,IDC_DVB_SR,i);
         assert(GetDlgItemInt(window,field,NULL,FALSE)==rates[i]);
         assert(SendDlgItemMessageW(window,IDC_DVB_FEC,CB_GETCOUNT,0,0)==(i<2?4:5));
         assert(dvb_window_read(window).fec==1);
     }
-    select_dvb(window,IDC_DVB_SR,2); select_dvb(window,IDC_DVB_FEC,0);
+    select_dvb(window,IDC_DVB_SR,5); select_dvb(window,IDC_DVB_FEC,0);
     select_dvb(window,IDC_DVB_SYSTEM,DVB_S);
     assert(GetDlgItemInt(window,field,NULL,FALSE)==115196);
     select_dvb(window,IDC_DVB_SYSTEM,DVB_S2);

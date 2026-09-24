@@ -14,7 +14,7 @@ int image_mode_row(int mode);
 int valid_fubk_locator(const wchar_t *s);
 #define CONFIG_FILENAME "atv-contestnummer.conf"
 enum { DVB_S, DVB_S2, DVB_T, DVB_SYSTEM_COUNT };
-#define DVB_SYMBOL_RATE_COUNT 11
+#define DVB_SYMBOL_RATE_COUNT 9
 #define DVB_BANDWIDTH_COUNT 4
 #define DVB_FEC_COUNT 10
 #define DVB_GUARD_COUNT 3
@@ -23,6 +23,8 @@ typedef struct {
 } DvbSettings;
 extern const wchar_t *const dvb_system_names[DVB_SYSTEM_COUNT];
 extern const int dvb_symbol_rates[DVB_SYMBOL_RATE_COUNT];
+extern const int dvb_symbol_rate_order[DVB_SYMBOL_RATE_COUNT];
+int dvb_symbol_rate_row(int id);
 extern const int dvb_bandwidths[DVB_BANDWIDTH_COUNT];
 extern const wchar_t *const dvb_fec_names[DVB_FEC_COUNT];
 extern const wchar_t *const dvb_guard_names[DVB_GUARD_COUNT];
