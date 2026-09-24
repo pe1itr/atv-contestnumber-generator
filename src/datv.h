@@ -43,6 +43,9 @@ typedef struct {
     uint64_t refusals;
     double last_refusal_seconds;
     double seconds;
+    /* Preview: CBR TS time from stream start through the first complete IDR.
+     * Includes intervening TS overhead; excludes receiver/network latency. */
+    double first_image_ms;
     char error[256];
 } DatvUdpStatus;
 /* The bitrate is the complete 188-byte TS bitrate, in bits per second. */

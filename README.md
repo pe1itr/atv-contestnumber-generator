@@ -236,6 +236,17 @@ en GOP in en klik **Beeld controleren**. Je hoeft hiervoor geen IP-adres of
 poort in te vullen. Links staat het originele beeld; rechts hetzelfde beeld na
 H.264-compressie en decodering. Beide beelden gebruiken dezelfde vergroting;
 met **2× vergroten** en de gekoppelde schuifbalken vergelijk je kleine letters.
+De controle toont ook de berekende uitzendtijd van het eerste volledige beeld
+in milliseconden vanaf TS-start. Deze tijd volgt uit de werkelijk gecodeerde
+beeldgrootte en TS-planning bij de ingestelde bitrate, inclusief tussenliggende
+TS-overhead. Het is geen beeldinterval (1000/fps) of tijd tot zichtbare ontvangst:
+UDP-pacing, netwerkvertraging, wachten op een volgend IDR bij later afstemmen en
+buffering/decodering in de ontvanger zijn niet inbegrepen.
+Voor vliegtuigreflecties toont het venster ook de IDR-interval (1000 × GOP / fps)
+en een ruwe schatting van wachten op een IDR plus de uitzendtijd van
+het eerste beeld. Dit is een indicatie, geen ontvangstgarantie: latere IDR-beelden
+en de tussenliggende TS-overhead kunnen verschillen. Signaalvergrendeling,
+ontvangstverliezen en ontvangervertraging vragen extra tijd.
 Sluit de vergelijking om de instellingen te veranderen en opnieuw te controleren.
 
 De controle verstuurt niets en wijzigt geen opgeslagen instellingen. Ze gebruikt

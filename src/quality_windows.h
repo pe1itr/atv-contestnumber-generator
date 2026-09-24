@@ -78,9 +78,11 @@ static void quality_poll(HWND window,QualityDialog *d) {
         SetDlgItemTextW(window,IDC_QUALITY_STATUS,L"Kan het gecomprimeerde voorbeeld niet weergeven."); return;
     }
     d->images[1]=image;
-    wchar_t message[320];
-    swprintf(message,320,L"%d x %d · %d bit/s · %d beelden/s · GOP %d · QP %d\nVergelijk vooral de kleine letters. Lagere QP is geen garantie voor leesbaarheid.",
-        d->size.width,d->size.height,d->settings.bitrate,d->settings.fps,d->settings.gop,status.qp);
+    wchar_t message[768];
+    swprintf(message,768,L"%d x %d · %d bit/s · %d beelden/s · GOP %d · QP %d\nEerste volledige beeld: %.1f ms vanaf TS-start (incl. TS-overhead; excl. ontvangervertraging).\nIDR-interval: %.1f ms; wachten + beeld: circa %.1f ms (excl. signaalvergrendeling).\nVergelijk vooral de kleine letters. Lagere QP is geen garantie voor leesbaarheid.",
+        d->size.width,d->size.height,d->settings.bitrate,d->settings.fps,d->settings.gop,status.qp,status.first_image_ms,
+                1000.0*d->settings.gop/d->settings.fps,
+                1000.0*d->settings.gop/d->settings.fps+status.first_image_ms);
     SetDlgItemTextW(window,IDC_QUALITY_STATUS,message);
     InvalidateRect(d->panes[1].window,NULL,FALSE);
 }

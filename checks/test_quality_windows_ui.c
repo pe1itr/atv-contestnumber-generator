@@ -1,5 +1,6 @@
 #include "../src/main.c"
 #include <assert.h>
+#include <math.h>
 static int stage,qp,test_fps;
 static ULONGLONG deadline;
 static BOOL CALLBACK drive(HWND window,LPARAM unused) {
@@ -16,6 +17,10 @@ static BOOL CALLBACK drive(HWND window,LPARAM unused) {
         if (d && d->done) {
             assert(d->images[1]); DatvUdpStatus status; datv_udp_status(d->job,&status);
             qp=status.qp; assert(qp>=24 && qp<=48 && !status.packets);
+            wchar_t text[512]; GetDlgItemTextW(window,IDC_QUALITY_STATUS,text,512);
+            const wchar_t *timing=wcsstr(text,L"Eerste volledige beeld: ");
+            double ms=0; assert(timing && swscanf(timing,L"Eerste volledige beeld: %lf ms",&ms)==1);
+            assert(ms>0 && ms<=1000 && fabs(ms-status.first_image_ms)<0.051);
             CheckDlgButton(window,IDC_QUALITY_ZOOM,BST_UNCHECKED); SendMessageW(window,WM_COMMAND,IDC_QUALITY_ZOOM,0); assert(d->zoom==1);
             CheckDlgButton(window,IDC_QUALITY_ZOOM,BST_CHECKED); SendMessageW(window,WM_COMMAND,IDC_QUALITY_ZOOM,0); assert(d->zoom==2);
             SendMessageW(d->panes[0].window,WM_HSCROLL,SB_LINERIGHT,0);

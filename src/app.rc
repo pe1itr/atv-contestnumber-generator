@@ -139,7 +139,7 @@ BEGIN
     LTEXT "", IDC_STATUS, 12, 302, 436, 20
 END
 
-IDD_QUALITY DIALOGEX 0, 0, 600, 370
+IDD_QUALITY DIALOGEX 0, 0, 600, 402
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "DATV: Beeld controleren"
 FONT 9, "Segoe UI"
@@ -149,9 +149,9 @@ BEGIN
     CONTROL "", IDC_QUALITY_BEFORE, "Static", SS_BLACKRECT | WS_HSCROLL | WS_VSCROLL | WS_TABSTOP, 12, 26, 282, 235
     CONTROL "", IDC_QUALITY_AFTER, "Static", SS_BLACKRECT | WS_HSCROLL | WS_VSCROLL | WS_TABSTOP, 306, 26, 282, 235
     CONTROL "2x vergroten (beide beelden)", IDC_QUALITY_ZOOM, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 268, 260, 14
-    LTEXT "Beeld voorbereiden en decoderen... Er wordt niets uitgezonden.", IDC_QUALITY_STATUS, 12, 288, 576, 26
-    LTEXT "Eerste volledige videobeeld na H.264-compressie. Andere videobeelden kunnen verschillen.\nZonder ontvangstverliezen of beeldbewerking van je ontvanger. Scroll om details te bekijken.", -1, 12, 319, 576, 26
-    DEFPUSHBUTTON "Sluiten", IDCANCEL, 518, 350, 70, 16
+    LTEXT "Beeld voorbereiden en decoderen... Er wordt niets uitgezonden.", IDC_QUALITY_STATUS, 12, 288, 576, 58
+    LTEXT "Eerste volledige videobeeld na H.264-compressie. Andere videobeelden kunnen verschillen.\nZonder ontvangstverliezen of beeldbewerking van je ontvanger. Scroll om details te bekijken.", -1, 12, 351, 576, 26
+    DEFPUSHBUTTON "Sluiten", IDCANCEL, 518, 382, 70, 16
 END
 
 IDD_EIT DIALOGEX 0, 0, 447, 208

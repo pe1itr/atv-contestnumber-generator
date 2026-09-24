@@ -552,6 +552,7 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
         Bytes yuv=yuv420(rgb.data(),w,h,w*4);
         std::vector<Frame> frames;
         int selected=0;
+        uint64_t first_image_packets=0;
         for (int qp=24; qp<=48 && !stream->stop; qp+=4) {
             int largest=0;
             // Consecutive IDR access units must have different idr_pic_id
@@ -567,9 +568,11 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
             uint64_t duration=std::max(30,(3*s.gop+s.fps-1)/s.fps);
             uint64_t count=duration*s.bitrate/1504;
             bool fits=true; unsigned char packet[188];
+            first_image_packets=0;
             for (uint64_t i=0;i<count;++i) {
                 if (stream->stop) { fits=false; break; }
                 if (!probe.next(packet)) { fits=false; break; }
+                if (!first_image_packets && probe.frame) first_image_packets=i+1;
             }
             if (fits) { selected=qp; break; }
         }
@@ -578,7 +581,8 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
         if (!stream->stop && stream->preview_only) {
             auto pixels=decode_preview(frames.front(),w,h);
             std::lock_guard<std::mutex> lock(stream->mutex);
-            if (!stream->stop) { stream->preview=std::move(pixels); stream->status.qp=selected; }
+            if (!stream->stop) { stream->preview=std::move(pixels); stream->status.qp=selected;
+                stream->status.first_image_ms=first_image_packets*1504000.0/s.bitrate; }
             stream->status.state=DATV_STOPPED;
             return;
         }

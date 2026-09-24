@@ -27,6 +27,9 @@ static gboolean drive(gpointer unused) {
             const char *value=strstr(text,"QP ");
             if (value) {
                 qp=atoi(value+3); assert(qp>=24 && qp<=48);
+                const char *timing=strstr(text,"Eerste volledige beeld: ");
+                double ms=0; assert(timing && sscanf(timing,"Eerste volledige beeld: %lf ms",&ms)==1);
+                assert(ms>0 && ms<=1000);
                 GtkToggleButton *zoom=GTK_TOGGLE_BUTTON(gtk_grid_get_child_at(grid,0,2));
                 gtk_toggle_button_set_active(zoom,FALSE); gtk_toggle_button_set_active(zoom,TRUE);
                 GtkScrolledWindow *a=GTK_SCROLLED_WINDOW(gtk_grid_get_child_at(grid,0,1));

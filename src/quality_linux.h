@@ -42,8 +42,10 @@ static gboolean quality_poll(gpointer data) {
         if (cairo_surface_status(image)==CAIRO_STATUS_SUCCESS &&
             datv_preview_image(d->job,(uint32_t *)cairo_image_surface_get_data(image),d->size.width,d->size.height,cairo_image_surface_get_stride(image))) {
             cairo_surface_mark_dirty(image); d->images[1]=image;
-            char text[256]; g_snprintf(text,sizeof(text),"%d × %d · %d bit/s · %d beelden/s · GOP %d · QP %d\nVergelijk vooral de kleine letters. Lagere QP is geen garantie voor leesbaarheid.",
-                d->size.width,d->size.height,d->settings.bitrate,d->settings.fps,d->settings.gop,status.qp);
+            char text[768]; g_snprintf(text,sizeof(text),"%d × %d · %d bit/s · %d beelden/s · GOP %d · QP %d\nEerste volledige beeld: %.1f ms vanaf TS-start (incl. TS-overhead; excl. ontvangervertraging).\nIDR-interval: %.1f ms; wachten + beeld: circa %.1f ms (excl. signaalvergrendeling).\nVergelijk vooral de kleine letters. Lagere QP is geen garantie voor leesbaarheid.",
+                d->size.width,d->size.height,d->settings.bitrate,d->settings.fps,d->settings.gop,status.qp,status.first_image_ms,
+                1000.0*d->settings.gop/d->settings.fps,
+                1000.0*d->settings.gop/d->settings.fps+status.first_image_ms);
             gtk_label_set_text(GTK_LABEL(d->status),text);
             gtk_widget_queue_draw(d->areas[1]);
         } else {
