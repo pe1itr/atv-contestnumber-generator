@@ -2,7 +2,7 @@
 
 ## Bediening
 
-1. Vul de roepnaam, locator en code in en kies een resolutie tot **640 × 480**.
+1. Vul de roepnaam, locator en code in en kies een resolutie tot **1920 × 1080 (16:9)** of **1920 × 1440 (4:3)**.
 2. Kies **Config → Genius level 2**. Standaard start het programma op level 1.
 3. Kies **File → Exporteer TS-proefbestand...**.
 4. Kies **DVB-S, DVB-S2 of DVB-T**, SR/BW, FEC en eventueel pilots of GI.
@@ -20,7 +20,10 @@ het programma. Bij opstarten wordt dit bestand automatisch geladen, zonder UDP
 te starten. Zonder bestand blijven de normale standaardinstellingen gelden.
 
 Grenzen: bitrate 30080–2000000 bit/s, beeldduur 1–60 s, 1–25 beelden/s, GOP 1–250
-beelden. Het gekozen beeld moet even afmetingen hebben, maximaal 640 × 480.
+beelden. Het gekozen beeld moet even afmetingen hebben, maximaal 1920 × 1440.
+De resolutie is niet aan een vaste SR-grens gekoppeld: de encoder controleert of
+het beeld bij de gekozen bitrate, beeldfrequentie en GOP past. Bij te weinig
+ruimte volgt een melding; kies dan minder pixels, minder beelden/s of een langere GOP.
 De export draait op een achtergrondthread en publiceert pas een compleet bestand.
 
 ## Encoder en transport

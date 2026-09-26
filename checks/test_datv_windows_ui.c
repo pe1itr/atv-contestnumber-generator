@@ -13,9 +13,9 @@ static void select_dvb(HWND window,int id,int index) {
 }
 static void check_dvb(HWND window,int field) {
     assert(GetWindowLongPtrW(GetDlgItem(window,field),GWL_STYLE)&ES_READONLY);
-    const int expected[]={25,30,33,35,66,125,150,333,500};
-    assert(SendDlgItemMessageW(window,IDC_DVB_SR,CB_GETCOUNT,0,0)==9);
-    for (int row=0;row<9;++row) {
+    const int expected[]={25,30,33,35,66,125,150,250,333,500};
+    assert(SendDlgItemMessageW(window,IDC_DVB_SR,CB_GETCOUNT,0,0)==10);
+    for (int row=0;row<10;++row) {
         wchar_t text[24], wanted[24];
         SendDlgItemMessageW(window,IDC_DVB_SR,CB_GETLBTEXT,row,(LPARAM)text);
         swprintf(wanted,24,L"%d ksym/s",expected[row]);
@@ -33,7 +33,11 @@ static void check_dvb(HWND window,int field) {
     select_dvb(window,IDC_DVB_SR,5); select_dvb(window,IDC_DVB_FEC,0);
     select_dvb(window,IDC_DVB_SYSTEM,DVB_S);
     assert(GetDlgItemInt(window,field,NULL,FALSE)==115196);
+    select_dvb(window,IDC_DVB_SR,7);
+    assert(GetDlgItemInt(window,field,NULL,FALSE)==230392);
     select_dvb(window,IDC_DVB_SYSTEM,DVB_S2);
+    assert(GetDlgItemInt(window,field,NULL,FALSE)==247214);
+    select_dvb(window,IDC_DVB_SR,5);
     assert(IsWindowEnabled(GetDlgItem(window,IDC_DVB_PILOTS)));
     CheckDlgButton(window,IDC_DVB_PILOTS,BST_CHECKED);
     SendMessageW(window,WM_COMMAND,MAKEWPARAM(IDC_DVB_PILOTS,BN_CLICKED),0);

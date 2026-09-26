@@ -14,7 +14,7 @@ import tempfile
 import time
 
 
-def verify(data, bitrate, fps, gop, path):
+def verify(data, bitrate, fps, gop, path, width=160, height=120):
     hashes = None
     cc, pcrs, pts, starts = {}, [], [], []
     for i in range(len(data)//188):
@@ -53,6 +53,7 @@ def verify(data, bitrate, fps, gop, path):
         assert program["program_id"]==1 and program["tags"]["service_name"]=="PE1ITR"
         video, = program["streams"]
         assert video["codec_name"]=="h264" and video["has_b_frames"]==0
+        assert (video["width"],video["height"])==(width,height)
         assert int(video["nb_read_frames"])==len(pts)-1
     if shutil.which("ffmpeg"):
         result = subprocess.run(["ffmpeg","-v","error","-xerror","-i",str(path),"-f","framemd5","-"],capture_output=True,text=True)
@@ -71,11 +72,11 @@ def verify(data, bitrate, fps, gop, path):
     return set(hashes) if hashes is not None else None
 
 
-def capture(windows, duration, bitrate, fps, gop):
+def capture(windows, duration, bitrate, fps, gop, width=160, height=120):
     receiver = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
     receiver.bind(("127.0.0.1",0)); receiver.settimeout(0.1)
     command = ["wine","build/udp-sender.exe"] if windows else ["build/udp-sender"]
-    command += [str(receiver.getsockname()[1]),str(duration),str(bitrate),str(fps),str(gop)]
+    command += [str(receiver.getsockname()[1]),str(duration),str(bitrate),str(fps),str(gop),str(width),str(height)]
     env = dict(os.environ, WINEPREFIX="/tmp/atv-contest-wine", WINEDEBUG="-all")
     # Wine server processes can retain inherited pipe handles after the sender
     # exits. Files let us inspect the completed sender without waiting for EOF.
@@ -114,8 +115,8 @@ def capture(windows, duration, bitrate, fps, gop):
         assert abs(statistics.mean(deltas)-interval)<interval*0.03
         assert min(deltas)>interval*0.2 and max(deltas)<interval*2+0.03,(min(deltas),max(deltas))
         with tempfile.TemporaryDirectory(prefix="atv-udp-check-") as temp:
-            hashes = verify(b"".join(packets),bitrate,fps,gop,Path(temp)/"capture.ts")
-        print(f"{'Windows/Wine' if windows else 'Linux'} OK: {bitrate} bit/s, {fps} fps, GOP {gop}, {len(packets)} datagrams; interval mean/min/max {statistics.mean(deltas)*1000:.2f}/{min(deltas)*1000:.2f}/{max(deltas)*1000:.2f} ms; stop {status['stop_ms']:.1f} ms",flush=True)
+            hashes = verify(b"".join(packets),bitrate,fps,gop,Path(temp)/"capture.ts",width,height)
+        print(f"{'Windows/Wine' if windows else 'Linux'} OK: {bitrate} bit/s, {width}x{height}, {fps} fps, GOP {gop}, {len(packets)} datagrams; interval mean/min/max {statistics.mean(deltas)*1000:.2f}/{min(deltas)*1000:.2f}/{max(deltas)*1000:.2f} ms; stop {status['stop_ms']:.1f} ms",flush=True)
         return hashes
     finally:
         if process.poll() is None:
@@ -220,4 +221,9 @@ if __name__=="__main__":
     capture(windows,5,240000,10,1)
     capture(windows,5,115196,10,2)
     capture(windows,5,123607,10,2)
+    for bitrate in (230392,247214,241331):
+        capture(windows,5,bitrate,10,2)
+    capture(windows,5,306882,5,5,1280,720)
+    capture(windows,5,306882,5,5,1920,1080)
+    capture(windows,5,306882,5,5,1920,1440)
     recovery(windows, reference_hashes)

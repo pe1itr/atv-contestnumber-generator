@@ -16,12 +16,13 @@ int image_mode_row(int mode) {
 int valid_fubk_locator(const wchar_t *s) { return valid_locator(s) && wcslen(s)>=6; }
 
 const wchar_t *const dvb_system_names[DVB_SYSTEM_COUNT]={L"DVB-S",L"DVB-S2",L"DVB-T"};
-/* Indices are stored in configuration files: append new rates. */
-const int dvb_symbol_rates[DVB_SYMBOL_RATE_COUNT]={35,66,125,150,333,500,25,30,33};
+/* Indices are stored in configuration files: append new rates.
+ * IDs 9/10 belonged to retired 31/32 ksym/s; never reuse them. */
+const int dvb_symbol_rates[DVB_SYMBOL_RATE_COUNT]={35,66,125,150,333,500,25,30,33,0,0,250};
 /* Sorted display order keeps the persistent IDs of remaining rates intact. */
-const int dvb_symbol_rate_order[DVB_SYMBOL_RATE_COUNT]={6,7,8,0,1,2,3,4,5};
+const int dvb_symbol_rate_order[DVB_SYMBOL_RATE_CHOICE_COUNT]={6,7,8,0,1,2,3,11,4,5};
 int dvb_symbol_rate_row(int id) {
-    for (int row=0;row<DVB_SYMBOL_RATE_COUNT;++row)
+    for (int row=0;row<DVB_SYMBOL_RATE_CHOICE_COUNT;++row)
         if (dvb_symbol_rate_order[row]==id) return row;
     return -1;
 }
@@ -44,7 +45,7 @@ int dvb_fec_choices(DvbSettings s, int ids[DVB_FEC_COUNT]) {
 }
 int dvb_bitrate(DvbSettings s) {
     if (s.system<0 || s.system>=DVB_SYSTEM_COUNT || s.symbol_rate<0 ||
-        s.symbol_rate>=DVB_SYMBOL_RATE_COUNT || s.fec<0 || s.fec>=DVB_FEC_COUNT ||
+        s.symbol_rate>=DVB_SYMBOL_RATE_COUNT || !dvb_symbol_rates[s.symbol_rate] || s.fec<0 || s.fec>=DVB_FEC_COUNT ||
         s.pilots<0 || s.pilots>1 || s.guard<0 || s.guard>=DVB_GUARD_COUNT ||
         s.bandwidth_khz<1 || s.bandwidth_khz>8000) return 0;
     int bandwidth_ok=0;
@@ -175,8 +176,8 @@ const char *datv_validate(DatvSettings s, int width, int height) {
     if (s.seconds < 1 || s.seconds > 60) return "Duur moet tussen 1 en 60 seconden liggen.";
     if (s.fps < 1 || s.fps > 25) return "Beeldfrequentie moet tussen 1 en 25 beelden/s liggen.";
     if (s.gop < 1 || s.gop > 250) return "GOP moet tussen 1 en 250 beelden liggen (1 = alleen IDR).";
-    if (width < 16 || height < 16 || width > 640 || height > 480 || width % 2 || height % 2)
-        return "Kies voor deze TS-proef een even resolutie van maximaal 640 x 480.";
+    if (width < 16 || height < 16 || width > 1920 || height > 1440 || width % 2 || height % 2)
+        return "Kies voor TS een even resolutie van minimaal 16 x 16 en maximaal 1920 x 1440.";
     const char *tt_error=teletext_validate(&s.teletext);
     if (tt_error) return tt_error;
     if (s.teletext.enabled && s.bitrate<60000)

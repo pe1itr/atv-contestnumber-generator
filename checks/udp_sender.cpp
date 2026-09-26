@@ -6,7 +6,9 @@
 #include <thread>
 #include <vector>
 int main(int argc,char **argv) {
-    if (argc!=6 && (argc!=7 || (std::strcmp(argv[6],"eit") && std::strcmp(argv[6],"teletext")))) return 1;
+    if (argc!=6 && argc!=8 && (argc!=7 || (std::strcmp(argv[6],"eit") && std::strcmp(argv[6],"teletext")))) return 1;
+    int width=argc==8?std::atoi(argv[6]):160, height=argc==8?std::atoi(argv[7]):120;
+    if (width<16 || height<16 || width>1920 || height>1440 || width%2 || height%2) return 1;
     DatvUdpSettings s=datv_udp_defaults(); std::strcpy(s.ip,"127.0.0.1");
     s.port=std::atoi(argv[1]); double duration=std::atof(argv[2]);
     s.video.bitrate=std::atoi(argv[3]); s.video.fps=std::atoi(argv[4]); s.video.gop=std::atoi(argv[5]);
@@ -20,11 +22,12 @@ int main(int argc,char **argv) {
         std::strcpy(s.video.station.operator_name,"René");
         std::strcpy(s.video.station.description,"ATV-contest; 70 cm; antenne richting zuid.");
     }
-    std::vector<uint32_t> pixels(160*120);
-    for (int y=0;y<120;++y) for (int x=0;x<160;++x)
-        pixels[y*160+x]=((x/23+y/29)%2)?0xffff00:0x000080;
+    std::vector<uint32_t> pixels(width*height);
+    // Scale the same reference pattern so resolution changes preserve the scene.
+    for (int y=0;y<height;++y) for (int x=0;x<width;++x)
+        pixels[y*width+x]=(((x*160/width)/23+(y*120/height)/29)%2)?0xffff00:0x000080;
     char error[256];
-    DatvStream *stream=datv_udp_start(pixels.data(),160,120,160*4,"PE1ITR",s,error);
+    DatvStream *stream=datv_udp_start(pixels.data(),width,height,width*4,"PE1ITR",s,error);
     if (!stream) { std::fprintf(stderr,"%s\n",error); return 1; }
     auto start=std::chrono::steady_clock::now();
     DatvUdpStatus status;
@@ -55,7 +58,7 @@ int main(int argc,char **argv) {
     // Cancellation while preparing and repeated destruction must not hang.
     for (int n=0;n<3;++n) {
         s.video.gop=250;
-        stream=datv_udp_start(pixels.data(),160,120,160*4,"PE1ITR",s,error);
+        stream=datv_udp_start(pixels.data(),width,height,width*4,"PE1ITR",s,error);
         if (!stream) return 5;
         datv_udp_stop(stream); datv_udp_destroy(stream);
     }

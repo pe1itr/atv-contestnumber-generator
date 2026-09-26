@@ -64,7 +64,8 @@ int main(void) {
         assert(!memcmp(&original,&loaded,sizeof(original)));
     }
     /* New symbol-rate IDs and reduced-rate cached values survive save/load. */
-    for (int sr=6;sr<9;++sr) {
+    for (int sr=6;sr<DVB_SYMBOL_RATE_COUNT;++sr) {
+        if (!dvb_symbol_rates[sr]) continue;
         AppConfig low=config_defaults();
         low.ts_dvb.symbol_rate=low.udp_dvb.symbol_rate=sr;
         low.ts_dvb.fec=low.udp_dvb.fec=1;

@@ -9,7 +9,7 @@ eindresultaat naar beneden af op hele bit/s.
 
 ## Ondersteund profiel
 
-- DVB-S: QPSK, SR 25/30/31/32/33/35/66/125/150/333/500 ksym/s; FEC 1/2, 2/3, 3/4, 5/6, 7/8.
+- DVB-S: QPSK, SR 25/30/33/35/66/125/150/250/333/500 ksym/s; FEC 1/2, 2/3, 3/4, 5/6, 7/8.
 - DVB-S2: dezelfde SR-keuzes; FEC 1/4, 1/3, 1/2, 3/5, 2/3, 3/4, 5/6, 8/9, 9/10.
   Normale 64800-bit FECFRAME, pilots aan/uit,
   CCM en een volledig gevulde DATAFIELD, zonder ISSY of null-packet deletion.

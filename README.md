@@ -110,12 +110,14 @@ De PM5544-bronbeelden staan in `assets/pm5544.jpg` en `assets/pm5544w.jpg`. Het 
 
 ## DATV-proefbestand (Genius level 2)
 
-Kies **Config → Genius level 2**, stel het beeld in op maximaal **640 × 480** en
+Kies **Config → Genius level 2**, kies een beeldresolutie tot **1920 × 1080 (16:9)** of **1920 × 1440 (4:3)** en
 kies **File → Exporteer TS-proefbestand...**. Kies DVB-S, DVB-S2 of DVB-T en de
 zendparameters; de totale TS-bitrate in **bit/s** wordt berekend. Stel daarnaast
 beeldduur, beelden/s en GOP-lengte in (1 = alleen IDR-beelden).
 De export bevat H.264-video zonder audio; servicenaam en provider volgen de
 roepnaam, service-ID is 1. Het nummer verandert niet bij export.
+De encoder controleert of het beeld binnen de bitrate past. Verlaag zo nodig de
+resolutie of beeldfrequentie, of kies een langere GOP.
 
 De encoder OpenH264 en de eigen TS-muxer zijn ingebouwd, zonder FFmpeg of losse
 codec-DLL. Via **Info → OpenH264-licentie** is de bibliotheeklicentie beschikbaar.
@@ -140,8 +142,8 @@ tussen 160 en 320 pixels breed.
 
 TS-export en UDP hebben dezelfde bitrateberekening met **QPSK**:
 
-- **DVB-S/S2:** symbol rates **35, 66, 125, 150, 333 en 500 ksym/s**.
-- **FEC:** **1/2, 2/3 en 3/4**.
+- **DVB-S/S2:** symbol rates **25, 30, 33, 35, 66, 125, 150, 250, 333 en 500 ksym/s**.
+- **FEC:** de beschikbare keuzes hangen af van het systeem en de minimale TS-bitrate; zie [het ondersteunde profiel](docs/dvb-bitrate.md#ondersteund-profiel).
 - **DVB-S2:** normale frames, **pilots aan/uit**.
 - **DVB-T:** **2K**, **SR/BW (Portsdown) 150k, 250k, 333k en 500k**,
   met **GI 1/8, 1/16 of 1/32**. De Portsdown-SR/BW-waarde betekent hier

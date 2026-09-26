@@ -3,7 +3,7 @@ static DvbSettings dvb_window_read(HWND window) {
     DvbSettings s=dvb_defaults();
     s.system=(int)SendDlgItemMessageW(window,IDC_DVB_SYSTEM,CB_GETCURSEL,0,0);
     int sr_row=(int)SendDlgItemMessageW(window,IDC_DVB_SR,CB_GETCURSEL,0,0);
-    s.symbol_rate=sr_row>=0 && sr_row<DVB_SYMBOL_RATE_COUNT?dvb_symbol_rate_order[sr_row]:-1;
+    s.symbol_rate=sr_row>=0 && sr_row<DVB_SYMBOL_RATE_CHOICE_COUNT?dvb_symbol_rate_order[sr_row]:-1;
     int fec_row=(int)SendDlgItemMessageW(window,IDC_DVB_FEC,CB_GETCURSEL,0,0);
     s.fec=(int)SendDlgItemMessageW(window,IDC_DVB_FEC,CB_GETITEMDATA,fec_row,0);
     s.guard=(int)SendDlgItemMessageW(window,IDC_DVB_GUARD,CB_GETCURSEL,0,0);
@@ -50,7 +50,7 @@ static void dvb_window_init(HWND window,int bitrate,DvbSettings s) {
         SendDlgItemMessageW(window,ids[n],CB_ADDSTRING,0,(LPARAM)names[n][i]);
     for (int i=0;i<DVB_FEC_COUNT;++i)
         SendDlgItemMessageW(window,IDC_DVB_FEC,CB_SETITEMDATA,i,i);
-    for (int i=0;i<DVB_SYMBOL_RATE_COUNT;++i) {
+    for (int i=0;i<DVB_SYMBOL_RATE_CHOICE_COUNT;++i) {
         wchar_t text[24]; swprintf(text,24,L"%d ksym/s",dvb_symbol_rates[dvb_symbol_rate_order[i]]);
         SendDlgItemMessageW(window,IDC_DVB_SR,CB_ADDSTRING,0,(LPARAM)text);
     }

@@ -4,7 +4,7 @@
 
 int main(void) {
     int previous=0;
-    for (int row=0;row<DVB_SYMBOL_RATE_COUNT;++row) {
+    for (int row=0;row<DVB_SYMBOL_RATE_CHOICE_COUNT;++row) {
         int id=dvb_symbol_rate_order[row], rate=dvb_symbol_rates[id];
         assert(rate>previous && rate!=31 && rate!=32);
         assert(dvb_symbol_rate_row(id)==row);
@@ -18,6 +18,11 @@ int main(void) {
     s.pilots=1; assert(dvb_bitrate(s)==120665);
     s.fec=1; assert(dvb_bitrate(s)==161348);
     s.fec=2; assert(dvb_bitrate(s)==181509);
+    s=dvb_defaults(); s.symbol_rate=11;
+    assert(dvb_symbol_rates[11]==250 && dvb_symbol_rate_row(11)==7);
+    assert(dvb_bitrate(s)==230392);
+    s.system=DVB_S2; assert(dvb_bitrate(s)==247214);
+    s.pilots=1; assert(dvb_bitrate(s)==241331);
     s=dvb_defaults(); s.symbol_rate=0;
     const int low_s[]={32254,43006,48382};
     const int low_s2[]={34610,46278,52061};
@@ -42,10 +47,11 @@ int main(void) {
     /* Combinations below the PCR transport floor must be rejected;
      * inactive controls must never alter its calculated capacity. */
     for (int system=0;system<DVB_SYSTEM_COUNT;++system)
-    for (int sr=0;sr<DVB_SYMBOL_RATE_COUNT;++sr)
+    for (int row=0;row<DVB_SYMBOL_RATE_CHOICE_COUNT;++row)
     for (int bw=0;bw<DVB_BANDWIDTH_COUNT;++bw)
     for (int fec=0;fec<DVB_FEC_COUNT;++fec)
     for (int guard=0;guard<DVB_GUARD_COUNT;++guard) {
+        int sr=dvb_symbol_rate_order[row];
         s=(DvbSettings){system,sr,fec,0,guard,dvb_bandwidths[bw]};
         int rate=dvb_bitrate(s);
         DatvSettings video={.bitrate=rate,.seconds=1,.fps=1,.gop=1}; assert((datv_validate(video,160,120)!=NULL)==(rate<30080));
@@ -55,15 +61,15 @@ int main(void) {
         video.bitrate=dvb_bitrate(s);
         assert((datv_validate(video,160,120)!=NULL)==(video.bitrate<30080));
         s.pilots=0;
-        if (system==DVB_T) { s.symbol_rate=(sr+1)%DVB_SYMBOL_RATE_COUNT; assert(dvb_bitrate(s)==rate); }
+        if (system==DVB_T) { s.symbol_rate=dvb_symbol_rate_order[(row+1)%DVB_SYMBOL_RATE_CHOICE_COUNT]; assert(dvb_bitrate(s)==rate); }
         else { s.bandwidth_khz=dvb_bandwidths[(bw+1)%DVB_BANDWIDTH_COUNT]; s.guard=(guard+1)%DVB_GUARD_COUNT; assert(dvb_bitrate(s)==rate); }
     }
     /* Portsdown-specific FEC availability and pilot-sensitive boundaries. */
     const int order[]={5,6,0,7,1,2,3,4,8,9};
     for (int system=0;system<DVB_SYSTEM_COUNT;++system)
-    for (int sr=0;sr<DVB_SYMBOL_RATE_COUNT;++sr)
+    for (int row=0;row<DVB_SYMBOL_RATE_CHOICE_COUNT;++row)
     for (int pilots=0;pilots<2;++pilots) {
-        s=dvb_defaults(); s.system=system; s.symbol_rate=sr; s.pilots=pilots;
+        s=dvb_defaults(); s.system=system; s.symbol_rate=dvb_symbol_rate_order[row]; s.pilots=pilots;
         int ids[DVB_FEC_COUNT], count=dvb_fec_choices(s,ids), found=0;
         assert(count>0);
         for (int i=0;i<DVB_FEC_COUNT;++i) {

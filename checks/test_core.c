@@ -40,6 +40,12 @@ int main(void) {
     udp.port=10000; udp.video.fps=26; assert(datv_udp_validate(udp,160,120));
     DatvSettings settings=datv_defaults();
     assert(!datv_validate(settings,320,240));
+    for (int i=0;i<RESOLUTION_COUNT;++i) {
+        assert(!datv_validate(settings,resolutions43[i].width,resolutions43[i].height));
+        assert(!datv_validate(settings,resolutions169[i].width,resolutions169[i].height));
+    }
+    assert(datv_validate(settings,1922,1080));
+    assert(datv_validate(settings,1920,1442));
     assert(datv_validate(settings,641,480));
     assert(datv_validate(settings,120,67));
     settings.bitrate=30080; assert(!datv_validate(settings,320,240));
