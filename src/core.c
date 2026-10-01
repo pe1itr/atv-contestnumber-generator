@@ -26,7 +26,7 @@ int dvb_symbol_rate_row(int id) {
         if (dvb_symbol_rate_order[row]==id) return row;
     return -1;
 }
-const int dvb_bandwidths[DVB_BANDWIDTH_COUNT]={150,250,333,500};
+const int dvb_bandwidths[DVB_BANDWIDTH_COUNT]={35,150,250,333,500};
 /* Preserve existing FEC IDs 0..2. The added choices match Portsdown menus. */
 const wchar_t *const dvb_fec_names[DVB_FEC_COUNT]={L"1/2",L"2/3",L"3/4",L"5/6",L"7/8",L"1/4",L"1/3",L"3/5",L"8/9",L"9/10"};
 static const int fec_num[DVB_FEC_COUNT]={1,2,3,5,7,1,1,3,8,9};

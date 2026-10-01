@@ -145,7 +145,7 @@ TS-export en UDP hebben dezelfde bitrateberekening met **QPSK**:
 - **DVB-S/S2:** symbol rates **25, 30, 33, 35, 66, 125, 150, 250, 333 en 500 ksym/s**.
 - **FEC:** de beschikbare keuzes hangen af van het systeem en de minimale TS-bitrate; zie [het ondersteunde profiel](docs/dvb-bitrate.md#ondersteund-profiel).
 - **DVB-S2:** normale frames, **pilots aan/uit**.
-- **DVB-T:** **2K**, **SR/BW (Portsdown) 150k, 250k, 333k en 500k**,
+- **DVB-T:** **2K**, **SR/BW (Portsdown) 35k, 150k, 250k, 333k en 500k**,
   met **GI 1/8, 1/16 of 1/32**. De Portsdown-SR/BW-waarde betekent hier
   bandbreedte in kHz.
 

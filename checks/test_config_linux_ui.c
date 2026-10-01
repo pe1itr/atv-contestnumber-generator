@@ -29,7 +29,7 @@ static gboolean apply_udp(gpointer unused) {
         gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,1)),12345);
         GtkGrid *radio=GTK_GRID(gtk_grid_get_child_at(grid,0,5));
         gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,0)),DVB_T);
-        gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,2)),2);
+        gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,2)),3);
         gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,3)),2);
         gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,5)),1);
         gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,3)),12);
