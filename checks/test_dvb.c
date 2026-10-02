@@ -51,6 +51,15 @@ int main(void) {
         assert(dvb_fec_choices(s,ids)==4 && ids[0]==1);
         s.fec=1; assert(dvb_bitrate(s)==narrow_t[guard]);
     }
+    s.bandwidth_khz=40; s.fec=0;
+    const int forty_t[]={27647,29273,30160};
+    for (int guard=0;guard<DVB_GUARD_COUNT;++guard) {
+        s.guard=guard;
+        assert(dvb_bitrate(s)==forty_t[guard]);
+        int ids[DVB_FEC_COUNT], count=dvb_fec_choices(s,ids);
+        assert(count==(guard==2?5:4));
+        assert(ids[0]==(guard==2?0:1));
+    }
     s.bandwidth_khz=500; s.fec=2; s.guard=2;
     assert(dvb_bitrate(s)==565508);
     /* Combinations below the PCR transport floor must be rejected;

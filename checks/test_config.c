@@ -74,6 +74,17 @@ int main(void) {
         assert(config_save(TEST_PATH,&low)); assert(config_load(TEST_PATH,&loaded)==1);
         assert(!memcmp(&low,&loaded,sizeof(low)));
     }
+    /* DVB-T bandwidth is stored in kHz, not as a menu row. */
+    for (int bw=0;bw<DVB_BANDWIDTH_COUNT;++bw) {
+        AppConfig low=config_defaults();
+        low.ts_dvb.system=low.udp_dvb.system=DVB_T;
+        low.ts_dvb.bandwidth_khz=low.udp_dvb.bandwidth_khz=dvb_bandwidths[bw];
+        low.ts_dvb.fec=low.udp_dvb.fec=bw==0?1:0;
+        low.ts.bitrate=dvb_bitrate(low.ts_dvb);
+        low.udp.video.bitrate=dvb_bitrate(low.udp_dvb);
+        assert(config_save(TEST_PATH,&low)); assert(config_load(TEST_PATH,&loaded)==1);
+        assert(!memcmp(&low,&loaded,sizeof(low)));
+    }
     for (int fec=3;fec<DVB_FEC_COUNT;++fec) {
         AppConfig expanded=config_defaults();
         expanded.ts_dvb.system=expanded.udp_dvb.system=fec==4?DVB_S:DVB_S2;

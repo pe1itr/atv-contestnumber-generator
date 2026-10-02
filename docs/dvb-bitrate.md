@@ -15,12 +15,17 @@ eindresultaat naar beneden af op hele bit/s.
   CCM en een volledig gevulde DATAFIELD, zonder ISSY of null-packet deletion.
   Short frames en 8PSK zijn niet geïmplementeerd.
 - DVB-T: QPSK, 2K, niet-hiërarchisch, FEC 1/2, 2/3, 3/4, 5/6, 7/8 (zoals DVB-S), GI 1/8, 1/16,
-  1/32. Portsdown SR/BW 35k/150k/250k/333k/500k staat voor respectievelijk
-  35/150/250/333/500 kHz kanaalbandbreedte, niet voor OFDM-symbolen per seconde.
+  1/32. Portsdown SR/BW 35k/40k/150k/250k/333k/500k staat voor respectievelijk
+  35/40/150/250/333/500 kHz kanaalbandbreedte, niet voor OFDM-symbolen per seconde.
   Dit zijn geschaalde amateurbandbreedtes; geen claim dat deze kanalen onder
   de standaard DVB-T-kanaalbreedtes vallen. Bij 35k is FEC 1/2 niet
   beschikbaar: de berekende TS-bitrate ligt onder de programmagrens van
   30080 bit/s. De beschikbare FEC-keuzes beginnen daar bij 2/3.
+  Bij 40k is FEC 1/2 alleen met GI 1/32 beschikbaar: 30160 bit/s.
+  GI 1/8 en 1/16 leveren respectievelijk 27647 en 29273 bit/s en blijven
+  onder de grens. Het PCR-interval bij 30160 bit/s is circa 99,735 ms;
+  de bestaande timinggrens wordt niet verruimd. Ondersteuning van 40k op de
+  aangesloten modulator en ontvanger moet afzonderlijk worden gecontroleerd.
 
 ## Formules
 
@@ -78,6 +83,7 @@ vermeld in beide vensters.
 | S, 125k, FEC 1/2 | 115196 |
 | S2, 125k, FEC 1/2, zonder pilots | 123607 |
 | S2, 125k, FEC 1/2, met pilots | 120665 |
+| T, 40k, FEC 1/2, GI 1/32 | 30160 |
 | T, 35k, FEC 2/3, GI 1/8 | 32254 |
 | T, 35k, FEC 2/3, GI 1/16 | 34152 |
 | T, 35k, FEC 2/3, GI 1/32 | 35187 |

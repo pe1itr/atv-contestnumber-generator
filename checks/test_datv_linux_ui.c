@@ -51,7 +51,7 @@ static void check_dvb(GtkGrid *grid,int row) {
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(pilots),FALSE);
     assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(field))==123607);
     gtk_combo_box_set_active(GTK_COMBO_BOX(system),DVB_T);
-    gtk_combo_box_set_active(GTK_COMBO_BOX(bw),1);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(bw),2);
     gtk_combo_box_set_active(GTK_COMBO_BOX(guard),0);
     assert(!gtk_widget_get_sensitive(sr) && !gtk_widget_get_sensitive(pilots));
     assert(gtk_widget_get_sensitive(bw) && gtk_widget_get_sensitive(guard));
@@ -62,6 +62,15 @@ static void check_dvb(GtkGrid *grid,int row) {
     assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(field))==32254);
     assert(gtk_tree_model_iter_n_children(gtk_combo_box_get_model(GTK_COMBO_BOX(fec)),NULL)==4);
     gtk_combo_box_set_active(GTK_COMBO_BOX(bw),1);
+    bw_text=gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(bw));
+    assert(!strcmp(bw_text,"40k")); g_free(bw_text);
+    for (int gi=0;gi<DVB_GUARD_COUNT;++gi) {
+        gtk_combo_box_set_active(GTK_COMBO_BOX(guard),gi);
+        assert(gtk_tree_model_iter_n_children(gtk_combo_box_get_model(GTK_COMBO_BOX(fec)),NULL)==(gi==2?5:4));
+    }
+    gtk_combo_box_set_active(GTK_COMBO_BOX(fec),0);
+    assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(field))==30160);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(bw),2);
     gtk_combo_box_set_active(GTK_COMBO_BOX(fec),0);
     gtk_combo_box_set_active(GTK_COMBO_BOX(system),row==0?DVB_S2:DVB_S);
 }

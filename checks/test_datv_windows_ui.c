@@ -46,7 +46,7 @@ static void check_dvb(HWND window,int field) {
     SendMessageW(window,WM_COMMAND,MAKEWPARAM(IDC_DVB_PILOTS,BN_CLICKED),0);
     assert(GetDlgItemInt(window,field,NULL,FALSE)==123607);
     select_dvb(window,IDC_DVB_SYSTEM,DVB_T);
-    select_dvb(window,IDC_DVB_BW,1); select_dvb(window,IDC_DVB_GUARD,0);
+    select_dvb(window,IDC_DVB_BW,2); select_dvb(window,IDC_DVB_GUARD,0);
     assert(!IsWindowEnabled(GetDlgItem(window,IDC_DVB_SR)) && !IsWindowEnabled(GetDlgItem(window,IDC_DVB_PILOTS)));
     assert(IsWindowEnabled(GetDlgItem(window,IDC_DVB_BW)) && IsWindowEnabled(GetDlgItem(window,IDC_DVB_GUARD)));
     assert(GetDlgItemInt(window,field,NULL,FALSE)==103676);
@@ -55,7 +55,17 @@ static void check_dvb(HWND window,int field) {
     assert(!wcscmp(bw_text,L"35k"));
     assert(GetDlgItemInt(window,field,NULL,FALSE)==32254);
     assert(SendDlgItemMessageW(window,IDC_DVB_FEC,CB_GETCOUNT,0,0)==4);
-    select_dvb(window,IDC_DVB_BW,1); select_dvb(window,IDC_DVB_FEC,0);
+    select_dvb(window,IDC_DVB_BW,1);
+    GetDlgItemTextW(window,IDC_DVB_BW,bw_text,24);
+    assert(!wcscmp(bw_text,L"40k"));
+    for (int gi=0;gi<DVB_GUARD_COUNT;++gi) {
+        select_dvb(window,IDC_DVB_GUARD,gi);
+        assert(SendDlgItemMessageW(window,IDC_DVB_FEC,CB_GETCOUNT,0,0)==(gi==2?5:4));
+    }
+    select_dvb(window,IDC_DVB_FEC,0);
+    assert(dvb_window_read(window).fec==0);
+    assert(GetDlgItemInt(window,field,NULL,FALSE)==30160);
+    select_dvb(window,IDC_DVB_BW,2); select_dvb(window,IDC_DVB_FEC,0);
     select_dvb(window,IDC_DVB_SYSTEM,field==IDC_TS_BITRATE?DVB_S2:DVB_S);
 }
 static void receive_udp(void) {

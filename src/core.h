@@ -16,7 +16,7 @@ int valid_fubk_locator(const wchar_t *s);
 enum { DVB_S, DVB_S2, DVB_T, DVB_SYSTEM_COUNT };
 #define DVB_SYMBOL_RATE_COUNT 12 /* Persistent IDs, including retired slots. */
 #define DVB_SYMBOL_RATE_CHOICE_COUNT 10
-#define DVB_BANDWIDTH_COUNT 5
+#define DVB_BANDWIDTH_COUNT 6
 #define DVB_FEC_COUNT 10
 #define DVB_GUARD_COUNT 3
 typedef struct {

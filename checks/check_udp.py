@@ -215,7 +215,7 @@ if __name__=="__main__":
         subprocess.run(["wine", "build/test-udp-errors.exe"], check=True, timeout=30,
                        env=dict(os.environ, WINEPREFIX="/tmp/atv-contest-wine", WINEDEBUG="-all"))
     reference_hashes = capture(windows,13,120000,10,2)
-    for bitrate in (30080,30718,36862,30411,30654,30890,34800,31586):
+    for bitrate in (30160,30080,30718,36862,30411,30654,30890,34800,31586):
         capture(windows,6,bitrate,1,1)
     capture(windows,5,60000,2,1)
     capture(windows,5,240000,10,1)

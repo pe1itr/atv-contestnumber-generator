@@ -15,7 +15,7 @@ static BOOL CALLBACK apply_udp(HWND window,LPARAM unused) {
     SetDlgItemTextW(window,IDC_UDP_IP,L"192.168.1.50");
     SetDlgItemInt(window,IDC_UDP_PORT,12345,FALSE);
     SendDlgItemMessageW(window,IDC_DVB_SYSTEM,CB_SETCURSEL,DVB_T,0);
-    SendDlgItemMessageW(window,IDC_DVB_BW,CB_SETCURSEL,3,0);
+    SendDlgItemMessageW(window,IDC_DVB_BW,CB_SETCURSEL,4,0);
     SendDlgItemMessageW(window,IDC_DVB_FEC,CB_SETCURSEL,2,0);
     SendDlgItemMessageW(window,IDC_DVB_GUARD,CB_SETCURSEL,1,0);
     SendMessageW(window,WM_COMMAND,MAKEWPARAM(IDC_DVB_SYSTEM,CBN_SELCHANGE),0);
