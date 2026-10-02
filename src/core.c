@@ -7,27 +7,27 @@
 
 void datv_timeline_text(const DatvTimeline *t, DatvSettings s, char *out, size_t size) {
     char first[180], result[220], contest[220], idr[220];
-    if (t->idr_count) snprintf(idr,sizeof(idr),"Zelfstandig beeld (IDR): %.1f - %.1f ms inclusief TS-overhead (%d beelden gemeten).",
+    if (t->idr_count) snprintf(idr,sizeof(idr),"Self-contained image (IDR): %.1f - %.1f ms including TS overhead (%d images measured).",
         t->idr_min_ms,t->idr_max_ms,t->idr_count);
-    else snprintf(idr,sizeof(idr),"Zelfstandig beeld (IDR): overdracht niet voltooid.");
-    snprintf(contest,sizeof(contest),"Contestrichtpunt < 1000 ms: %s. Keuze van de operator.",
-        !t->idr_count?"geen volledige meting":t->idr_max_ms<1000?"gemeten IDR-beelden eronder":"gemeten IDR op/boven de marker");
+    else snprintf(idr,sizeof(idr),"Self-contained image (IDR): transfer incomplete.");
+    snprintf(contest,sizeof(contest),"Contest target < 1000 ms: %s. Operator's choice.",
+        !t->idr_count?"no complete measurement":t->idr_max_ms<1000?"measured IDRs below target":"measured IDR at/above target");
     if (t->first_image_ms>0)
-        snprintf(first,sizeof(first),"Eerste volledige beeld: %.1f ms vanaf TS-start.",t->first_image_ms);
-    else snprintf(first,sizeof(first),"Eerste volledige beeld: niet voltooid voordat de planning stopte.");
-    if (t->fits) snprintf(result,sizeof(result),"Past in de doorlopende planning; QP %d. Eerste presentatietijd: %d ms.",t->qp,datv_buffer_ms(s));
-    else snprintf(result,sizeof(result),"Past niet: planning stopt bij beeld %llu, na %.1f ms; diagnose bij QP %d.",
+        snprintf(first,sizeof(first),"First complete image: %.1f ms from TS start.",t->first_image_ms);
+    else snprintf(first,sizeof(first),"First complete image: not completed before scheduling stopped.");
+    if (t->fits) snprintf(result,sizeof(result),"Fits the continuous stream schedule; QP %d. First presentation time: %d ms.",t->qp,datv_buffer_ms(s));
+    else snprintf(result,sizeof(result),"Does not fit: scheduling stops at frame %llu, after %.1f ms; diagnostic QP %d.",
         (unsigned long long)t->failed_frame+1,t->end_ms,t->qp);
-    snprintf(out,size,"%s\n%s\n%s\n%s\nFrameperiode: %.1f ms; IDR-interval: %.1f ms (GOP %d). Wachten op IDR komt er apart bij.\nEerste IDR: %d bytes H.264; minimaal %.1f ms zonder TS-overhead.\nTS-tijd; netwerk- en decodervertraging niet inbegrepen.",
+    snprintf(out,size,"%s\n%s\n%s\n%s\nFrame period: %.1f ms; IDR interval: %.1f ms (GOP %d). Waiting for an IDR is additional.\nFirst IDR: %d bytes H.264; at least %.1f ms without TS overhead.\nTS time; network and decoder latency excluded.",
         idr,contest,first,result,1000.0/s.fps,1000.0*s.gop/s.fps,s.gop,t->idr_bytes,8000.0*t->idr_bytes/s.bitrate);
 }
 
 void datv_timeline_plot(const DatvTimeline *t, DatvSettings s, int width, int height,
                         DatvPlotRect rect, DatvPlotText text, void *ctx) {
     const unsigned colors[]={0x2676c8,0x32a476,0xda9b32,0xc4cad1};
-    const char *labels[]={"IDR: volledig beeld","P: vervolgbeeld","TS-overhead*","Null: vrije ruimte"};
+    const char *labels[]={"IDR: complete image","P: predicted frame","TS-overhead*","Null: unused capacity"};
     rect(ctx,0,0,width,height,0xffffff);
-    if (!t->ready || width<200 || height<130) { text(ctx,8,8,"Transportplanning berekenen..."); return; }
+    if (!t->ready || width<200 || height<130) { text(ctx,8,8,"Calculating transport schedule..."); return; }
     int left=8, plot=width-16;
     for (int k=0;k<4;++k) {
         int x=left+k*plot/4;
@@ -36,7 +36,7 @@ void datv_timeline_plot(const DatvTimeline *t, DatvSettings s, int width, int he
     for (int view=0;view<2;++view) {
         int y=24+view*65;
         char label[180];
-        snprintf(label,sizeof(label),"%s: 0 - %.1f ms",view?"Een GOP + buffer":"Eerste seconde",t->span_ms[view]);
+        snprintf(label,sizeof(label),"%s: 0 - %.1f ms",view?"One GOP + buffer":"First second",t->span_ms[view]);
         text(ctx,left,y,label);
         rect(ctx,left,y+19,plot,24,0xeceff2);
         for (int i=0;i<DATV_TIMELINE_BINS;++i) {
@@ -75,8 +75,8 @@ void datv_timeline_plot(const DatvTimeline *t, DatvSettings s, int width, int he
             rect(ctx,x,y+18,2,26,0xc02020);
         }
     }
-    text(ctx,left,155,"Paars: contest 1000 ms; zwart: beeld compleet; rood: planning stopt. Streepjes: frameperioden.");
-    text(ctx,left,173,"* Overige TS-pakketten incl. SI/teletekst. Videobalken bevatten ook pakketheaders; kleuren tonen tijdsaandeel.");
+    text(ctx,left,155,"Purple: contest 1000 ms; black: image complete; red: scheduling stops. Ticks: frame periods.");
+    text(ctx,left,173,"* Other TS packets include SI/teletext. Video bars include packet headers; colours show time allocation.");
 }
 
 const wchar_t *const image_modes[IMAGE_MODE_COUNT] = {L"Contest", L"PM5544", L"FUBK", L"PM5644"};
@@ -154,33 +154,33 @@ DatvUdpSettings datv_udp_defaults(void) {
 }
 void datv_udp_status_text(DatvUdpSettings s, DatvUdpStatus status, char *text, size_t size) {
     if (status.state==DATV_FAILED) snprintf(text,size,"%s",status.error);
-    else if (status.state==DATV_PREPARING) snprintf(text,size,"Beeld voorbereiden en bitrate controleren...");
-    else if (status.state==DATV_STOPPED) snprintf(text,size,"UDP gestopt (%llu pakketten).",(unsigned long long)status.packets);
-    else snprintf(text,size,"UDP-uitvoer actief naar %s:%d\n%d bit/s, %llu pakketten van 1316 bytes, QP %d.",
+    else if (status.state==DATV_PREPARING) snprintf(text,size,"Preparing image and checking bitrate...");
+    else if (status.state==DATV_STOPPED) snprintf(text,size,"UDP stopped (%llu packets).",(unsigned long long)status.packets);
+    else snprintf(text,size,"UDP output active to %s:%d\n%d bit/s, %llu packets of 1316 bytes, QP %d.",
         s.ip,s.port,s.video.bitrate,(unsigned long long)status.packets,status.qp);
     if (size && status.state==DATV_RUNNING && status.refusals &&
         status.seconds-status.last_refusal_seconds<3.0) {
         size_t used=strlen(text);
         if (used<size) snprintf(text+used,size-used,
-            "\nOntvanger meldde zojuist een gesloten UDP-poort.\nVerzending gaat door; controleer of IPTS actief is.");
+            "\nThe receiver just reported a closed UDP port.\nTransmission continues; check that IPTS is active.");
     }
 }
 const char *datv_udp_validate(DatvUdpSettings s, int width, int height) {
-    if (s.port<1 || s.port>65535) return "Poort moet tussen 1 en 65535 liggen.";
+    if (s.port<1 || s.port>65535) return "Port must be between 1 and 65535.";
     /* Numeric unicast IPv4 only; no DNS lookup, ambiguous octal or broadcast. */
     int octets[4]={0}; size_t pos=0;
     for (int part=0; part<4; ++part) {
         size_t start=pos;
         while (pos<sizeof(s.ip) && s.ip[pos]>='0' && s.ip[pos]<='9') {
-            if (pos-start>=3) return "Vul een geldig unicast IPv4-adres in.";
+            if (pos-start>=3) return "Enter a valid unicast IPv4 address.";
             octets[part]=octets[part]*10+s.ip[pos++]-'0';
         }
         if (pos==start || octets[part]>255 || (pos-start>1 && s.ip[start]=='0') ||
             pos>=sizeof(s.ip) || s.ip[pos]!=(part==3?'\0':'.'))
-            return "Vul een geldig unicast IPv4-adres in.";
+            return "Enter a valid unicast IPv4 address.";
         ++pos;
     }
-    if (octets[0]==0 || octets[0]>=224) return "Gebruik een unicast IPv4-adres (geen multicast of broadcast).";
+    if (octets[0]==0 || octets[0]>=224) return "Use a unicast IPv4 address (not multicast or broadcast).";
     s.video.seconds=10; /* A live stream has no preset duration. */
     return datv_validate(s.video,width,height);
 }
@@ -202,13 +202,13 @@ static int teletext_character(unsigned char c) {
     return c>=32 && c<=126 && !strchr("#@[\\]^_`{|}~",c);
 }
 const char *teletext_validate(const TeletextSettings *s) {
-    if (s->enabled!=0 && s->enabled!=1) return "Ongeldige teletekstkeuze.";
+    if (s->enabled!=0 && s->enabled!=1) return "Invalid teletext option.";
     size_t n=0;
     while (n<sizeof(s->text) && s->text[n]) {
         if (!teletext_character((unsigned char)s->text[n++]))
-            return "Gebruik voor teletekst letters zonder accenten, cijfers en eenvoudige leestekens.";
+            return "Use unaccented letters, digits and basic punctuation for teletext.";
     }
-    if (n!=0 && n!=TELETEXT_CELLS) return "Ongeldige teletekstpagina.";
+    if (n!=0 && n!=TELETEXT_CELLS) return "Invalid teletext page.";
     return NULL;
 }
 const char *teletext_from_text(TeletextSettings *s, const char *text) {
@@ -219,13 +219,13 @@ const char *teletext_from_text(TeletextSettings *s, const char *text) {
         if (*p=='\r' && p[1]=='\n') continue;
         if (*p=='\n') { ++row; col=0; continue; }
         if (row>=TELETEXT_ROWS || col>=TELETEXT_COLUMNS)
-            return "Gebruik maximaal 23 regels van elk 40 tekens; druk op Enter voor een nieuwe regel.";
+            return "Use up to 23 lines of 40 characters each; press Enter for a new line.";
         if (!teletext_character(*p))
-            return "Gebruik voor teletekst letters zonder accenten, cijfers en eenvoudige leestekens.";
+            return "Use unaccented letters, digits and basic punctuation for teletext.";
         page.text[row*TELETEXT_COLUMNS+col++]=(char)*p;
     }
     if (row>=TELETEXT_ROWS && !(row==TELETEXT_ROWS && !col))
-        return "Gebruik maximaal 23 regels van elk 40 tekens.";
+        return "Use up to 23 lines of 40 characters each.";
     *s=page; return NULL;
 }
 void teletext_to_text(const TeletextSettings *s, char out[TELETEXT_INPUT_SIZE], int crlf) {
@@ -247,26 +247,26 @@ void teletext_to_text(const TeletextSettings *s, char out[TELETEXT_INPUT_SIZE], 
 }
 const char *datv_validate(DatvSettings s, int width, int height) {
     if (s.bitrate < DATV_MIN_BITRATE || s.bitrate > 2000000)
-        return "TS-bitrate moet tussen 30080 en 2000000 bit/s liggen. Kies een beschikbare combinatie van systeem, symbolrate, FEC en pilots.";
-    if (s.seconds < 1 || s.seconds > 60) return "Duur moet tussen 1 en 60 seconden liggen.";
-    if (s.fps < 1 || s.fps > 25) return "Beeldfrequentie moet tussen 1 en 25 beelden/s liggen.";
-    if (s.buffer_ms && (s.buffer_ms<1000 || s.buffer_ms>10000)) return "Transportbuffer moet tussen 1000 en 10000 ms liggen.";
-    if (s.gop < 1 || s.gop > 250) return "GOP moet tussen 1 en 250 beelden liggen (1 = alleen IDR).";
+        return "TS bitrate must be between 30080 and 2000000 bit/s. Choose an available combination of system, symbol rate, FEC and pilots.";
+    if (s.seconds < 1 || s.seconds > 60) return "Duration must be between 1 and 60 seconds.";
+    if (s.fps < 1 || s.fps > 25) return "Frame rate must be between 1 and 25 frames/s.";
+    if (s.buffer_ms && (s.buffer_ms<1000 || s.buffer_ms>10000)) return "Transport buffer must be between 1000 and 10000 ms.";
+    if (s.gop < 1 || s.gop > 250) return "GOP must be between 1 and 250 frames (1 = IDR only).";
     if (width < 16 || height < 16 || width > 1920 || height > 1440 || width % 2 || height % 2)
-        return "Kies voor TS een even resolutie van minimaal 16 x 16 en maximaal 1920 x 1440.";
+        return "For TS, use even dimensions between 16 x 16 and 1920 x 1440.";
     const char *tt_error=teletext_validate(&s.teletext);
     if (tt_error) return tt_error;
     if (s.teletext.enabled && s.bitrate<60000)
-        return "Gebruik voor teletekst een TS-bitrate van minimaal 60000 bit/s.";
-    if (s.eit_enabled!=0 && s.eit_enabled!=1) return "Ongeldige EIT-keuze.";
+        return "Teletext requires a TS bitrate of at least 60000 bit/s.";
+    if (s.eit_enabled!=0 && s.eit_enabled!=1) return "Invalid EIT option.";
     if (s.eit_enabled) {
         const char *error=station_validate(&s.station);
         if (error) return error;
         wchar_t locator[13]={0}; size_t n=0;
         while (n<sizeof(s.locator) && s.locator[n]) ++n;
-        if (n>12) return "Ongeldige EIT-locator.";
+        if (n>12) return "Invalid EIT locator.";
         for (size_t i=0;i<n;++i) locator[i]=(unsigned char)s.locator[i];
-        if (n && !valid_locator(locator)) return "Ongeldige EIT-locator.";
+        if (n && !valid_locator(locator)) return "Invalid EIT locator.";
     }
     return NULL;
 }
@@ -341,7 +341,7 @@ void filename_call(wchar_t *out, const wchar_t *in) {
     do { *out++ = *in == L'/' ? L'_' : *in; } while (*in++);
 }
 
-const wchar_t contest_color_advice[] = L"DATV-contest: wit op zwart aanbevolen.";
+const wchar_t contest_color_advice[] = L"DATV contest: white on black recommended.";
 
 ContestPalette contest_palette(int blue_yellow, int inverse) {
     ContestPalette palette = blue_yellow
@@ -460,16 +460,16 @@ const char *station_validate(const StationInfo *station) {
     const size_t limits[]={EIT_CITY_LENGTH,EIT_DESCRIPTION_LENGTH,EIT_OPERATOR_LENGTH};
     for (int i=0;i<3;++i) {
         if (!config_text_valid(fields[i],capacities[i]))
-            return "Gebruik geldige tekst op een regel voor de EIT-stationinformatie.";
+            return "Enter valid single-line text for EIT station information.";
         size_t count=0;
         const unsigned char *p=(const unsigned char *)fields[i];
         while (*p) {
             unsigned c=*p++;
             if (c>=0xf0 || (c==0xc2 && *p>=0x80 && *p<=0x9f))
-                return "EIT ondersteunt deze tekens niet. Gebruik tekst zonder emoji of besturingstekens.";
+                return "EIT does not support these characters. Use text without emoji or control characters.";
             if ((c&0xc0)!=0x80) ++count;
         }
-        if (count>limits[i]) return "Gebruik maximaal 40 tekens voor stad/operatornaam en 240 voor stationsomschrijving.";
+        if (count>limits[i]) return "Use up to 40 characters for city/operator name and 240 for station description.";
     }
     return NULL;
 }
@@ -605,7 +605,7 @@ int config_save(const char *path, const AppConfig *s) {
     snprintf(temporary,n,"%s.tmp",path);
     FILE *f=config_open(temporary,1);
     if (!f) { free(temporary); return 0; }
-    int ok=fprintf(f,"# ATV contestnummer generator\nversion=5\n")>=0;
+    int ok=fprintf(f,"# ATV contest number generator\nversion=5\n")>=0;
     for (size_t i=0;i<CONFIG_FIELDS && ok;++i) {
         const ConfigField *field=&config_fields[i]; const char *value=(const char *)s+field->offset;
         ok=(field->size?fprintf(f,"%s=%s\n",field->key,value):

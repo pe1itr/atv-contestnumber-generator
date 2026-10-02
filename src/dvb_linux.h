@@ -45,7 +45,7 @@ static void dvb_controls_init(DvbControls *d,GtkWidget *bitrate,DvbSettings s) {
     gtk_grid_set_column_spacing(GTK_GRID(d->box),12);
     d->system=gtk_combo_box_text_new(); d->sr=gtk_combo_box_text_new();
     d->bw=gtk_combo_box_text_new(); d->fec=gtk_combo_box_text_new();
-    d->guard=gtk_combo_box_text_new(); d->pilots=gtk_check_button_new_with_label("Aan");
+    d->guard=gtk_combo_box_text_new(); d->pilots=gtk_check_button_new_with_label("On");
     const wchar_t *const *names[]={dvb_system_names,dvb_fec_names,dvb_guard_names};
     GtkWidget *combos[]={d->system,d->fec,d->guard};
     const int counts[]={DVB_SYSTEM_COUNT,DVB_FEC_COUNT,DVB_GUARD_COUNT};
@@ -70,14 +70,14 @@ static void dvb_controls_init(DvbControls *d,GtkWidget *bitrate,DvbSettings s) {
     gtk_combo_box_set_active(GTK_COMBO_BOX(d->guard),s.guard);
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(d->pilots),s.pilots);
     GtkWidget *fields[]={d->system,d->sr,d->bw,d->fec,d->pilots,d->guard};
-    const char *labels[]={"Systeem (QPSK)","Symbol rate (DVB-S/S2)","SR/BW (Portsdown, DVB-T)","FEC","Pilots (DVB-S2)","Guard interval (DVB-T, 2K)"};
+    const char *labels[]={"System (QPSK)","Symbol rate (DVB-S/S2)","SR/BW (Portsdown, DVB-T)","FEC","Pilots (DVB-S2)","Guard interval (DVB-T, 2K)"};
     for (int i=0;i<6;++i) {
         GtkWidget *label=gtk_label_new(labels[i]); gtk_label_set_xalign(GTK_LABEL(label),0);
         gtk_grid_attach(GTK_GRID(d->box),label,0,i,1,1);
         gtk_grid_attach(GTK_GRID(d->box),fields[i],1,i,1,1);
         g_signal_connect(fields[i],i==4?"toggled":"changed",G_CALLBACK(dvb_controls_changed),d);
     }
-    gtk_grid_attach(GTK_GRID(d->box),gtk_label_new("DVB-S2: normale frames. DVB-T: SR/BW is bandbreedte in kHz."),0,6,2,1);
+    gtk_grid_attach(GTK_GRID(d->box),gtk_label_new("DVB-S2: normal frames. DVB-T: SR/BW is bandwidth in kHz."),0,6,2,1);
     gtk_spin_button_set_range(GTK_SPIN_BUTTON(bitrate),0,2000000);
     gtk_editable_set_editable(GTK_EDITABLE(bitrate),FALSE);
     gtk_widget_set_sensitive(bitrate,FALSE);

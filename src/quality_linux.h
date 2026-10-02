@@ -77,7 +77,7 @@ static gboolean quality_poll(gpointer data) {
             gtk_widget_queue_draw(d->areas[1]);
         } else {
             cairo_surface_destroy(image);
-            gtk_label_set_text(GTK_LABEL(d->status),"Kan het gecomprimeerde voorbeeld niet weergeven.");
+            gtk_label_set_text(GTK_LABEL(d->status),"Cannot display the compressed preview.");
         }
     }
     return G_SOURCE_CONTINUE;
@@ -88,7 +88,7 @@ static void quality_compare(GtkWindow *parent,cairo_surface_t *original,Resoluti
     char error[256];
     d.job=datv_preview_start((uint32_t *)cairo_image_surface_get_data(original),size.width,size.height,
         cairo_image_surface_get_stride(original),call,settings,error);
-    d.dialog=gtk_dialog_new_with_buttons("DATV: Beeld controleren",parent,GTK_DIALOG_MODAL,"_Sluiten",GTK_RESPONSE_CLOSE,NULL);
+    d.dialog=gtk_dialog_new_with_buttons("DATV: Check image",parent,GTK_DIALOG_MODAL,"_Close",GTK_RESPONSE_CLOSE,NULL);
     gtk_window_set_default_size(GTK_WINDOW(d.dialog),1100,820);
     GtkWidget *box=gtk_dialog_get_content_area(GTK_DIALOG(d.dialog));
     GtkWidget *grid=gtk_grid_new(); gtk_grid_set_column_spacing(GTK_GRID(grid),12);
@@ -96,7 +96,7 @@ static void quality_compare(GtkWindow *parent,cairo_surface_t *original,Resoluti
     gtk_box_pack_start(GTK_BOX(box),grid,TRUE,TRUE,0);
     GtkWidget *scrolls[2];
     for (int i=0;i<2;++i) {
-        gtk_grid_attach(GTK_GRID(grid),gtk_label_new(i?"Na compressie":"Origineel"),i,0,1,1);
+        gtk_grid_attach(GTK_GRID(grid),gtk_label_new(i?"After compression":"Original"),i,0,1,1);
         scrolls[i]=gtk_scrolled_window_new(NULL,NULL);
         gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolls[i]),GTK_POLICY_AUTOMATIC,GTK_POLICY_AUTOMATIC);
         gtk_widget_set_hexpand(scrolls[i],TRUE); gtk_widget_set_vexpand(scrolls[i],TRUE);
@@ -116,18 +116,18 @@ static void quality_compare(GtkWindow *parent,cairo_surface_t *original,Resoluti
         b=gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(scrolls[1-i]));
         g_signal_connect(a,"value-changed",G_CALLBACK(quality_scroll),b);
     }
-    GtkWidget *zoom=gtk_check_button_new_with_label("2× vergroten (beide beelden)");
+    GtkWidget *zoom=gtk_check_button_new_with_label("2× zoom (both images)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(zoom),d.zoom==2);
     g_signal_connect(zoom,"toggled",G_CALLBACK(quality_zoom),&d);
     gtk_grid_attach(GTK_GRID(grid),zoom,0,2,2,1);
-    d.status=gtk_label_new(d.job?"Beeld voorbereiden en decoderen… Er wordt niets uitgezonden.":error);
+    d.status=gtk_label_new(d.job?"Preparing and decoding image… Nothing is transmitted.":error);
     gtk_label_set_line_wrap(GTK_LABEL(d.status),TRUE);
     gtk_grid_attach(GTK_GRID(grid),d.status,0,3,2,1);
     d.timeline_area=gtk_drawing_area_new();
     gtk_widget_set_size_request(d.timeline_area,900,194);
     g_signal_connect(d.timeline_area,"draw",G_CALLBACK(quality_timeline_draw),&d);
     gtk_grid_attach(GTK_GRID(grid),d.timeline_area,0,4,2,1);
-    GtkWidget *note=gtk_label_new("Eerste volledige videobeeld na H.264-compressie. Andere videobeelden kunnen verschillen.\nZonder ontvangstverliezen of beeldbewerking van je ontvanger. Scroll om details te bekijken.");
+    GtkWidget *note=gtk_label_new("First complete video frame after H.264 compression. Other frames may differ.\nExcludes reception loss and receiver processing. Scroll to inspect details.");
     gtk_label_set_line_wrap(GTK_LABEL(note),TRUE); gtk_grid_attach(GTK_GRID(grid),note,0,5,2,1);
     gtk_widget_show_all(d.dialog);
     guint timer=d.job?g_timeout_add(100,quality_poll,&d):0;

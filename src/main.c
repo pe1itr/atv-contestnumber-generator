@@ -69,7 +69,7 @@ static int new_code(HWND window) {
     GetDlgItemTextW(window, IDC_CODE, previous, 5);
     do {
         if (!random_code(code)) {
-            MessageBoxW(window, L"Een nieuw nummer maken is mislukt. Probeer het opnieuw.", L"ATV contestnummer", MB_OK | MB_ICONERROR);
+            MessageBoxW(window, L"Failed to generate a new number. Please try again.", L"ATV contest number", MB_OK | MB_ICONERROR);
             return 0;
         }
     } while (!wcscmp(code, previous));
@@ -159,7 +159,7 @@ static HBITMAP render(int width, int height, const wchar_t *call, const wchar_t 
     int sum = code_digit_sum(code);
     if (show_sum && sum >= 0) {
         wchar_t label[32];
-        swprintf(label, 32, L"Som=%d", sum);
+        swprintf(label, 32, L"Sum=%d", sum);
         ok = ok && draw_line(dc, label, sum_box, small_size, DT_LEFT);
     }
     GdiFlush();
@@ -249,7 +249,7 @@ cleanup:
 #undef CHECK
 }
 static void error(HWND window, const wchar_t *message) {
-    MessageBoxW(window, message, L"ATV contestnummer", MB_OK | MB_ICONERROR);
+    MessageBoxW(window, message, L"ATV contest number", MB_OK | MB_ICONERROR);
 }
 static void ts_error(HWND window, const char *message) {
     wchar_t text[256]; MultiByteToWideChar(CP_UTF8,0,message,-1,text,256); error(window,text);
@@ -273,8 +273,8 @@ static void udp_poll(HWND window,UdpDialog *d) {
     char text[512]; datv_udp_status_text(udp_settings,status,text,sizeof(text));
     udp_status_message(window,text);
     BOOL busy=status.state==DATV_PREPARING || status.state==DATV_RUNNING;
-    const int fields[]={IDC_UDP_IP,IDC_UDP_PORT,IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP,IDC_TRANSPORT_BUFFER,IDC_UDP_START,IDC_UDP_APPLY,IDC_UDP_PREVIEW,IDC_INCLUDE_EIT,IDC_INCLUDE_TELETEXT};
-    for (int i=0;i<11;++i) EnableWindow(GetDlgItem(window,fields[i]),!busy);
+    const int fields[]={IDC_UDP_LOCALHOST,IDC_UDP_IP,IDC_UDP_PORT,IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP,IDC_TRANSPORT_BUFFER,IDC_UDP_START,IDC_UDP_APPLY,IDC_UDP_PREVIEW,IDC_INCLUDE_EIT,IDC_INCLUDE_TELETEXT};
+    for (size_t i=0;i<sizeof(fields)/sizeof(fields[0]);++i) EnableWindow(GetDlgItem(window,fields[i]),!busy);
     dvb_window_enable(window,!busy);
     EnableWindow(GetDlgItem(window,IDC_UDP_STOP),busy);
 }
@@ -297,6 +297,13 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         return TRUE;
     }
     if (message==WM_TIMER) { udp_poll(window,d); return TRUE; }
+    if (message==WM_COMMAND && LOWORD(wp)==IDC_UDP_LOCALHOST) {
+        if (IsWindowEnabled(GetDlgItem(window,IDC_UDP_IP))) {
+            SetDlgItemTextW(window,IDC_UDP_IP,L"127.0.0.1");
+            SetFocus(GetDlgItem(window,IDC_UDP_IP));
+        }
+        return TRUE;
+    }
     if (message==WM_COMMAND && dvb_window_event(window,wp,IDC_UDP_BITRATE)) return TRUE;
     if (message==WM_CLOSE || (message==WM_COMMAND && LOWORD(wp)==IDCANCEL)) {
         KillTimer(window,1); datv_udp_destroy(d->stream); d->stream=NULL;
@@ -311,8 +318,7 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
             if (status.state==DATV_PREPARING || status.state==DATV_RUNNING) return TRUE;
             datv_udp_destroy(d->stream); d->stream=NULL;
         }
-        DatvUdpSettings s=udp_settings; s.video.teletext=teletext_settings;
-        s.video.teletext.enabled=IsDlgButtonChecked(window,IDC_INCLUDE_TELETEXT)==BST_CHECKED;
+        DatvUdpSettings s=udp_settings;
         DvbSettings radio=dvb_window_read(window);
         SetDlgItemInt(window,IDC_UDP_BITRATE,dvb_bitrate(radio),FALSE);
         GetDlgItemTextA(window,IDC_UDP_IP,s.ip,sizeof(s.ip));
@@ -323,27 +329,30 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         int w,h; BOOL valid=FALSE;
         s.port=(int)GetDlgItemInt(window,IDC_UDP_PORT,&valid,FALSE);
         if ((LOWORD(wp)!=IDC_UDP_PREVIEW && !valid) || !datv_test_options(4,values,&s.video,&w,&h)) {
-            udp_status_message(window,"Gebruik poort 1-65535, bitrate 30080-2000000 bit/s, 1-25 beelden/s en GOP 1-250."); return TRUE;
+            udp_status_message(window,"Use port 1-65535, bitrate 30080-2000000 bit/s, 1-25 frames/s and GOP 1-250."); return TRUE;
         }
         s.video.buffer_ms=(int)GetDlgItemInt(window,IDC_TRANSPORT_BUFFER,NULL,FALSE);
-        if (s.video.buffer_ms<1000 || s.video.buffer_ms>10000) { udp_status_message(window,"Transportbuffer moet tussen 1000 en 10000 ms liggen."); return TRUE; }
+        if (s.video.buffer_ms<1000 || s.video.buffer_ms>10000) { udp_status_message(window,"Transport buffer must be between 1000 and 10000 ms."); return TRUE; }
         if (s.video.buffer_ms==1000) s.video.buffer_ms=0;
         s.video.eit_enabled=IsDlgButtonChecked(window,IDC_INCLUDE_EIT)==BST_CHECKED;
+        s.video.teletext=teletext_settings;
+        s.video.teletext.enabled=IsDlgButtonChecked(window,IDC_INCLUDE_TELETEXT)==BST_CHECKED;
         DatvUdpSettings check=s;
         if (LOWORD(wp)==IDC_UDP_APPLY && !check.ip[0]) strcpy(check.ip,"127.0.0.1");
         const char *error=LOWORD(wp)==IDC_UDP_PREVIEW ? datv_validate(s.video,d->size.width,d->size.height) : datv_udp_validate(check,d->size.width,d->size.height);
         if (error) { udp_status_message(window,error); return TRUE; }
         if (LOWORD(wp)==IDC_UDP_PREVIEW) {
-            s.video.teletext=teletext_settings; s.video.station=station_info; strcpy(s.video.locator,d->locator);
+            s.video.station=station_info; strcpy(s.video.locator,d->locator);
             quality_compare(window,d->bitmap,d->size,d->call,s.video); return TRUE;
         }
+        teletext_settings.enabled=s.video.teletext.enabled;
         udp_settings=s; udp_settings.video.teletext=(TeletextSettings){0}; udp_dvb=radio;
         if (LOWORD(wp)==IDC_UDP_APPLY) {
             KillTimer(window,1); EndDialog(window,0); return TRUE;
         }
         DIBSECTION dib={0};
         if (GetObjectW(d->bitmap,sizeof(dib),&dib)!=sizeof(dib) || !dib.dsBm.bmBits) {
-            udp_status_message(window,"Kan het beeld niet lezen."); return TRUE;
+            udp_status_message(window,"Cannot read the image."); return TRUE;
         }
         datv_udp_destroy(d->stream);
         char detail[256];
@@ -361,7 +370,7 @@ static void output_udp(HWND window) {
     read_text(window,IDC_CALL,call,25); read_text(window,IDC_LOCATOR,locator,LOCATOR_MAX_LENGTH+1); read_text(window,IDC_CODE,code,5);
     BOOL pm=pattern_mode(window), show=pm||IsDlgButtonChecked(window,IDC_SHOW_LOCATOR)==BST_CHECKED;
     if (!valid_call(call) || ((show||locator[0])&&!(selected_mode(window)==IMAGE_FUBK?valid_fubk_locator(locator):valid_locator(locator))) || (!pm&&!valid_code(code))) {
-        error(window,L"Vul eerst een geldige roepnaam en locator in (FUBK: minimaal 6 locatortekens). De contestcode moet vier cijfers bevatten, niet alle vier gelijk en geen oplopende of aflopende reeks."); return;
+        error(window,L"Enter a valid callsign and locator first (FUBK: at least 6 locator characters). The contest code must have four digits, not all identical or in ascending or descending sequence."); return;
     }
     UdpDialog d={0}; d.size=resolution(window);
     const char *invalid=datv_validate(udp_settings.video,d.size.width,d.size.height);
@@ -375,10 +384,10 @@ static void output_udp(HWND window) {
         IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_BLUE_YELLOW)==BST_CHECKED,
         IsDlgButtonChecked(window, IDC_EBU_TOP) == BST_CHECKED,
         IsDlgButtonChecked(window, IDC_EBU_BOTTOM) == BST_CHECKED);
-    if (!d.bitmap) { error(window,L"Kan het beeld niet maken."); return; }
+    if (!d.bitmap) { error(window,L"Cannot create the image."); return; }
     HINSTANCE instance=(HINSTANCE)GetWindowLongPtrW(window,GWLP_HINSTANCE);
     if (DialogBoxParamW(instance,MAKEINTRESOURCEW(IDD_UDP),window,udp_dialog,(LPARAM)&d)==-1)
-        error(window,L"Kan het UDP-venster niet openen.");
+        error(window,L"Cannot open the UDP window.");
     datv_udp_destroy(d.stream); DeleteObject(d.bitmap);
 }
 typedef struct {
@@ -410,7 +419,7 @@ static DWORD WINAPI ts_worker(LPVOID data) {
     DeleteFileW(temporary);
     if (ok) { job->ok=1; return 0; }
 failure:
-    if (!job->error[0]) strcpy(job->error,"TS opslaan is mislukt. Controleer pad, vrije ruimte en schrijfrechten.");
+    if (!job->error[0]) strcpy(job->error,"Failed to save TS. Check the path, free space and write permissions.");
     return 1;
 }
 static INT_PTR CALLBACK ts_progress(HWND window, UINT message, WPARAM wp, LPARAM lp) {
@@ -419,7 +428,7 @@ static INT_PTR CALLBACK ts_progress(HWND window, UINT message, WPARAM wp, LPARAM
     if (message==WM_INITDIALOG) {
         job=(TsJob *)lp; SetWindowLongPtrW(window,DWLP_USER,lp);
         job->thread=CreateThread(NULL,0,ts_worker,job,0,NULL);
-        if (!job->thread) { strcpy(job->error,"Kan de TS-exporttaak niet starten."); EndDialog(window,0); }
+        if (!job->thread) { strcpy(job->error,"Cannot start the TS export task."); EndDialog(window,0); }
         else if (!SetTimer(window,1,100,NULL)) {
             WaitForSingleObject(job->thread,INFINITE); CloseHandle(job->thread); EndDialog(window,job->ok);
         }
@@ -452,10 +461,10 @@ static INT_PTR CALLBACK ts_options(HWND window, UINT message, WPARAM wp, LPARAM 
         for (int i=0; i<4; ++i) { GetDlgItemTextA(window,ids[i],text[i],32); values[i]=text[i]; }
         DatvSettings s; int w,h;
         if (!datv_test_options(4,values,&s,&w,&h)) {
-            error(window,L"Gebruik bitrate 30080-2000000 bit/s, duur 1-60 s, 1-25 beelden/s en GOP 1-250."); return TRUE;
+            error(window,L"Use bitrate 30080-2000000 bit/s, duration 1-60 s, 1-25 frames/s and GOP 1-250."); return TRUE;
         }
         s.buffer_ms=(int)GetDlgItemInt(window,IDC_TRANSPORT_BUFFER,NULL,FALSE);
-        if (s.buffer_ms<1000 || s.buffer_ms>10000) { error(window,L"Transportbuffer moet tussen 1000 en 10000 ms liggen."); return TRUE; }
+        if (s.buffer_ms<1000 || s.buffer_ms>10000) { error(window,L"Transport buffer must be between 1000 and 10000 ms."); return TRUE; }
         if (s.buffer_ms==1000) s.buffer_ms=0;
         s.eit_enabled=IsDlgButtonChecked(window,IDC_INCLUDE_EIT)==BST_CHECKED;
         s.teletext=teletext_settings;
@@ -472,7 +481,7 @@ static void export_ts(HWND window) {
     read_text(window,IDC_CALL,call,25); read_text(window,IDC_LOCATOR,locator,LOCATOR_MAX_LENGTH+1); read_text(window,IDC_CODE,code,5);
     BOOL pm=pattern_mode(window), show=pm||IsDlgButtonChecked(window,IDC_SHOW_LOCATOR)==BST_CHECKED;
     if (!valid_call(call) || ((show||locator[0])&&!(selected_mode(window)==IMAGE_FUBK?valid_fubk_locator(locator):valid_locator(locator))) || (!pm&&!valid_code(code))) {
-        error(window,L"Vul eerst een geldige roepnaam en locator in (FUBK: minimaal 6 locatortekens). De contestcode moet vier cijfers bevatten, niet alle vier gelijk en geen oplopende of aflopende reeks."); return;
+        error(window,L"Enter a valid callsign and locator first (FUBK: at least 6 locator characters). The contest code must have four digits, not all identical or in ascending or descending sequence."); return;
     }
     Resolution r=resolution(window);
     const char *invalid=datv_validate(ts_settings,r.width,r.height);
@@ -486,10 +495,10 @@ static void export_ts(HWND window) {
     swprintf(job.path,MAX_PATH,L"%ls-%ls-%dx%d-%dbps.ts",safe,pm?image_modes[selected_mode(window)]:code,r.width,r.height,ts_settings.bitrate);
     OPENFILENAMEW picker={0}; picker.lStructSize=sizeof(picker); picker.hwndOwner=window;
     picker.lpstrFilter=L"MPEG-TS (*.ts)\0*.ts\0\0"; picker.lpstrFile=job.path; picker.nMaxFile=MAX_PATH;
-    picker.lpstrTitle=L"TS opslaan"; picker.lpstrDefExt=L"ts";
+    picker.lpstrTitle=L"Save TS"; picker.lpstrDefExt=L"ts";
     picker.Flags=OFN_EXPLORER|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR|OFN_OVERWRITEPROMPT;
     if (!GetSaveFileNameW(&picker)) {
-        if (CommDlgExtendedError()) error(window,L"Het opslagvenster kon niet worden geopend.");
+        if (CommDlgExtendedError()) error(window,L"Could not open the save dialog.");
         return;
     }
     job.overwrite=GetFileAttributesW(job.path)!=INVALID_FILE_ATTRIBUTES;
@@ -500,14 +509,14 @@ static void export_ts(HWND window) {
         IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_BLUE_YELLOW)==BST_CHECKED,
         IsDlgButtonChecked(window, IDC_EBU_TOP) == BST_CHECKED,
         IsDlgButtonChecked(window, IDC_EBU_BOTTOM) == BST_CHECKED);
-    if (!job.bitmap) { error(window,L"Kan het beeld niet maken."); return; }
+    if (!job.bitmap) { error(window,L"Cannot create the image."); return; }
     if (DialogBoxParamW(instance,MAKEINTRESOURCEW(IDD_TS_PROGRESS),window,ts_progress,(LPARAM)&job)==-1)
-        strcpy(job.error,"Kan het voortgangsvenster niet openen.");
+        strcpy(job.error,"Cannot open the progress window.");
     DeleteObject(job.bitmap);
     if (!job.ok) ts_error(window,job.error);
     else {
         wchar_t message[512];
-        swprintf(message,512,L"TS opgeslagen: %ls (QP %d, %d beelden, grootste IDR %d bytes)",job.path,job.result.qp,job.result.frames,job.result.largest_idr);
+        swprintf(message,512,L"TS saved: %ls (QP %d, %d frames, largest IDR %d bytes)",job.path,job.result.qp,job.result.frames,job.result.largest_idr);
         SetDlgItemTextW(window,IDC_STATUS,message);
     }
 }
@@ -521,9 +530,9 @@ static void generate(HWND window, BOOL choose_path) {
     int show = pm || IsDlgButtonChecked(window, IDC_SHOW_LOCATOR) == BST_CHECKED;
     int inverse = IsDlgButtonChecked(window, IDC_INVERSE) == BST_CHECKED;
     int blue_yellow = IsDlgButtonChecked(window, IDC_BLUE_YELLOW) == BST_CHECKED;
-    if (!valid_call(call)) { error(window, L"Vul een roepnaam in met letters en cijfers, eventueel met / (3 tot 24 tekens)."); return; }
-    if ((show || locator[0]) && !(selected_mode(window)==IMAGE_FUBK?valid_fubk_locator(locator):valid_locator(locator))) { error(window, L"Vul een geldige Maidenheadlocator in, bijvoorbeeld JO21QK (4, 6, 8, 10 of 12 tekens; FUBK minimaal 6)."); return; }
-    if (!pm && !valid_code(code)) { error(window, L"Vul vier cijfers in; niet alle vier gelijk en geen oplopende of aflopende reeks (zoals 4567 of 5432)."); return; }
+    if (!valid_call(call)) { error(window, L"Enter a callsign using letters and digits, optionally with / (3 to 24 characters)."); return; }
+    if ((show || locator[0]) && !(selected_mode(window)==IMAGE_FUBK?valid_fubk_locator(locator):valid_locator(locator))) { error(window, L"Enter a valid Maidenhead locator, e.g. JO21QK (4, 6, 8, 10 or 12 characters; FUBK requires at least 6)."); return; }
+    if (!pm && !valid_code(code)) { error(window, L"Enter four digits; not all identical or in ascending or descending sequence (such as 4567 or 5432)."); return; }
     int band = (int)SendDlgItemMessageW(window, IDC_BAND, CB_GETCURSEL, 0, 0);
     if (band < 0 || band > 10) return;
     filename_call(safe_call, call);
@@ -534,9 +543,9 @@ static void generate(HWND window, BOOL choose_path) {
     if (pm) swprintf(filename, 100, L"%ls%ls-%ls-%dx%d.jpg", safe_call, locator_suffix, image_modes[selected_mode(window)], r.width, r.height);
     else swprintf(filename, 100, L"%ls%ls-%ls-%ls-%dx%d%ls%ls.jpg", safe_call, locator_suffix, code, band_files[band], r.width, r.height, contest_color_suffix(blue_yellow), inverse ? L"-inverse" : L"");
     DWORD length = GetModuleFileNameW(NULL, path, MAX_PATH);
-    if (!length || length >= MAX_PATH) { error(window, L"Het pad naar het programma is te lang."); return; }
+    if (!length || length >= MAX_PATH) { error(window, L"The application path is too long."); return; }
     wchar_t *last = wcsrchr(path, L'\\');
-    if (!last) { error(window, L"De programmamap is niet gevonden."); return; }
+    if (!last) { error(window, L"The application directory was not found."); return; }
     last[1] = 0;
     if (choose_path) {
         wchar_t directory[MAX_PATH];
@@ -545,34 +554,34 @@ static void generate(HWND window, BOOL choose_path) {
         OPENFILENAMEW picker = {0};
         picker.lStructSize = sizeof(picker);
         picker.hwndOwner = window;
-        picker.lpstrFilter = L"JPG-afbeeldingen (*.jpg;*.jpeg)\0*.jpg;*.jpeg\0\0";
+        picker.lpstrFilter = L"JPG images (*.jpg;*.jpeg)\0*.jpg;*.jpeg\0\0";
         picker.lpstrFile = path;
         picker.nMaxFile = MAX_PATH;
         picker.lpstrInitialDir = directory;
-        picker.lpstrTitle = L"Exporteren naar...";
+        picker.lpstrTitle = L"Export as...";
         picker.lpstrDefExt = L"jpg";
         picker.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
         if (!GetSaveFileNameW(&picker)) {
-            if (CommDlgExtendedError()) error(window, L"Het opslagvenster kon niet worden geopend of het gekozen pad is te lang.");
+            if (CommDlgExtendedError()) error(window, L"Could not open the save dialog, or the selected path is too long.");
             return;
         }
     } else {
-        if (wcslen(path) + wcslen(filename) >= MAX_PATH) { error(window, L"De bestandsnaam is te lang. Gebruik Exporteren naar... voor een korter pad."); return; }
+        if (wcslen(path) + wcslen(filename) >= MAX_PATH) { error(window, L"The filename is too long. Use Export as... to select a shorter path."); return; }
         wcscat(path, filename);
     }
     BOOL overwrite = GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES;
     if (overwrite) {
-        swprintf(message, 400, L"%ls bestaat al. Wil je dit bestand vervangen?", path);
-        if (MessageBoxW(window, message, L"Bestand bestaat al", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES) return;
+        swprintf(message, 400, L"%ls already exists. Do you want to replace it?", path);
+        if (MessageBoxW(window, message, L"File already exists", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES) return;
     }
     /* Encode in the destination directory before publishing the complete image. */
     wchar_t directory[MAX_PATH];
     wcscpy(directory, path);
     last = wcsrchr(directory, L'\\');
-    if (!last) { error(window, L"De uitvoermap is niet gevonden."); return; }
+    if (!last) { error(window, L"The output directory was not found."); return; }
     last[1] = 0;
     if (!GetTempFileNameW(directory, L"atv", 0, temporary)) {
-        error(window, L"Kan niet schrijven in de gekozen map. Controleer de schrijfrechten of kies een andere map via Exporteren naar..."); return;
+        error(window, L"Cannot write to the selected directory. Check write permissions or choose another directory using Export as..."); return;
     }
     HBITMAP bitmap = pm ? render_pattern(r, call, locator,selected_mode(window)) : render(r.width, r.height, call, code, locator, show, bands[band], inverse,
         IsDlgButtonChecked(window, IDC_SHOW_SUM) == BST_CHECKED,
@@ -585,10 +594,10 @@ static void generate(HWND window, BOOL choose_path) {
     if (SUCCEEDED(hr) && !MoveFileExW(temporary, path, overwrite ? MOVEFILE_REPLACE_EXISTING : 0)) hr = HRESULT_FROM_WIN32(GetLastError());
     if (FAILED(hr)) {
         DeleteFileW(temporary);
-        swprintf(message, 400, L"Opslaan is mislukt (0x%08lX). Controleer vrije ruimte en schrijfrechten.", (unsigned long)hr);
+        swprintf(message, 400, L"Save failed (0x%08lX). Check free space and write permissions.", (unsigned long)hr);
         error(window, message); return;
     }
-    swprintf(message, 400, L"Opgeslagen: %ls (%d x %d)", path, r.width, r.height);
+    swprintf(message, 400, L"Saved: %ls (%d x %d)", path, r.width, r.height);
     SetDlgItemTextW(window, IDC_STATUS, message);
 }
 static void preview(HWND window, DRAWITEMSTRUCT *item) {
@@ -624,10 +633,32 @@ static void preview(HWND window, DRAWITEMSTRUCT *item) {
     DeleteDC(dc);
     DeleteObject(bitmap);
 }
+static INT_PTR CALLBACK abbreviations_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp) {
+    (void)lp;
+    if (message==WM_INITDIALOG) {
+        const char *source=app_abbreviations_text();
+        char lines[16384]; size_t pos=0;
+        for (size_t i=0;source[i] && pos+2<sizeof(lines);++i) {
+            if (source[i]=='\n') lines[pos++]='\r';
+            lines[pos++]=source[i];
+        }
+        lines[pos]=0;
+        wchar_t text[16384];
+        MultiByteToWideChar(CP_UTF8,0,lines,-1,text,16384);
+        SetDlgItemTextW(window,IDC_ABBREVIATIONS_TEXT,text);
+        ShowScrollBar(GetDlgItem(window,IDC_ABBREVIATIONS_TEXT),SB_VERT,TRUE);
+        SendDlgItemMessageW(window,IDC_ABBREVIATIONS_TEXT,EM_SETSEL,0,0);
+        return TRUE;
+    }
+    if (message==WM_CLOSE || (message==WM_COMMAND && LOWORD(wp)==IDCANCEL)) {
+        EndDialog(window,0); return TRUE;
+    }
+    return FALSE;
+}
 static void show_about(HWND window) {
     wchar_t text[4096];
     MultiByteToWideChar(CP_UTF8, 0, app_info_text(), -1, text, 4096);
-    MessageBoxW(window, text, L"Over dit programma", MB_OK | MB_ICONINFORMATION);
+    MessageBoxW(window, text, L"About", MB_OK | MB_ICONINFORMATION);
 }
 static char *config_path(void) {
     wchar_t path[32768];
@@ -718,10 +749,10 @@ static INT_PTR CALLBACK teletext_dialog(HWND window,UINT message,WPARAM wp,LPARA
         int saved=path && config_save(path,&settings); free(path);
         if (!saved) {
             teletext_settings=previous;
-            SetDlgItemTextW(window,IDC_TELETEXT_STATUS,L"Opslaan mislukt. Controleer schrijfrechten naast het programma.");
+            SetDlgItemTextW(window,IDC_TELETEXT_STATUS,L"Save failed. Check write permissions in the application directory.");
             return TRUE;
         }
-        SetDlgItemTextW(GetParent(window),IDC_STATUS,L"Teletekstpagina opgeslagen in atv-contestnummer.conf.");
+        SetDlgItemTextW(GetParent(window),IDC_STATUS,L"Teletext page saved to atv-contestnummer.conf.");
         EndDialog(window,IDOK); return TRUE;
     }
     if (message==WM_CLOSE || (message==WM_COMMAND && LOWORD(wp)==IDCANCEL)) {
@@ -769,8 +800,8 @@ static INT_PTR CALLBACK eit_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
 static void save_config(HWND window) {
     AppConfig s=capture_config(window); char *path=config_path();
     if (path && config_save(path,&s))
-        SetDlgItemTextW(window,IDC_STATUS,L"Instellingen opgeslagen in atv-contestnummer.conf naast het programma.");
-    else error(window,L"Instellingen opslaan mislukt. Controleer de invoer en schrijfrechten naast het programma.");
+        SetDlgItemTextW(window,IDC_STATUS,L"Settings saved to atv-contestnummer.conf in the application directory.");
+    else error(window,L"Failed to save settings. Check the input and write permissions in the application directory.");
     free(path);
 }
 static void load_config(HWND window) {
@@ -778,9 +809,9 @@ static void load_config(HWND window) {
     int result=path?config_load(path,&s):-1; free(path);
     if (result==1) {
         apply_config(window,&s);
-        SetDlgItemTextW(window,IDC_STATUS,L"Opgeslagen instellingen geladen. UDP-uitvoer staat uit.");
+        SetDlgItemTextW(window,IDC_STATUS,L"Saved settings loaded. UDP output is off.");
     } else if (result<0)
-        error(window,L"Het configuratiebestand is ongeldig of onleesbaar. De standaardinstellingen worden gebruikt.");
+        error(window,L"The configuration file is invalid or unreadable. Using default settings.");
 }
 static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) {
     switch (message) {
@@ -808,7 +839,7 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
         update_resolutions(window);
         for (int i=0; bands[i]; ++i) SendDlgItemMessageW(window, IDC_BAND, CB_ADDSTRING, 0, (LPARAM)bands[i]);
         SendDlgItemMessageW(window, IDC_BAND, CB_SETCURSEL, 3, 0);
-        SetDlgItemTextW(window, IDC_STATUS, L"Vul je gegevens in. Exporteer JPG slaat het beeld naast de .exe op.");
+        SetDlgItemTextW(window, IDC_STATUS, L"Enter your details. Export JPG saves the image in the application directory.");
         ready = 1;
         load_config(window);
         return TRUE;
@@ -824,8 +855,8 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
             HMENU menu=GetMenu(window), file=GetSubMenu(menu,0);
             if (level!=genius_level) {
                 if (level==2) {
-                    InsertMenuW(file,2,MF_BYPOSITION|MF_STRING,IDM_EXPORT_TS,L"Exporteer TS-proefbestand...");
-                    InsertMenuW(file,3,MF_BYPOSITION|MF_STRING,IDM_UDP,L"DATV UDP-uitvoer...");
+                    InsertMenuW(file,2,MF_BYPOSITION|MF_STRING,IDM_EXPORT_TS,L"Export TS test file...");
+                    InsertMenuW(file,3,MF_BYPOSITION|MF_STRING,IDM_UDP,L"DATV UDP output...");
                 } else {
                     DeleteMenu(file,IDM_EXPORT_TS,MF_BYCOMMAND); DeleteMenu(file,IDM_UDP,MF_BYCOMMAND);
                 }
@@ -836,20 +867,25 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
         }
         if (LOWORD(wp)==IDM_TELETEXT) {
             if (DialogBoxParamW((HINSTANCE)GetWindowLongPtrW(window,GWLP_HINSTANCE),MAKEINTRESOURCEW(IDD_TELETEXT),window,teletext_dialog,0)==-1)
-                error(window,L"Kan het teletekstvenster niet openen.");
+                error(window,L"Cannot open the teletext window.");
             return TRUE;
         }
         if (LOWORD(wp)==IDM_EIT) {
             if (DialogBoxParamW((HINSTANCE)GetWindowLongPtrW(window,GWLP_HINSTANCE),MAKEINTRESOURCEW(IDD_EIT),window,eit_dialog,0)==-1)
-                error(window,L"Kan het EIT-venster niet openen.");
+                error(window,L"Cannot open the EIT window.");
             return TRUE;
         }
         if (LOWORD(wp)==IDM_SAVE_CONFIG) { save_config(window); return TRUE; }
         if (LOWORD(wp)==IDM_EXPORT_TS) { export_ts(window); return TRUE; }
         if (LOWORD(wp)==IDM_UDP) { output_udp(window); return TRUE; }
+        if (LOWORD(wp)==IDM_ABBREVIATIONS) {
+            if (DialogBoxParamW((HINSTANCE)GetWindowLongPtrW(window,GWLP_HINSTANCE),MAKEINTRESOURCEW(IDD_ABBREVIATIONS),window,abbreviations_dialog,0)==-1)
+                error(window,L"Cannot open the abbreviations window.");
+            return TRUE;
+        }
         if (LOWORD(wp)==IDM_CODEC_LICENSE) {
             wchar_t text[2048]; MultiByteToWideChar(CP_UTF8,0,app_codec_license(),-1,text,2048);
-            MessageBoxW(window,text,L"OpenH264-licentie",MB_OK|MB_ICONINFORMATION); return TRUE;
+            MessageBoxW(window,text,L"OpenH264 licence",MB_OK|MB_ICONINFORMATION); return TRUE;
         }
         if (LOWORD(wp) == IDM_QUIT) { EndDialog(window, 0); return TRUE; }
         if (LOWORD(wp) == IDM_EXPORT) { generate(window, FALSE); return TRUE; }
@@ -930,7 +966,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
     if (FAILED(hr)) return 1;
     hr = CoCreateInstance(&CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER,
         &IID_IWICImagingFactory, (void **)&factory);
-    if (FAILED(hr)) { error(NULL, L"De Windows JPEG-encoder kan niet worden gestart."); CoUninitialize(); return 1; }
+    if (FAILED(hr)) { error(NULL, L"Cannot start the Windows JPEG encoder."); CoUninitialize(); return 1; }
     int result;
     int argc=0;
     LPWSTR *argv=CommandLineToArgvW(GetCommandLineW(),&argc);

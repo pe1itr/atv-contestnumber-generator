@@ -127,7 +127,7 @@ int main(void) {
         original.ts.bitrate=115196; original.udp.video.bitrate=123607;
         assert(config_save(TEST_PATH,&original));
         FILE *legacy=fopen(TEST_PATH,"r+b"); assert(legacy);
-        assert(!fseek(legacy,(long)strlen("# ATV contestnummer generator\nversion="),SEEK_SET));
+        assert(!fseek(legacy,(long)strlen("# ATV contest number generator\nversion="),SEEK_SET));
         assert(fputc('1',legacy)!=EOF); assert(!fclose(legacy));
         assert(config_load(TEST_PATH,&loaded)==1);
         const Resolution *list=aspect?resolutions169:resolutions43;

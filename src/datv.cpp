@@ -127,21 +127,21 @@ struct DecoderDelete {
 };
 std::vector<uint32_t> decode_preview(const Frame &frame, int width, int height) {
     ISVCDecoder *raw=nullptr;
-    if (WelsCreateDecoder(&raw)!=0) throw std::runtime_error("Kan de voorbeelddecoder niet starten.");
+    if (WelsCreateDecoder(&raw)!=0) throw std::runtime_error("Cannot start the preview decoder.");
     std::unique_ptr<ISVCDecoder,DecoderDelete> decoder(raw);
     int log=WELS_LOG_QUIET; decoder->SetOption(DECODER_OPTION_TRACE_LEVEL,&log);
     SDecodingParam params{};
     params.sVideoProperty.size=sizeof(params.sVideoProperty);
     params.sVideoProperty.eVideoBsType=VIDEO_BITSTREAM_AVC;
     params.eEcActiveIdc=ERROR_CON_DISABLE;
-    if (decoder->Initialize(&params)!=0) throw std::runtime_error("Kan de voorbeelddecoder niet initialiseren.");
+    if (decoder->Initialize(&params)!=0) throw std::runtime_error("Cannot initialise the preview decoder.");
     unsigned char *planes[3]={}; SBufferInfo info{};
     // Our encoder prepends a fixed 14-byte PES header to each Annex B access unit.
     if (frame.pes.size()<=14 || decoder->DecodeFrameNoDelay(frame.pes.data()+14,
             static_cast<int>(frame.pes.size()-14),planes,&info)!=dsErrorFree ||
             info.iBufferStatus!=1 || info.UsrData.sSystemBuffer.iWidth!=width ||
             info.UsrData.sSystemBuffer.iHeight!=height)
-        throw std::runtime_error("Kan het gecomprimeerde voorbeeld niet decoderen.");
+        throw std::runtime_error("Cannot decode the compressed preview.");
     const auto &format=info.UsrData.sSystemBuffer;
     std::vector<uint32_t> rgb(width*height);
     // Match the limited-range BT.601 signal produced by yuv420().
@@ -193,7 +193,7 @@ void sized(Bytes &out, const Bytes &value) {
 unsigned char bcd(unsigned value) { return ((value/10)<<4)|(value%10); }
 void utc_time(Bytes &out, int64_t seconds) {
     int64_t mjd=seconds/86400+40587;
-    if (seconds<0 || mjd>65535) throw std::runtime_error("Systeemdatum valt buiten het DVB-datumbereik.");
+    if (seconds<0 || mjd>65535) throw std::runtime_error("System date is outside the DVB date range.");
     out.push_back(mjd>>8); out.push_back(mjd);
     out.push_back(bcd(seconds/3600%24)); out.push_back(bcd(seconds/60%60)); out.push_back(bcd(seconds%60));
 }
@@ -299,7 +299,7 @@ Bytes teletext_pes(const TeletextSettings &s, int part, uint64_t pts) {
         if (!row) {
             // Page 100, subcode 0000, C4 erase, C11 serial, English G0.
             for (int nibble:{part==9?15:0,part==9?15:0,0,part==9?0:8,0,0,0,1}) b.push_back(hamming(nibble));
-            const char title[]="ATV TELETEKST 100";
+            const char title[]="ATV TELETEXT 100";
             for (int col=0;col<32;++col)
                 b.push_back(odd_parity(col<int(sizeof(title)-1)?title[col]:' '));
         } else {
@@ -322,7 +322,7 @@ size_t avc_cpb_capacity(const Frame &frame) {
         for (size_t n=0;n<sizeof(levels)/sizeof(*levels);++n) if (level==levels[n]) return size_t(cpb[n])*150;
         break;
     }
-    throw std::runtime_error("Kan de AVC-decoderbuffer voor dit beeld niet bepalen.");
+    throw std::runtime_error("Cannot determine the AVC decoder buffer for this image.");
 }
 class Mux {
     const std::vector<Frame> &frames;
@@ -369,7 +369,7 @@ public:
         if (s.eit_enabled) {
             const uint64_t limits[]={CLOCK/2,CLOCK/2,2*CLOCK,2*CLOCK,30*CLOCK,2*CLOCK};
             for (int t=0;t<6;++t) if (end-completed[t]>limits[t])
-                throw std::runtime_error("EIT en beeld passen niet binnen de TS-planning. Verhoog de bitrate of verkort de stationsomschrijving.");
+                throw std::runtime_error("EIT and image do not fit the TS schedule. Increase the bitrate or shorten the station description.");
         }
         bool ttx=s.teletext.enabled && now>=teletext_due;
         if (!pcr && ttx && teletext_first) {
@@ -377,7 +377,7 @@ public:
             teletext_first=false;
         } else if (!pcr && ttx) {
             if (teletext_part && end-teletext_last_end>CLOCK/10)
-                throw std::runtime_error("Teletekst past niet binnen de TS-planning. Verhoog de bitrate.");
+                throw std::runtime_error("Teletext does not fit the TS schedule. Increase the bitrate.");
             header(packet,0x101,true,teletext_cc); teletext_cc=(teletext_cc+1)&15;
             Bytes data=teletext_pes(s.teletext,teletext_part,end+CLOCK/200);
             std::memcpy(packet+4,data.data(),184);
@@ -468,28 +468,28 @@ int datv_write(FILE *output, const uint32_t *rgb, int width, int height,
     const char *invalid=datv_validate(s,width,height);
     if (invalid) { std::snprintf(error,256,"%s",invalid); return 0; }
     if (!output || !rgb || !call || stride<width*4 || stride%4 || std::strlen(call)<3 || std::strlen(call)>24) {
-        std::snprintf(error,256,"Ongeldig beeld, roepnaam of uitvoerbestand."); return 0;
+        std::snprintf(error,256,"Invalid image, callsign or output file."); return 0;
     }
     wchar_t wide_call[25]={0};
     for (size_t i=0; call[i]; ++i) wide_call[i]=static_cast<unsigned char>(call[i]);
-    if (!valid_call(wide_call)) { std::snprintf(error,256,"Ongeldige roepnaam."); return 0; }
+    if (!valid_call(wide_call)) { std::snprintf(error,256,"Invalid callsign."); return 0; }
     try {
         Bytes yuv=yuv420(rgb,width,height,stride), ts;
         std::vector<Frame> frames;
         for (int qp=24; qp<=48; qp+=4) {
             int largest=0;
             if (!encode(yuv,width,height,s,qp,frames,largest)) {
-                std::snprintf(error,256,"OpenH264 kon het beeld niet coderen."); return 0;
+                std::snprintf(error,256,"OpenH264 could not encode the image."); return 0;
             }
             if (!multiplex(frames,s,call,ts)) continue;
             if (std::fwrite(ts.data(),1,ts.size(),output)!=ts.size() || std::fflush(output)!=0) {
-                std::snprintf(error,256,"TS schrijven is mislukt. Controleer vrije ruimte en schrijfrechten."); return 0;
+                std::snprintf(error,256,"Failed to write TS. Check free space and write permissions."); return 0;
             }
             if (result) *result={qp,static_cast<int>(frames.size()),largest};
             return 1;
         }
-        std::snprintf(error,256,"Beeld past niet binnen deze TS-bitrate en transportbuffer. Vergroot de buffer of kies een lagere resolutie, lagere beeldfrequentie of langere GOP.");
-    } catch (const std::bad_alloc &) { std::snprintf(error,256,"Onvoldoende geheugen voor TS-export."); }
+        std::snprintf(error,256,"The image does not fit this TS bitrate and transport buffer. Increase the buffer or use a lower resolution, lower frame rate or longer GOP.");
+    } catch (const std::bad_alloc &) { std::snprintf(error,256,"Not enough memory for TS export."); }
     catch (const std::runtime_error &e) { std::snprintf(error,256,"%s",e.what()); }
     return 0;
 }
@@ -518,7 +518,7 @@ class UdpSocket {
     int fd=-1;
     static int last_error() { return errno; }
 #endif
-    static void failed(int error=last_error()) { throw std::runtime_error("UDP-netwerkfout (code "+std::to_string(error)+"). Controleer het adres en het netwerk."); }
+    static void failed(int error=last_error()) { throw std::runtime_error("UDP network error (code "+std::to_string(error)+"). Check the address and network."); }
     void create_socket() {
         fd=socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);
 #ifdef _WIN32
@@ -546,18 +546,18 @@ public:
 #ifdef _WIN32
         WSADATA data;
         int err=WSAStartup(MAKEWORD(2,2),&data);
-        if (err) throw std::runtime_error("Kan Windows-netwerk niet starten (code "+std::to_string(err)+").");
+        if (err) throw std::runtime_error("Cannot start Windows networking (code "+std::to_string(err)+").");
         initialized=true;
         timer=timeBeginPeriod(1)==TIMERR_NOERROR;
 #endif
         address.sin_family=AF_INET; address.sin_port=htons(s.port);
-        if (inet_pton(AF_INET,s.ip,&address.sin_addr)!=1) throw std::runtime_error("Ongeldig IPv4-adres.");
+        if (inet_pton(AF_INET,s.ip,&address.sin_addr)!=1) throw std::runtime_error("Invalid IPv4 address.");
         create_socket();
     }
     bool packet(const unsigned char *data) {
         int sent=send(fd,reinterpret_cast<const char *>(data),1316,0);
         if (sent==1316) return true;
-        if (sent>=0) throw std::runtime_error("UDP-datagram onvolledig verzonden.");
+        if (sent>=0) throw std::runtime_error("UDP datagram was not sent in full.");
         int error=last_error();
 #ifdef _WIN32
         if (error!=WSAECONNREFUSED && error!=WSAECONNRESET) failed(error);
@@ -592,7 +592,7 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
             // the IDs alternate across template boundaries as well.
             if (!encode(yuv,w,h,s,qp,frames,largest,&stream->stop,std::max(2,s.gop))) {
                 if (stream->stop) break;
-                throw std::runtime_error("OpenH264 kon het beeld niet coderen.");
+                throw std::runtime_error("OpenH264 could not encode the image.");
             }
             // Exercise a continuous, repeated closed GOP, including PSI phases.
             // A finite file's trailing second must never hide a bitrate deficit.
@@ -649,7 +649,7 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
         }
         if (!stream->stop && !planning_error.empty()) throw std::runtime_error(planning_error);
         if (!stream->stop && !selected)
-            throw std::runtime_error("Beeld past niet in de doorlopende TS. Vergroot de transportbuffer of kies een lagere resolutie, lagere beeldfrequentie of langere GOP.");
+            throw std::runtime_error("The image does not fit the continuous TS. Increase the transport buffer or use a lower resolution, lower frame rate or longer GOP.");
         if (!stream->stop && stream->preview_only) {
             auto pixels=decode_preview(frames.front(),w,h);
             std::lock_guard<std::mutex> lock(stream->mutex);
@@ -669,7 +669,7 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
             for (uint64_t n=0; !stream->stop; ++n) {
                 unsigned char datagram[1316];
                 for (int p=0;p<7;++p) if (!mux.next(datagram+p*188))
-                    throw std::runtime_error("UDP gestopt: videodata overschrijdt de beschikbare bitrate.");
+                    throw std::runtime_error("UDP stopped: video data exceeds the available bitrate.");
                 auto due=origin+std::chrono::nanoseconds(byte_time(n*1316,1000000000,s.bitrate));
                 {
                     std::unique_lock<std::mutex> lock(stream->mutex);
@@ -678,7 +678,7 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
                 if (stream->stop) break;
                 // Never flush a backlog of datagrams after suspend or overload.
                 if (std::chrono::steady_clock::now()-due>interval)
-                    throw std::runtime_error("UDP gestopt: verzending liep te ver achter (slaapstand of systeembelasting). Start opnieuw.");
+                    throw std::runtime_error("UDP stopped: transmission fell too far behind (sleep or system load). Please restart.");
                 bool sent=socket.packet(datagram);
                 std::lock_guard<std::mutex> lock(stream->mutex);
                 stream->status.state=DATV_RUNNING;
@@ -706,11 +706,11 @@ static DatvStream *start_job(const uint32_t *rgb, int width, int height, int str
     const char *invalid=preview_only ? datv_validate(settings.video,width,height) : datv_udp_validate(settings,width,height);
     if (invalid) { std::snprintf(error,256,"%s",invalid); return nullptr; }
     if (!rgb || !call || stride<width*4 || stride%4 || std::strlen(call)>24) {
-        std::snprintf(error,256,"Ongeldig beeld of roepnaam."); return nullptr;
+        std::snprintf(error,256,"Invalid image or callsign."); return nullptr;
     }
     wchar_t wide[25]={0};
     for (size_t i=0;call[i];++i) wide[i]=static_cast<unsigned char>(call[i]);
-    if (!valid_call(wide)) { std::snprintf(error,256,"Ongeldige roepnaam."); return nullptr; }
+    if (!valid_call(wide)) { std::snprintf(error,256,"Invalid callsign."); return nullptr; }
     try {
         std::vector<uint32_t> copy(width*height);
         for (int y=0;y<height;++y)
@@ -719,7 +719,7 @@ static DatvStream *start_job(const uint32_t *rgb, int width, int height, int str
         stream->preview_only=preview_only; stream->width=width; stream->height=height;
         stream->worker=std::thread(stream_worker,stream.get(),std::move(copy),width,height,std::string(call),settings);
         return stream.release();
-    } catch (const std::exception &e) { std::snprintf(error,256,"DATV voorbereiden mislukt: %s",e.what()); return nullptr; }
+    } catch (const std::exception &e) { std::snprintf(error,256,"DATV preparation failed: %s",e.what()); return nullptr; }
 }
 DatvStream *datv_udp_start(const uint32_t *rgb, int width, int height, int stride,
                           const char *call, DatvUdpSettings settings, char error[256]) {

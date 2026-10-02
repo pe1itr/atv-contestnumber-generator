@@ -66,16 +66,16 @@ static void receive_udp(void) {
 static BOOL CALLBACK drive_window(HWND window,LPARAM unused) {
     (void)unused;
     wchar_t title[100]; GetWindowTextW(window,title,100);
-    if (stage<0 && !wcscmp(title,L"EIT-programma-informatie")) {
+    if (stage<0 && !wcscmp(title,L"EIT programme information")) {
         assert(GetWindowLongPtrW(GetDlgItem(window,IDC_EIT_CALL),GWL_STYLE)&ES_READONLY);
         wchar_t locator[32]; GetDlgItemTextW(window,IDC_EIT_LOCATOR,locator,32);
         assert(!wcscmp(locator,L"JO21QK"));
-        SetDlgItemTextW(window,IDC_EIT_CITY,stage==-3?L"Eindhoven":L"Annuleren");
+        SetDlgItemTextW(window,IDC_EIT_CITY,stage==-3?L"Eindhoven":L"Cancel");
         SetDlgItemTextW(window,IDC_EIT_OPERATOR,L"René");
         SetDlgItemTextW(window,IDC_EIT_DESCRIPTION,L"70 cm ATV-station");
         PostMessageW(window,WM_COMMAND,stage==-3?IDOK:IDCANCEL,0); ++stage;
     }
-    if (stage>=10 && !wcscmp(title,L"DATV: UDP-uitvoer")) {
+    if (stage>=10 && !wcscmp(title,L"DATV: UDP output")) {
         assert(GetTickCount64()<udp_deadline);
         wchar_t status[512]; GetDlgItemTextW(window,IDC_UDP_STATUS,status,512);
         if (stage==10) {
@@ -85,25 +85,29 @@ static BOOL CALLBACK drive_window(HWND window,LPARAM unused) {
             assert(GetDlgItemInt(window,IDC_UDP_PORT,NULL,FALSE)==10000);
             SetDlgItemTextW(window,IDC_UDP_IP,L"999.1.2.3"); stage=11; PostMessageW(window,WM_COMMAND,IDC_UDP_START,0);
         } else if (stage==11) {
-            assert(wcsstr(status,L"geldig")); SetDlgItemTextW(window,IDC_UDP_IP,L"127.0.0.1");
+            assert(wcsstr(status,L"valid"));
+            SendMessageW(window,WM_COMMAND,IDC_UDP_LOCALHOST,0);
+            wchar_t ip[16]; GetDlgItemTextW(window,IDC_UDP_IP,ip,16);
+            assert(!wcscmp(ip,L"127.0.0.1"));
             SetDlgItemInt(window,IDC_UDP_PORT,port,FALSE); stage=12; PostMessageW(window,WM_COMMAND,IDC_UDP_START,0);
         } else if (stage==12) {
             receive_udp();
             if (received>=4) {
-                assert(wcsstr(status,L"UDP-uitvoer actief")); assert(!IsWindowEnabled(GetDlgItem(window,IDC_UDP_IP)));
+                assert(wcsstr(status,L"UDP output active")); assert(!IsWindowEnabled(GetDlgItem(window,IDC_UDP_IP)));
+                assert(!IsWindowEnabled(GetDlgItem(window,IDC_UDP_LOCALHOST)));
                 assert(!IsWindowEnabled(GetDlgItem(window,IDC_DVB_SYSTEM)));
                 assert(!IsWindowEnabled(GetDlgItem(window,IDC_DVB_FEC)));
                 assert(!IsWindowEnabled(GetDlgItem(window,IDC_INCLUDE_EIT)));
                 stage=13; PostMessageW(window,WM_COMMAND,IDC_UDP_STOP,0);
             }
-        } else if (stage==13 && wcsstr(status,L"UDP gestopt")) {
+        } else if (stage==13 && wcsstr(status,L"UDP stopped")) {
             assert(IsWindowEnabled(GetDlgItem(window,IDC_UDP_IP))); stage=14; PostMessageW(window,WM_COMMAND,IDC_UDP_START,0);
         } else if (stage==14) {
             receive_udp();
             if (received>=8) { stage=15; PostMessageW(window,WM_CLOSE,0,0); }
         }
     }
-    if (stage==0 && !wcscmp(title,L"DATV: TS-proefbestand")) {
+    if (stage==0 && !wcscmp(title,L"DATV: TS test file")) {
         stage=-10; /* Avoid re-entering this long sequence of UI assertions. */
         SetDlgItemInt(window,IDC_TS_BITRATE,60000,FALSE);
         check_dvb(window,IDC_TS_BITRATE);
@@ -112,7 +116,7 @@ static BOOL CALLBACK drive_window(HWND window,LPARAM unused) {
         SetDlgItemInt(window,IDC_TS_FPS,2,FALSE);
         SetDlgItemInt(window,IDC_TS_GOP,1,FALSE);
         stage=1; PostMessageW(window,WM_COMMAND,IDOK,0);
-    } else if (stage==1 && !wcscmp(title,L"TS opslaan")) {
+    } else if (stage==1 && !wcscmp(title,L"Save TS")) {
         assert(SetDlgItemTextW(window,cmb13,target));
         stage=2; PostMessageW(window,WM_COMMAND,IDOK,0);
     }
@@ -153,7 +157,7 @@ int wmain(void) {
     assert(ts_settings.eit_enabled);
     assert(stage==2 && ts_settings.bitrate==123607 && ts_settings.gop==1);
     wchar_t status[512],code[5];
-    GetDlgItemTextW(window,IDC_STATUS,status,512); assert(wcsstr(status,L"TS opgeslagen:"));
+    GetDlgItemTextW(window,IDC_STATUS,status,512); assert(wcsstr(status,L"TS saved:"));
     GetDlgItemTextW(window,IDC_CODE,code,5); assert(!wcscmp(code,L"1957"));
     assert(GetFileAttributesW(target)!=INVALID_FILE_ATTRIBUTES); DeleteFileW(target);
     WSADATA ws; assert(!WSAStartup(MAKEWORD(2,2),&ws));

@@ -43,7 +43,7 @@ int main(int argc,char **argv) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     char status_text[512]; datv_udp_status_text(s,status,status_text,sizeof(status_text));
-    bool recent_warning=std::strstr(status_text,"gesloten UDP-poort")!=nullptr;
+    bool recent_warning=std::strstr(status_text,"closed UDP port")!=nullptr;
     auto stop=std::chrono::steady_clock::now();
     datv_udp_stop(stream);
     for (;;) {

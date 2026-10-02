@@ -65,7 +65,7 @@ static void check(int bitrate,int fps,int gop,int width,int height,bool noisy,bo
     }
     if (!expected) { unsigned char packet[188]; assert(!mux.next(packet)); }
     char text[1500]; datv_timeline_text(&t,s,text,sizeof(text));
-    assert(strstr(text,expected?"Past in":"Past niet"));
+    assert(strstr(text,expected?"Fits":"Does not fit"));
     printf("Timeline %d bit/s %d fps GOP%d %dx%d: fits=%d, QP%d, first=%.3f ms, raw minimum=%.3f ms\n",bitrate,fps,gop,width,height,t.fits,t.qp,t.first_image_ms,8000.0*t.idr_bytes/bitrate);
     datv_udp_destroy(job);
 }

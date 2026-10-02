@@ -6,24 +6,27 @@ static ULONGLONG deadline;
 static BOOL CALLBACK drive(HWND window,LPARAM unused) {
     (void)unused; assert(GetTickCount64()<deadline);
     wchar_t title[80]; GetWindowTextW(window,title,80);
-    if (!wcscmp(title,L"DATV: UDP-uitvoer")) {
+    if (!wcscmp(title,L"DATV: UDP output")) {
         if (stage==0) {
             SetDlgItemTextW(window,IDC_UDP_IP,L"invalid"); SetDlgItemTextW(window,IDC_UDP_PORT,L"");
             SetDlgItemInt(window,IDC_UDP_BITRATE,115196,FALSE); SetDlgItemInt(window,IDC_UDP_FPS,test_fps,FALSE); SetDlgItemInt(window,IDC_UDP_GOP,2,FALSE);
             SetDlgItemInt(window,IDC_TRANSPORT_BUFFER,test_fps==4?3000:1000,FALSE);
+            CheckDlgButton(window,IDC_INCLUDE_TELETEXT,test_fps==4?BST_CHECKED:BST_UNCHECKED);
             stage=1; PostMessageW(window,WM_COMMAND,IDC_UDP_PREVIEW,0);
         } else if (stage==2) { stage=3; PostMessageW(window,WM_COMMAND,IDCANCEL,0); }
-    } else if (!wcscmp(title,L"DATV: Beeld controleren")) {
+    } else if (!wcscmp(title,L"DATV: Check image")) {
         QualityDialog *d=(QualityDialog *)GetWindowLongPtrW(window,DWLP_USER);
         if (d && d->done) {
             assert(d->images[1] && d->timeline.ready && d->timeline.fits);
             assert(datv_buffer_ms(d->settings)==(test_fps==4?3000:1000));
+            assert(d->settings.teletext.enabled==(test_fps==4));
+            assert(!teletext_settings.enabled);
             assert(IsWindowVisible(GetDlgItem(window,IDC_QUALITY_TIMELINE)));
             DatvUdpStatus status; datv_udp_status(d->job,&status);
             qp=status.qp; assert(qp>=24 && qp<=48 && !status.packets);
             wchar_t text[1500]; GetDlgItemTextW(window,IDC_QUALITY_STATUS,text,1500);
-            const wchar_t *timing=wcsstr(text,L"Eerste volledige beeld: ");
-            double ms=0; assert(timing && swscanf(timing,L"Eerste volledige beeld: %lf ms",&ms)==1);
+            const wchar_t *timing=wcsstr(text,L"First complete image: ");
+            double ms=0; assert(timing && swscanf(timing,L"First complete image: %lf ms",&ms)==1);
             assert(ms>0 && ms<=1000 && fabs(ms-status.first_image_ms)<0.051);
             CheckDlgButton(window,IDC_QUALITY_ZOOM,BST_UNCHECKED); SendMessageW(window,WM_COMMAND,IDC_QUALITY_ZOOM,0); assert(d->zoom==1);
             CheckDlgButton(window,IDC_QUALITY_ZOOM,BST_CHECKED); SendMessageW(window,WM_COMMAND,IDC_QUALITY_ZOOM,0); assert(d->zoom==2);

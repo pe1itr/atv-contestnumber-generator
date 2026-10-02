@@ -2,7 +2,7 @@
 #include <assert.h>
 static BOOL CALLBACK apply_teletext(HWND window,LPARAM unused) {
     (void)unused; wchar_t title[80]; GetWindowTextW(window,title,80);
-    if (wcscmp(title,L"Teletekst - pagina 100")) return TRUE;
+    if (wcscmp(title,L"Teletext - page 100")) return TRUE;
     SetDlgItemTextW(window,IDC_TELETEXT_TEXT,L"ATV CONTEST\r\nPagina 100");
     PostMessageW(window,WM_COMMAND,IDOK,0); return TRUE;
 }
@@ -11,7 +11,7 @@ static void CALLBACK teletext_timer(HWND w,UINT m,UINT_PTR id,DWORD t) {
 }
 static BOOL CALLBACK apply_udp(HWND window,LPARAM unused) {
     (void)unused; wchar_t title[80]; GetWindowTextW(window,title,80);
-    if (wcscmp(title,L"DATV: UDP-uitvoer")) return TRUE;
+    if (wcscmp(title,L"DATV: UDP output")) return TRUE;
     SetDlgItemTextW(window,IDC_UDP_IP,L"192.168.1.50");
     SetDlgItemInt(window,IDC_UDP_PORT,12345,FALSE);
     SendDlgItemMessageW(window,IDC_DVB_SYSTEM,CB_SETCURSEL,DVB_T,0);

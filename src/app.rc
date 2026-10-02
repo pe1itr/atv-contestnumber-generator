@@ -5,40 +5,41 @@ IDR_MENU MENU
 BEGIN
     POPUP "&File"
     BEGIN
-        MENUITEM "&Exporteer JPG", IDM_EXPORT
-        MENUITEM "Exporteren &naar...", IDM_EXPORT_AS
+        MENUITEM "&Export JPG", IDM_EXPORT
+        MENUITEM "Export &as...", IDM_EXPORT_AS
         MENUITEM SEPARATOR
         MENUITEM "&Quit", IDM_QUIT
     END
     POPUP "&Config"
     BEGIN
-        MENUITEM "Genius level &1 (standaard)", IDM_LEVEL1, CHECKED
+        MENUITEM "Genius level &1 (default)", IDM_LEVEL1, CHECKED
         MENUITEM "Genius level &2", IDM_LEVEL2
         MENUITEM SEPARATOR
-        MENUITEM "&Teletekst...", IDM_TELETEXT
+        MENUITEM "&Teletext...", IDM_TELETEXT
         MENUITEM "&EIT...", IDM_EIT
-        MENUITEM "Huidige instellingen &opslaan", IDM_SAVE_CONFIG
+        MENUITEM "&Save current settings", IDM_SAVE_CONFIG
     END
     POPUP "&Info"
     BEGIN
-        MENUITEM "&Over dit programma", IDM_ABOUT
-        MENUITEM "OpenH264-licentie", IDM_CODEC_LICENSE
+        MENUITEM "&About", IDM_ABOUT
+        MENUITEM "A&bbreviations...", IDM_ABBREVIATIONS
+        MENUITEM "OpenH264 licence", IDM_CODEC_LICENSE
     END
 END
 IDD_TS DIALOGEX 0, 0, 447, 378
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "DATV: TS-proefbestand"
+CAPTION "DATV: TS test file"
 FONT 9, "Segoe UI"
 BEGIN
-    LTEXT "Berekende TS-bitrate (bit/s)", -1, 12, 14, 185, 12
+    LTEXT "Calculated TS bitrate (bit/s)", -1, 12, 14, 185, 12
     EDITTEXT IDC_TS_BITRATE, 210, 11, 68, 16, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "Beeldduur (seconden, 1-60)", -1, 12, 38, 185, 12
+    LTEXT "Image duration (seconds, 1-60)", -1, 12, 38, 185, 12
     EDITTEXT IDC_TS_SECONDS, 210, 35, 68, 16, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "Beelden per seconde (1-25)", -1, 12, 62, 185, 12
+    LTEXT "Frames per second (1-25)", -1, 12, 62, 185, 12
     EDITTEXT IDC_TS_FPS, 210, 59, 68, 16, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "GOP (1-250 beelden; 1 = alleen IDR)", -1, 12, 86, 190, 12
+    LTEXT "GOP (1-250 frames; 1 = IDR only)", -1, 12, 86, 190, 12
     EDITTEXT IDC_TS_GOP, 210, 83, 68, 16, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "Systeem (QPSK)", -1, 12, 113, 192, 12
+    LTEXT "System (QPSK)", -1, 12, 113, 192, 12
     COMBOBOX IDC_DVB_SYSTEM, 210, 110, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT "Symbol rate (DVB-S/S2)", -1, 12, 133, 192, 12
     COMBOBOX IDC_DVB_SR, 210, 130, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
@@ -47,16 +48,16 @@ BEGIN
     LTEXT "FEC", -1, 12, 173, 192, 12
     COMBOBOX IDC_DVB_FEC, 210, 170, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT "Pilots (DVB-S2)", -1, 12, 193, 192, 12
-    CONTROL "Aan", IDC_DVB_PILOTS, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 210, 190, 113, 16
+    CONTROL "On", IDC_DVB_PILOTS, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 210, 190, 113, 16
     LTEXT "Guard interval (DVB-T, 2K)", -1, 12, 213, 192, 12
     COMBOBOX IDC_DVB_GUARD, 210, 210, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT "DVB-S2: normale frames. DVB-T: SR/BW is bandbreedte in kHz.", -1, 12, 232, 410, 12
-    LTEXT "Zonder audio. Service = roepnaam; ID = 1.\nDe transportbuffer bepaalt de extra aanloop voor de decoder.", -1, 12, 255, 410, 24
-    CONTROL "EIT-programma-informatie meesturen (Config > EIT)", IDC_INCLUDE_EIT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 284, 423, 16
-    CONTROL "Teletekstpagina 100 meesturen", IDC_INCLUDE_TELETEXT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 304, 423, 16
-    DEFPUSHBUTTON "Verder", IDOK, 300, 354, 65, 16
-    PUSHBUTTON "Annuleren", IDCANCEL, 370, 354, 65, 16
-    LTEXT "Transportbuffer (1000-10000 ms)", -1, 12, 330, 192, 12
+    LTEXT "DVB-S2: normal frames. DVB-T: SR/BW is bandwidth in kHz.", -1, 12, 232, 410, 12
+    LTEXT "No audio. Service = callsign; ID = 1.\nThe transport buffer sets the decoder lead-in time.", -1, 12, 255, 410, 24
+    CONTROL "Include EIT programme information (Config > EIT)", IDC_INCLUDE_EIT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 284, 423, 16
+    CONTROL "Include teletext page 100", IDC_INCLUDE_TELETEXT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 304, 423, 16
+    DEFPUSHBUTTON "Continue", IDOK, 300, 354, 65, 16
+    PUSHBUTTON "Cancel", IDCANCEL, 370, 354, 65, 16
+    LTEXT "Transport buffer (1000-10000 ms)", -1, 12, 330, 192, 12
     EDITTEXT IDC_TRANSPORT_BUFFER, 210, 327, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
 END
 IDD_TS_PROGRESS DIALOGEX 0, 0, 260, 45
@@ -64,24 +65,25 @@ STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION
 CAPTION "DATV"
 FONT 9, "Segoe UI"
 BEGIN
-    LTEXT "TS maken en bitrate controleren...", -1, 12, 16, 236, 16
+    LTEXT "Creating TS and checking bitrate...", -1, 12, 16, 236, 16
 END
 IDD_UDP DIALOGEX 0, 0, 447, 444
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "DATV: UDP-uitvoer"
+CAPTION "DATV: UDP output"
 FONT 9, "Segoe UI"
 BEGIN
-    LTEXT "IP-adres (IPv4)", -1, 12, 14, 192, 12
+    LTEXT "IP address (IPv4)", -1, 12, 14, 192, 12
     EDITTEXT IDC_UDP_IP, 210, 11, 113, 16, ES_AUTOHSCROLL
-    LTEXT "Poort", -1, 12, 38, 192, 12
+    PUSHBUTTON "Set localhost", IDC_UDP_LOCALHOST, 329, 11, 106, 16
+    LTEXT "Port", -1, 12, 38, 192, 12
     EDITTEXT IDC_UDP_PORT, 210, 35, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "Berekende TS-bitrate (bit/s)", -1, 12, 62, 192, 12
+    LTEXT "Calculated TS bitrate (bit/s)", -1, 12, 62, 192, 12
     EDITTEXT IDC_UDP_BITRATE, 210, 59, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "Beelden per seconde (1-25)", -1, 12, 86, 192, 12
+    LTEXT "Frames per second (1-25)", -1, 12, 86, 192, 12
     EDITTEXT IDC_UDP_FPS, 210, 83, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "GOP (1-250 beelden; 1 = alleen IDR)", -1, 12, 110, 192, 12
+    LTEXT "GOP (1-250 frames; 1 = IDR only)", -1, 12, 110, 192, 12
     EDITTEXT IDC_UDP_GOP, 210, 107, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "Systeem (QPSK)", -1, 12, 133, 192, 12
+    LTEXT "System (QPSK)", -1, 12, 133, 192, 12
     COMBOBOX IDC_DVB_SYSTEM, 210, 130, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT "Symbol rate (DVB-S/S2)", -1, 12, 153, 192, 12
     COMBOBOX IDC_DVB_SR, 210, 150, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
@@ -90,103 +92,113 @@ BEGIN
     LTEXT "FEC", -1, 12, 193, 192, 12
     COMBOBOX IDC_DVB_FEC, 210, 190, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT "Pilots (DVB-S2)", -1, 12, 213, 192, 12
-    CONTROL "Aan", IDC_DVB_PILOTS, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 210, 210, 113, 16
+    CONTROL "On", IDC_DVB_PILOTS, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 210, 210, 113, 16
     LTEXT "Guard interval (DVB-T, 2K)", -1, 12, 233, 192, 12
     COMBOBOX IDC_DVB_GUARD, 210, 230, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT "DVB-S2: normale frames. DVB-T: SR/BW is bandbreedte in kHz.", -1, 12, 252, 410, 12
-    LTEXT "Tip voor de contest: gebruik 4 fps en GOP 2.", -1, 12, 270, 423, 12
-    LTEXT "Start zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.", -1, 12, 288, 423, 28
-    CONTROL "EIT-programma-informatie meesturen (Config > EIT)", IDC_INCLUDE_EIT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 320, 423, 16
-    CONTROL "Teletekstpagina 100 meesturen", IDC_INCLUDE_TELETEXT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 340, 423, 16
-    LTEXT "Vul het IP-adres van Portsdown in en kies Start.", IDC_UDP_STATUS, 12, 383, 423, 30
+    LTEXT "DVB-S2: normal frames. DVB-T: SR/BW is bandwidth in kHz.", -1, 12, 252, 410, 12
+    LTEXT "Contest tip: use 4 fps and GOP 2.", -1, 12, 270, 423, 12
+    LTEXT "Start transmits the current image without audio.\nStop and close this window to change the image. Closing also stops the stream.", -1, 12, 288, 423, 28
+    CONTROL "Include EIT programme information (Config > EIT)", IDC_INCLUDE_EIT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 320, 423, 16
+    CONTROL "Include teletext page 100", IDC_INCLUDE_TELETEXT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 340, 423, 16
+    LTEXT "Enter the Portsdown IP address and select Start.", IDC_UDP_STATUS, 12, 383, 423, 30
     DEFPUSHBUTTON "Start", IDC_UDP_START, 12, 420, 50, 16
     PUSHBUTTON "Stop", IDC_UDP_STOP, 68, 420, 50, 16
-    PUSHBUTTON "Toepassen en sluiten", IDC_UDP_APPLY, 124, 420, 123, 16
-    PUSHBUTTON "Beeld &controleren", IDC_UDP_PREVIEW, 253, 420, 110, 16
-    PUSHBUTTON "Sluiten", IDCANCEL, 369, 420, 66, 16
-    LTEXT "Transportbuffer (1000-10000 ms)", -1, 12, 359, 192, 12
+    PUSHBUTTON "Apply and close", IDC_UDP_APPLY, 124, 420, 123, 16
+    PUSHBUTTON "&Check image", IDC_UDP_PREVIEW, 253, 420, 110, 16
+    PUSHBUTTON "Close", IDCANCEL, 369, 420, 66, 16
+    LTEXT "Transport buffer (1000-10000 ms)", -1, 12, 359, 192, 12
     EDITTEXT IDC_TRANSPORT_BUFFER, 210, 356, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
 END
 IDD_MAIN DIALOGEX 0, 0, 460, 327
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
-CAPTION "ATV contestnummer generator"
+CAPTION "ATV contest number generator"
 MENU IDR_MENU
 FONT 9, "Segoe UI"
 BEGIN
-    LTEXT "Beeld&type", -1, 12, 10, 65, 12
+    LTEXT "Image &type", -1, 12, 10, 65, 12
     COMBOBOX IDC_MODE, 80, 7, 180, 70, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT "", IDC_COLOR_ADVICE, 160, 25, 288, 12
-    LTEXT "&Roepnaam", -1, 12, 43, 90, 12
+    LTEXT "&Callsign", -1, 12, 43, 90, 12
     EDITTEXT IDC_CALL, 12, 57, 130, 16, ES_AUTOHSCROLL | ES_UPPERCASE
     LTEXT "&QTH locator", -1, 12, 81, 100, 12
     EDITTEXT IDC_LOCATOR, 12, 95, 130, 16, ES_AUTOHSCROLL | ES_UPPERCASE
-    CONTROL "&Locator in beeld", IDC_SHOW_LOCATOR, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 116, 130, 14
-    GROUPBOX "Contestnummer", -1, 8, 136, 140, 74
-    CONTROL "&Automatisch", IDC_AUTO, "Button", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 16, 150, 120, 13
-    CONTROL "Zelf &intypen", IDC_MANUAL, "Button", BS_AUTORADIOBUTTON, 16, 166, 120, 13
+    CONTROL "Show &locator", IDC_SHOW_LOCATOR, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 116, 130, 14
+    GROUPBOX "Contest number", -1, 8, 136, 140, 74
+    CONTROL "&Automatic", IDC_AUTO, "Button", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 16, 150, 120, 13
+    CONTROL "&Manual entry", IDC_MANUAL, "Button", BS_AUTORADIOBUTTON, 16, 166, 120, 13
     EDITTEXT IDC_CODE, 16, 184, 43, 17, ES_NUMBER | ES_AUTOHSCROLL | WS_GROUP
-    PUSHBUTTON "&Nieuw nummer", IDC_NEW_CODE, 63, 184, 76, 17
-    LTEXT "&Beeldverhouding", -1, 12, 218, 130, 12
+    PUSHBUTTON "&New number", IDC_NEW_CODE, 63, 184, 76, 17
+    LTEXT "&Aspect ratio", -1, 12, 218, 130, 12
     COMBOBOX IDC_ASPECT, 12, 232, 130, 65, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT "Re&solutie", -1, 12, 256, 130, 12
+    LTEXT "Re&solution", -1, 12, 256, 130, 12
     COMBOBOX IDC_RESOLUTION, 12, 270, 130, 120, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    CONTROL "Cijfer&som in beeld", IDC_SHOW_SUM, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 160, 41, 140, 14
-    CONTROL "In&verse (kleuren omwisselen)", IDC_INVERSE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 310, 41, 138, 14
-    CONTROL "Code rechts&boven (DATV)", IDC_TOP_CODE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 160, 58, 145, 14
-    CONTROL "Blauw/&geel", IDC_BLUE_YELLOW, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 310, 58, 138, 14
-    CONTROL "EBU b&oven", IDC_EBU_TOP, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 160, 75, 140, 14
-    CONTROL "EBU o&nder", IDC_EBU_BOTTOM, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 310, 75, 138, 14
+    CONTROL "Show digit &sum", IDC_SHOW_SUM, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 160, 41, 140, 14
+    CONTROL "In&vert colours", IDC_INVERSE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 310, 41, 138, 14
+    CONTROL "Code at top &right (DATV)", IDC_TOP_CODE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 160, 58, 145, 14
+    CONTROL "Blue/&yellow", IDC_BLUE_YELLOW, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 310, 58, 138, 14
+    CONTROL "EBU &top", IDC_EBU_TOP, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 160, 75, 140, 14
+    CONTROL "EBU &bottom", IDC_EBU_BOTTOM, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 310, 75, 138, 14
     CONTROL "", IDC_PREVIEW, "Static", SS_OWNERDRAW, 160, 92, 288, 156
-    LTEXT "&Frequentieband", -1, 160, 258, 90, 12
+    LTEXT "Frequency &band", -1, 160, 258, 90, 12
     COMBOBOX IDC_BAND, 160, 272, 130, 155, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    DEFPUSHBUTTON "&Exporteer JPG", IDC_GENERATE, 314, 267, 134, 24
+    DEFPUSHBUTTON "&Export JPG", IDC_GENERATE, 314, 267, 134, 24
     LTEXT "", IDC_STATUS, 12, 302, 436, 20
 END
 
 IDD_QUALITY DIALOGEX 0, 0, 600, 492
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "DATV: Beeld controleren"
+CAPTION "DATV: Check image"
 FONT 9, "Segoe UI"
 BEGIN
-    LTEXT "Origineel", -1, 12, 10, 280, 12
-    LTEXT "Na compressie", -1, 306, 10, 280, 12
+    LTEXT "Original", -1, 12, 10, 280, 12
+    LTEXT "After compression", -1, 306, 10, 280, 12
     CONTROL "", IDC_QUALITY_BEFORE, "Static", SS_BLACKRECT | WS_HSCROLL | WS_VSCROLL | WS_TABSTOP, 12, 26, 282, 170
     CONTROL "", IDC_QUALITY_AFTER, "Static", SS_BLACKRECT | WS_HSCROLL | WS_VSCROLL | WS_TABSTOP, 306, 26, 282, 170
-    CONTROL "2x vergroten (beide beelden)", IDC_QUALITY_ZOOM, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 203, 260, 14
-    LTEXT "Beeld voorbereiden en decoderen... Er wordt niets uitgezonden.", IDC_QUALITY_STATUS, 12, 223, 576, 88
+    CONTROL "2x zoom (both images)", IDC_QUALITY_ZOOM, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 203, 260, 14
+    LTEXT "Preparing and decoding image... Nothing is transmitted.", IDC_QUALITY_STATUS, 12, 223, 576, 88
     CONTROL "", IDC_QUALITY_TIMELINE, "Static", SS_OWNERDRAW, 12, 316, 576, 122
-    LTEXT "Eerste volledige videobeeld na H.264-compressie. Andere videobeelden kunnen verschillen.\nZonder ontvangstverliezen of beeldbewerking van je ontvanger. Scroll om details te bekijken.", -1, 12, 443, 576, 26
-    DEFPUSHBUTTON "Sluiten", IDCANCEL, 518, 472, 70, 16
+    LTEXT "First complete video frame after H.264 compression. Other frames may differ.\nExcludes reception loss and receiver processing. Scroll to inspect details.", -1, 12, 443, 576, 26
+    DEFPUSHBUTTON "Close", IDCANCEL, 518, 472, 70, 16
 END
 
 IDD_EIT DIALOGEX 0, 0, 447, 208
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "EIT-programma-informatie"
+CAPTION "EIT programme information"
 FONT 9, "Segoe UI"
 BEGIN
-    LTEXT "Roepnaam (automatisch)", -1, 12, 14, 180, 12
+    LTEXT "Callsign (automatic)", -1, 12, 14, 180, 12
     EDITTEXT IDC_EIT_CALL, 205, 11, 230, 16, ES_READONLY | ES_AUTOHSCROLL
-    LTEXT "Locator (automatisch)", -1, 12, 38, 180, 12
+    LTEXT "Locator (automatic)", -1, 12, 38, 180, 12
     EDITTEXT IDC_EIT_LOCATOR, 205, 35, 230, 16, ES_READONLY | ES_AUTOHSCROLL
-    LTEXT "Stad (max. 40 tekens)", -1, 12, 62, 180, 12
+    LTEXT "City (max. 40 characters)", -1, 12, 62, 180, 12
     EDITTEXT IDC_EIT_CITY, 205, 59, 230, 16, ES_AUTOHSCROLL
-    LTEXT "Operatornaam (max. 40 tekens)", -1, 12, 86, 180, 12
+    LTEXT "Operator name (max. 40 characters)", -1, 12, 86, 180, 12
     EDITTEXT IDC_EIT_OPERATOR, 205, 83, 230, 16, ES_AUTOHSCROLL
-    LTEXT "Stationsomschrijving (max. 240 tekens)", -1, 12, 110, 190, 12
+    LTEXT "Station description (max. 240 characters)", -1, 12, 110, 190, 12
     EDITTEXT IDC_EIT_DESCRIPTION, 205, 107, 230, 16, ES_AUTOHSCROLL
-    LTEXT "Schakel EIT in bij TS-export of UDP-uitvoer.\nBewaar via Config > Huidige instellingen opslaan.", IDC_EIT_STATUS, 12, 138, 423, 36
-    DEFPUSHBUTTON "Toepassen", IDOK, 290, 183, 70, 16
-    PUSHBUTTON "Annuleren", IDCANCEL, 365, 183, 70, 16
+    LTEXT "Enable EIT in TS export or UDP output.\nSave via Config > Save current settings.", IDC_EIT_STATUS, 12, 138, 423, 36
+    DEFPUSHBUTTON "Apply", IDOK, 290, 183, 70, 16
+    PUSHBUTTON "Cancel", IDCANCEL, 365, 183, 70, 16
 END
 
 IDD_TELETEXT DIALOGEX 0, 0, 390, 365
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Teletekst - pagina 100"
+CAPTION "Teletext - page 100"
 FONT 9, "Segoe UI"
 BEGIN
-    LTEXT "23 regels van 40 tekens. Gebruik Enter voor een nieuwe regel.\nLetters zonder accenten, cijfers en eenvoudige leestekens.\nDe pagina wordt opgeslagen met Opslaan.", -1, 12, 10, 366, 48
+    LTEXT "23 lines of 40 characters. Press Enter for a new line.\nUnaccented letters, digits and basic punctuation.\nSelect Save to store the page.", -1, 12, 10, 366, 48
     EDITTEXT IDC_TELETEXT_TEXT, 12, 66, 366, 228, ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_WANTRETURN | WS_VSCROLL | WS_HSCROLL
     LTEXT "", IDC_TELETEXT_STATUS, 12, 301, 366, 26
-    DEFPUSHBUTTON "Opslaan", IDOK, 254, 339, 58, 16
-    PUSHBUTTON "Annuleren", IDCANCEL, 320, 339, 58, 16
+    DEFPUSHBUTTON "Save", IDOK, 254, 339, 58, 16
+    PUSHBUTTON "Cancel", IDCANCEL, 320, 339, 58, 16
+END
+
+IDD_ABBREVIATIONS DIALOGEX 0, 0, 460, 350
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Abbreviations"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "Scroll down for more abbreviations.", -1, 12, 10, 436, 12
+    EDITTEXT IDC_ABBREVIATIONS_TEXT, 12, 28, 436, 286, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL
+    DEFPUSHBUTTON "Close", IDCANCEL, 378, 326, 70, 16
 END

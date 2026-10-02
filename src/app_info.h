@@ -4,4 +4,5 @@
 #define APP_AUTHOR "Rob Hardenberg, PE1ITR"
 const char *app_info_text(void);
 const char *app_codec_license(void);
+const char *app_abbreviations_text(void);
 #endif

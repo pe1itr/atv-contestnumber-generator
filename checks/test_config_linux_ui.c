@@ -7,7 +7,7 @@ static gboolean apply_teletext(gpointer unused) {
     GList *windows=gtk_window_list_toplevels();
     for (GList *p=windows;p;p=p->next) {
         GtkWidget *w=p->data;
-        if (g_strcmp0(gtk_window_get_title(GTK_WINDOW(w)),"Teletekst - pagina 100")) continue;
+        if (g_strcmp0(gtk_window_get_title(GTK_WINDOW(w)),"Teletext - page 100")) continue;
         GList *children=gtk_container_get_children(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(w))));
         GtkWidget *scroll=g_list_nth_data(children,1);
         GtkWidget *view=gtk_bin_get_child(GTK_BIN(scroll));
@@ -22,7 +22,7 @@ static gboolean apply_udp(gpointer unused) {
     GList *windows=gtk_window_list_toplevels();
     for (GList *p=windows;p;p=p->next) {
         GtkWidget *w=p->data;
-        if (g_strcmp0(gtk_window_get_title(GTK_WINDOW(w)),"DATV: UDP-uitvoer")) continue;
+        if (g_strcmp0(gtk_window_get_title(GTK_WINDOW(w)),"DATV: UDP output")) continue;
         GList *children=gtk_container_get_children(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(w))));
         GtkGrid *grid=GTK_GRID(children->data); g_list_free(children);
         gtk_entry_set_text(GTK_ENTRY(gtk_grid_get_child_at(grid,1,0)),"192.168.1.50");

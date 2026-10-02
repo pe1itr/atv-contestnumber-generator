@@ -11,10 +11,10 @@ static gboolean drive(gpointer unused) {
         GtkWidget *w=p->data;
         if (!gtk_widget_get_visible(w)) continue;
         const char *title=gtk_window_get_title(GTK_WINDOW(w));
-        if (g_strcmp0(title,"DATV: UDP-uitvoer") && g_strcmp0(title,"DATV: Beeld controleren")) continue;
+        if (g_strcmp0(title,"DATV: UDP output") && g_strcmp0(title,"DATV: Check image")) continue;
         GList *children=gtk_container_get_children(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(w))));
         GtkGrid *grid=GTK_GRID(children->data); g_list_free(children);
-        if (!strcmp(title,"DATV: UDP-uitvoer")) {
+        if (!strcmp(title,"DATV: UDP output")) {
             if (stage==0) {
                 gtk_entry_set_text(GTK_ENTRY(gtk_grid_get_child_at(grid,1,0)),"invalid");
                 gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,2)),115196);
@@ -29,10 +29,10 @@ static gboolean drive(gpointer unused) {
             if (value) {
                 qp=atoi(value+3); assert(qp>=24 && qp<=48);
                 assert(GTK_IS_DRAWING_AREA(gtk_grid_get_child_at(grid,0,4)));
-                assert(strstr(text,test_fps==4?"presentatietijd: 3000 ms":"presentatietijd: 1000 ms"));
-                assert(strstr(text,"Frameperiode:") && strstr(text,"zonder TS-overhead"));
-                const char *timing=strstr(text,"Eerste volledige beeld: ");
-                double ms=0; assert(timing && sscanf(timing,"Eerste volledige beeld: %lf ms",&ms)==1);
+                assert(strstr(text,test_fps==4?"presentation time: 3000 ms":"presentation time: 1000 ms"));
+                assert(strstr(text,"Frame period:") && strstr(text,"without TS overhead"));
+                const char *timing=strstr(text,"First complete image: ");
+                double ms=0; assert(timing && sscanf(timing,"First complete image: %lf ms",&ms)==1);
                 assert(ms>0 && ms<=1000);
                 GtkToggleButton *zoom=GTK_TOGGLE_BUTTON(gtk_grid_get_child_at(grid,0,2));
                 gtk_toggle_button_set_active(zoom,FALSE); gtk_toggle_button_set_active(zoom,TRUE);

@@ -80,18 +80,18 @@ static gboolean drive_dialogs(gpointer unused) {
         GtkWidget *w=p->data;
         if (!gtk_widget_get_visible(w)) continue;
         const char *title=gtk_window_get_title(GTK_WINDOW(w));
-        if (stage<0 && title && !strcmp(title,"EIT-programma-informatie")) {
+        if (stage<0 && title && !strcmp(title,"EIT programme information")) {
             GList *children=gtk_container_get_children(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(w))));
             GtkGrid *grid=GTK_GRID(children->data); g_list_free(children);
             assert(!gtk_editable_get_editable(GTK_EDITABLE(gtk_grid_get_child_at(grid,1,0))));
             assert(!strcmp(gtk_entry_get_text(GTK_ENTRY(gtk_grid_get_child_at(grid,1,1))),"JO21QK"));
-            gtk_entry_set_text(GTK_ENTRY(gtk_grid_get_child_at(grid,1,2)),stage==-3?"Eindhoven":"Annuleren");
+            gtk_entry_set_text(GTK_ENTRY(gtk_grid_get_child_at(grid,1,2)),stage==-3?"Eindhoven":"Cancel");
             gtk_entry_set_text(GTK_ENTRY(gtk_grid_get_child_at(grid,1,3)),"René");
             gtk_entry_set_text(GTK_ENTRY(gtk_grid_get_child_at(grid,1,4)),"70 cm ATV-station");
             gtk_dialog_response(GTK_DIALOG(w),stage==-3?GTK_RESPONSE_ACCEPT:GTK_RESPONSE_CANCEL);
             ++stage;
         }
-        if (stage>=10 && title && !strcmp(title,"DATV: UDP-uitvoer")) {
+        if (stage>=10 && title && !strcmp(title,"DATV: UDP output")) {
             assert(g_get_monotonic_time()<udp_deadline);
             GList *children=gtk_container_get_children(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(w))));
             GtkGrid *grid=GTK_GRID(children->data); g_list_free(children);
@@ -103,26 +103,28 @@ static gboolean drive_dialogs(gpointer unused) {
                 assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(port_field))==10000);
                 gtk_entry_set_text(GTK_ENTRY(ip),"999.1.2.3"); stage=11; gtk_dialog_response(GTK_DIALOG(w),1);
             } else if (stage==11) {
-                assert(strstr(status,"geldig"));
-                gtk_entry_set_text(GTK_ENTRY(ip),"127.0.0.1");
+                assert(strstr(status,"valid"));
+                gtk_button_clicked(GTK_BUTTON(gtk_grid_get_child_at(grid,2,0)));
+                assert(!strcmp(gtk_entry_get_text(GTK_ENTRY(ip)),"127.0.0.1"));
                 gtk_spin_button_set_value(GTK_SPIN_BUTTON(port_field),port);
                 stage=12; gtk_dialog_response(GTK_DIALOG(w),1);
             } else if (stage==12) {
                 receive_udp();
                 if (received>=4) {
-                    assert(strstr(status,"UDP-uitvoer actief")); assert(!gtk_widget_get_sensitive(ip));
+                    assert(strstr(status,"UDP output active")); assert(!gtk_widget_get_sensitive(ip));
+                    assert(!gtk_widget_get_sensitive(gtk_grid_get_child_at(grid,2,0)));
                     assert(!gtk_widget_get_sensitive(gtk_grid_get_child_at(grid,0,5)));
                     assert(!gtk_widget_get_sensitive(gtk_grid_get_child_at(grid,0,8)));
                     stage=13; gtk_dialog_response(GTK_DIALOG(w),2);
                 }
-            } else if (stage==13 && strstr(status,"UDP gestopt")) {
+            } else if (stage==13 && strstr(status,"UDP stopped")) {
                 assert(gtk_widget_get_sensitive(ip)); stage=14; gtk_dialog_response(GTK_DIALOG(w),1);
             } else if (stage==14) {
                 receive_udp();
                 if (received>=8) { stage=15; gtk_dialog_response(GTK_DIALOG(w),GTK_RESPONSE_CLOSE); }
             }
         }
-        if (stage==0 && title && !strcmp(title,"DATV: TS-proefbestand")) {
+        if (stage==0 && title && !strcmp(title,"DATV: TS test file")) {
             GList *children=gtk_container_get_children(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(w))));
             GtkGrid *grid=GTK_GRID(children->data);
             int values[]={60000,3,2,1};
@@ -166,7 +168,7 @@ int main(int argc,char **argv) {
     stage=0;
     g_signal_emit_by_name(app.ts_menu,"activate");
     gint64 deadline=g_get_monotonic_time()+15000000;
-    while (!strstr(gtk_label_get_text(GTK_LABEL(app.status)),"TS opgeslagen:")) {
+    while (!strstr(gtk_label_get_text(GTK_LABEL(app.status)),"TS saved:")) {
         assert(g_get_monotonic_time()<deadline);
         g_main_context_iteration(NULL,FALSE); g_usleep(1000);
     }

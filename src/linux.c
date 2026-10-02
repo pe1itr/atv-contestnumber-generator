@@ -136,7 +136,7 @@ static cairo_surface_t *render(Resolution r, const char *call, const char *code,
         draw_line(cr, code, w/2, h/100, w-m, h*9/100, small_size, PANGO_ALIGN_RIGHT, ebu_top ? &palette : NULL);
     if (show_sum && sum >= 0) {
         char label[32];
-        g_snprintf(label, sizeof(label), "Som=%d", sum);
+        g_snprintf(label, sizeof(label), "Sum=%d", sum);
         draw_line(cr, label, m, h*91/100, w/2, h*99/100, small_size, PANGO_ALIGN_LEFT, ebu_bottom ? &palette : NULL);
     }
     cairo_destroy(cr);
@@ -170,13 +170,13 @@ static gboolean pattern_mode(App *app) { return selected_mode(app)>IMAGE_CONTEST
 static gboolean save_jpeg(cairo_surface_t *surface, const char *path,
                            gboolean overwrite, GError **error) {
     if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_NOMEM, "Kan het beeld niet maken.");
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_NOMEM, "Cannot create the image.");
         return FALSE;
     }
     GdkPixbuf *pixels = gdk_pixbuf_get_from_surface(surface, 0, 0,
         cairo_image_surface_get_width(surface), cairo_image_surface_get_height(surface));
     if (!pixels) {
-        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_NOMEM, "Onvoldoende geheugen voor het beeld.");
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_NOMEM, "Not enough memory for the image.");
         return FALSE;
     }
     char *data = NULL;
@@ -204,7 +204,7 @@ static gboolean save_jpeg(cairo_surface_t *surface, const char *path,
     return TRUE;
 failure:
     g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
-                "Opslaan mislukt: %s", g_strerror(errno));
+                "Save failed: %s", g_strerror(errno));
     unlink(temporary);
     g_free(temporary);
     g_free(data);
@@ -243,7 +243,7 @@ static void new_code(GtkWidget *widget, gpointer data) {
     char code[5];
     do {
         if (!random_code(code)) {
-            gtk_label_set_text(GTK_LABEL(app->status), "Een nieuw nummer maken is mislukt. Probeer het opnieuw.");
+            gtk_label_set_text(GTK_LABEL(app->status), "Failed to generate a new number. Please try again.");
             return;
         }
     } while (!strcmp(code, gtk_entry_get_text(GTK_ENTRY(app->code))));
@@ -347,7 +347,7 @@ static void ts_worker(GTask *task, gpointer source, gpointer data, GCancellable 
     unlink(temporary); g_free(temporary);
     if (ok) g_task_return_boolean(task,TRUE);
     else g_task_return_new_error(task,G_IO_ERROR,G_IO_ERROR_FAILED,"%s",
-        error[0]?error:"TS opslaan is mislukt. Controleer pad, vrije ruimte en schrijfrechten.");
+        error[0]?error:"Failed to save TS. Check the path, free space and write permissions.");
 }
 static void ts_done(GObject *source, GAsyncResult *result, gpointer data) {
     (void)source;
@@ -357,7 +357,7 @@ static void ts_done(GObject *source, GAsyncResult *result, gpointer data) {
     gtk_widget_destroy(job->progress);
     if (!ok) { notify_error(job->app,error->message); g_error_free(error); }
     else {
-        char *message=g_strdup_printf("TS opgeslagen: %s (QP %d, %d beelden, grootste IDR %d bytes)",
+        char *message=g_strdup_printf("TS saved: %s (QP %d, %d frames, largest IDR %d bytes)",
             job->path,job->result.qp,job->result.frames,job->result.largest_idr);
         gtk_label_set_text(GTK_LABEL(job->app->status),message); g_free(message);
     }
@@ -370,10 +370,16 @@ static gboolean keep_progress(GtkWidget *widget, GdkEvent *event, gpointer data)
 #include "dvb_linux.h"
 typedef struct {
     App *app;
-    GtkWidget *dialog, *fields[6], *status, *eit, *teletext;
+    GtkWidget *dialog, *fields[6], *status, *eit, *teletext, *localhost;
     DvbControls dvb;
     DatvStream *stream;
 } UdpDialog;
+static void udp_set_localhost(GtkButton *button,gpointer data) {
+    (void)button; UdpDialog *d=data;
+    if (!gtk_widget_get_sensitive(d->fields[0])) return;
+    gtk_entry_set_text(GTK_ENTRY(d->fields[0]),"127.0.0.1");
+    gtk_widget_grab_focus(d->fields[0]);
+}
 static gboolean udp_poll(gpointer data) {
     UdpDialog *d=data;
     if (!d->stream) return G_SOURCE_CONTINUE;
@@ -382,6 +388,7 @@ static gboolean udp_poll(gpointer data) {
     gtk_label_set_text(GTK_LABEL(d->status),text);
     gboolean busy=status.state==DATV_PREPARING || status.state==DATV_RUNNING;
     for (int i=0;i<6;++i) gtk_widget_set_sensitive(d->fields[i],i!=2 && !busy);
+    gtk_widget_set_sensitive(d->localhost,!busy);
     gtk_widget_set_sensitive(d->dvb.box,!busy);
     gtk_widget_set_sensitive(d->eit,!busy);
     gtk_widget_set_sensitive(d->teletext,!busy);
@@ -400,7 +407,7 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     gboolean show=pattern_mode(app)||gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show));
     if (!validate(call,valid_call) || ((show||*locator) && !validate(locator,selected_mode(app)==IMAGE_FUBK?valid_fubk_locator:valid_locator)) ||
         (!pattern_mode(app) && !validate(gtk_entry_get_text(GTK_ENTRY(app->code)),valid_code))) {
-        notify_error(app,"Vul eerst een geldige roepnaam en locator in (FUBK: minimaal 6 locatortekens). De contestcode moet vier cijfers bevatten, niet alle vier gelijk en geen oplopende of aflopende reeks.");
+        notify_error(app,"Enter a valid callsign and locator first (FUBK: at least 6 locator characters). The contest code must have four digits, not all identical or in ascending or descending sequence.");
         g_free(call); g_free(locator); return;
     }
     g_free(locator);
@@ -409,16 +416,16 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     if (invalid) { notify_error(app,invalid); g_free(call); return; }
     cairo_surface_t *im=current_image(app);
     if (cairo_surface_status(im)!=CAIRO_STATUS_SUCCESS) {
-        notify_error(app,"Kan het beeld niet maken."); g_free(call); cairo_surface_destroy(im); return;
+        notify_error(app,"Cannot create the image."); g_free(call); cairo_surface_destroy(im); return;
     }
     UdpDialog d={0}; d.app=app;
-    d.dialog=gtk_dialog_new_with_buttons("DATV: UDP-uitvoer",GTK_WINDOW(app->window),GTK_DIALOG_MODAL,
-        "Beeld _controleren",4,"_Start",1,"S_top",2,"_Toepassen en sluiten",3,"_Sluiten",GTK_RESPONSE_CLOSE,NULL);
+    d.dialog=gtk_dialog_new_with_buttons("DATV: UDP output",GTK_WINDOW(app->window),GTK_DIALOG_MODAL,
+        "_Check image",4,"_Start",1,"S_top",2,"_Apply and close",3,"_Close",GTK_RESPONSE_CLOSE,NULL);
     GtkWidget *grid=gtk_grid_new();
     gtk_grid_set_row_spacing(GTK_GRID(grid),8); gtk_grid_set_column_spacing(GTK_GRID(grid),12);
     gtk_container_set_border_width(GTK_CONTAINER(grid),16);
     gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(d.dialog))),grid);
-    const char *labels[]={"IP-adres (IPv4)","Poort","Berekende TS-bitrate (bit/s)","Beelden per seconde","GOP (beelden; 1 = alleen IDR)","Transportbuffer (ms; meer = later beeld)"};
+    const char *labels[]={"IP address (IPv4)","Port","Calculated TS bitrate (bit/s)","Frames per second","GOP (frames; 1 = IDR only)","Transport buffer (ms; more = longer delay)"};
     int values[]={0,app->udp.port,app->udp.video.bitrate,app->udp.video.fps,app->udp.video.gop,datv_buffer_ms(app->udp.video)};
     int mins[]={0,1,0,1,1,1000}, maxs[]={0,65535,2000000,25,250,10000};
     for (int i=0;i<6;++i) {
@@ -432,17 +439,20 @@ static void output_udp(GtkWidget *widget, gpointer data) {
         }
         gtk_grid_attach(GTK_GRID(grid),label,0,i==5?10:i,1,1); gtk_grid_attach(GTK_GRID(grid),d.fields[i],1,i==5?10:i,1,1);
     }
+    d.localhost=gtk_button_new_with_label("Set localhost");
+    g_signal_connect(d.localhost,"clicked",G_CALLBACK(udp_set_localhost),&d);
+    gtk_grid_attach(GTK_GRID(grid),d.localhost,2,0,1,1);
     dvb_controls_init(&d.dvb,d.fields[2],app->udp_dvb);
     gtk_grid_attach(GTK_GRID(grid),d.dvb.box,0,5,3,1);
-    GtkWidget *note=gtk_label_new("Tip voor de contest: gebruik 4 fps en GOP 2.\n\nStart zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.");
+    GtkWidget *note=gtk_label_new("Contest tip: use 4 fps and GOP 2.\n\nStart transmits the current image without audio.\nStop and close this window to change the image. Closing also stops the stream.");
     gtk_grid_attach(GTK_GRID(grid),note,0,6,3,1);
-    d.eit=gtk_check_button_new_with_label("EIT-programma-informatie meesturen (Config → EIT)");
+    d.eit=gtk_check_button_new_with_label("Include EIT programme information (Config → EIT)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(d.eit),app->udp.video.eit_enabled);
     gtk_grid_attach(GTK_GRID(grid),d.eit,0,8,3,1);
-    d.teletext=gtk_check_button_new_with_label("Teletekstpagina 100 meesturen (tekst via Config → Teletekst)");
+    d.teletext=gtk_check_button_new_with_label("Include teletext page 100 (edit via Config → Teletext)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(d.teletext),app->teletext.enabled);
     gtk_grid_attach(GTK_GRID(grid),d.teletext,0,9,3,1);
-    d.status=gtk_label_new("Vul het IP-adres van Portsdown in en kies Start.");
+    d.status=gtk_label_new("Enter the Portsdown IP address and select Start.");
     gtk_label_set_line_wrap(GTK_LABEL(d.status),TRUE); gtk_label_set_max_width_chars(GTK_LABEL(d.status),65);
     gtk_label_set_xalign(GTK_LABEL(d.status),0); gtk_grid_attach(GTK_GRID(grid),d.status,0,7,3,1);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d.dialog),2,FALSE);
@@ -500,21 +510,21 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     gboolean show=pattern_mode(app)||gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show));
     if (!validate(call,valid_call) || ((show||*locator) && !validate(locator,selected_mode(app)==IMAGE_FUBK?valid_fubk_locator:valid_locator)) ||
         (!pattern_mode(app) && !validate(gtk_entry_get_text(GTK_ENTRY(app->code)),valid_code))) {
-        notify_error(app,"Vul eerst een geldige roepnaam en locator in (FUBK: minimaal 6 locatortekens). De contestcode moet vier cijfers bevatten, niet alle vier gelijk en geen oplopende of aflopende reeks.");
+        notify_error(app,"Enter a valid callsign and locator first (FUBK: at least 6 locator characters). The contest code must have four digits, not all identical or in ascending or descending sequence.");
         g_free(call); g_free(locator); return;
     }
     g_free(locator);
     Resolution r=selected_resolution(app);
     const char *invalid=datv_validate(app->datv,r.width,r.height);
     if (invalid) { notify_error(app,invalid); g_free(call); return; }
-    GtkWidget *dialog=gtk_dialog_new_with_buttons("DATV: TS-proefbestand",GTK_WINDOW(app->window),
-        GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,"_Annuleren",GTK_RESPONSE_CANCEL,
-        "_Verder",GTK_RESPONSE_ACCEPT,NULL);
+    GtkWidget *dialog=gtk_dialog_new_with_buttons("DATV: TS test file",GTK_WINDOW(app->window),
+        GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,"_Cancel",GTK_RESPONSE_CANCEL,
+        "_Continue",GTK_RESPONSE_ACCEPT,NULL);
     GtkWidget *grid=gtk_grid_new();
     gtk_grid_set_row_spacing(GTK_GRID(grid),8); gtk_grid_set_column_spacing(GTK_GRID(grid),12);
     gtk_container_set_border_width(GTK_CONTAINER(grid),16);
     gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))),grid);
-    const char *labels[]={"Berekende TS-bitrate (bit/s)","Beeldduur (seconden)","Beelden per seconde","GOP (beelden; 1 = alleen IDR)","Transportbuffer (ms; meer = later beeld)"};
+    const char *labels[]={"Calculated TS bitrate (bit/s)","Image duration (seconds)","Frames per second","GOP (frames; 1 = IDR only)","Transport buffer (ms; more = longer delay)"};
     int values[]={app->datv.bitrate,app->datv.seconds,app->datv.fps,app->datv.gop,datv_buffer_ms(app->datv)};
     int minimum[]={0,1,1,1,1000}, maximum[]={2000000,60,25,250,10000};
     GtkWidget *fields[5];
@@ -527,12 +537,12 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     DvbControls radio_controls;
     dvb_controls_init(&radio_controls,fields[0],app->ts_dvb);
     gtk_grid_attach(GTK_GRID(grid),radio_controls.box,0,4,3,1);
-    GtkWidget *note=gtk_label_new("Huidig beeld, zonder audio. Service = roepnaam; ID = 1.\nDe transportbuffer bepaalt de extra aanloop voor de decoder.");
+    GtkWidget *note=gtk_label_new("Current image, no audio. Service = callsign; ID = 1.\nThe transport buffer sets the decoder lead-in time.");
     gtk_grid_attach(GTK_GRID(grid),note,0,5,3,1);
-    GtkWidget *eit=gtk_check_button_new_with_label("EIT-programma-informatie meesturen (Config → EIT)");
+    GtkWidget *eit=gtk_check_button_new_with_label("Include EIT programme information (Config → EIT)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(eit),app->datv.eit_enabled);
     gtk_grid_attach(GTK_GRID(grid),eit,0,6,3,1);
-    GtkWidget *teletext=gtk_check_button_new_with_label("Teletekstpagina 100 meesturen (tekst via Config → Teletekst)");
+    GtkWidget *teletext=gtk_check_button_new_with_label("Include teletext page 100 (edit via Config → Teletext)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(teletext),app->teletext.enabled);
     gtk_grid_attach(GTK_GRID(grid),teletext,0,7,3,1);
     gtk_widget_show_all(dialog);
@@ -552,8 +562,8 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     app->teletext.enabled=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(teletext));
     app->datv.teletext.enabled=app->teletext.enabled;
     gtk_widget_destroy(dialog);
-    GtkWidget *picker=gtk_file_chooser_dialog_new("TS opslaan",GTK_WINDOW(app->window),GTK_FILE_CHOOSER_ACTION_SAVE,
-        "_Annuleren",GTK_RESPONSE_CANCEL,"_Opslaan",GTK_RESPONSE_ACCEPT,NULL);
+    GtkWidget *picker=gtk_file_chooser_dialog_new("Save TS",GTK_WINDOW(app->window),GTK_FILE_CHOOSER_ACTION_SAVE,
+        "_Cancel",GTK_RESPONSE_CANCEL,"_Save",GTK_RESPONSE_ACCEPT,NULL);
     GtkFileChooser *chooser=GTK_FILE_CHOOSER(picker);
     gtk_file_chooser_set_local_only(chooser,TRUE);
     gtk_file_chooser_set_current_folder(chooser,app->directory);
@@ -574,14 +584,14 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     gboolean overwrite=g_file_test(path,G_FILE_TEST_EXISTS);
     if (overwrite) {
         GtkWidget *confirm=gtk_message_dialog_new(GTK_WINDOW(app->window),GTK_DIALOG_MODAL,
-            GTK_MESSAGE_QUESTION,GTK_BUTTONS_YES_NO,"%s bestaat al. Wil je dit bestand vervangen?",path);
+            GTK_MESSAGE_QUESTION,GTK_BUTTONS_YES_NO,"%s already exists. Do you want to replace it?",path);
         gtk_dialog_set_default_response(GTK_DIALOG(confirm),GTK_RESPONSE_NO);
         int answer=gtk_dialog_run(GTK_DIALOG(confirm)); gtk_widget_destroy(confirm);
         if (answer!=GTK_RESPONSE_YES) { g_free(call); g_free(path); return; }
     }
     cairo_surface_t *image=current_image(app);
     if (cairo_surface_status(image)!=CAIRO_STATUS_SUCCESS) {
-        notify_error(app,"Kan het beeld niet maken."); cairo_surface_destroy(image); g_free(call); g_free(path); return;
+        notify_error(app,"Cannot create the image."); cairo_surface_destroy(image); g_free(call); g_free(path); return;
     }
     TsJob *job=g_new0(TsJob,1);
     job->app=app; job->call=call; job->path=path; job->image=image; job->settings=app->datv;
@@ -589,7 +599,7 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     char *loc=entry_text(app->locator); g_strlcpy(job->settings.locator,loc,sizeof(job->settings.locator)); g_free(loc);
     job->overwrite=overwrite;
     job->progress=gtk_message_dialog_new(GTK_WINDOW(app->window),GTK_DIALOG_MODAL,
-        GTK_MESSAGE_INFO,GTK_BUTTONS_NONE,"TS maken en bitrate controleren...");
+        GTK_MESSAGE_INFO,GTK_BUTTONS_NONE,"Creating TS and checking bitrate...");
     g_signal_connect(job->progress,"delete-event",G_CALLBACK(keep_progress),NULL);
     gtk_widget_show(job->progress);
     GTask *task=g_task_new(NULL,NULL,ts_done,job); g_task_set_task_data(task,job,NULL);
@@ -605,16 +615,16 @@ static void generate(GtkWidget *widget, gpointer data) {
     App *app = data;
     char *call = entry_text(app->call), *locator = entry_text(app->locator);
     if (!validate(call, valid_call)) {
-        notify_error(app, "Vul een roepnaam in met letters en cijfers, eventueel met / (3 tot 24 tekens).");
+        notify_error(app, "Enter a callsign using letters and digits, optionally with / (3 to 24 characters).");
         goto cleanup;
     }
     gboolean pm = pattern_mode(app);
     if ((pm || locator[0] || gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show))) && !validate(locator, selected_mode(app)==IMAGE_FUBK?valid_fubk_locator:valid_locator)) {
-        notify_error(app, "Vul een geldige Maidenheadlocator in (4, 6, 8, 10 of 12 tekens), bijvoorbeeld JO21QK. FUBK vereist minimaal 6 tekens.");
+        notify_error(app, "Enter a valid Maidenhead locator (4, 6, 8, 10 or 12 characters), e.g. JO21QK. FUBK requires at least 6 characters.");
         goto cleanup;
     }
     if (!pm && !validate(gtk_entry_get_text(GTK_ENTRY(app->code)), valid_code)) {
-        notify_error(app, "Vul vier cijfers in; niet alle vier gelijk en geen oplopende of aflopende reeks (zoals 4567 of 5432)."); goto cleanup;
+        notify_error(app, "Enter four digits; not all identical or in ascending or descending sequence (such as 4567 or 5432)."); goto cleanup;
     }
     gtk_entry_set_text(GTK_ENTRY(app->call), call);
     gtk_entry_set_text(GTK_ENTRY(app->locator), locator);
@@ -636,15 +646,15 @@ static void generate(GtkWidget *widget, gpointer data) {
     g_free(locator_suffix); g_free(mode_name);
     char *path = g_build_filename(app->directory, name, NULL);
     if (widget == app->export_as_menu) {
-        GtkWidget *picker = gtk_file_chooser_dialog_new("Exporteren naar...", GTK_WINDOW(app->window),
-            GTK_FILE_CHOOSER_ACTION_SAVE, "_Annuleren", GTK_RESPONSE_CANCEL,
-            "_Opslaan", GTK_RESPONSE_ACCEPT, NULL);
+        GtkWidget *picker = gtk_file_chooser_dialog_new("Export as...", GTK_WINDOW(app->window),
+            GTK_FILE_CHOOSER_ACTION_SAVE, "_Cancel", GTK_RESPONSE_CANCEL,
+            "_Save", GTK_RESPONSE_ACCEPT, NULL);
         GtkFileChooser *chooser = GTK_FILE_CHOOSER(picker);
         gtk_file_chooser_set_local_only(chooser, TRUE);
         gtk_file_chooser_set_current_folder(chooser, app->directory);
         gtk_file_chooser_set_current_name(chooser, name);
         GtkFileFilter *filter = gtk_file_filter_new();
-        gtk_file_filter_set_name(filter, "JPG-afbeeldingen (*.jpg;*.jpeg)");
+        gtk_file_filter_set_name(filter, "JPG images (*.jpg;*.jpeg)");
         gtk_file_filter_add_mime_type(filter, "image/jpeg");
         gtk_file_chooser_add_filter(chooser, filter);
         int answer = gtk_dialog_run(GTK_DIALOG(picker));
@@ -663,7 +673,7 @@ static void generate(GtkWidget *widget, gpointer data) {
     gboolean overwrite = g_file_test(path, G_FILE_TEST_EXISTS);
     if (overwrite) {
         GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(app->window), GTK_DIALOG_MODAL,
-            GTK_MESSAGE_QUESTION, GTK_BUTTONS_YES_NO, "%s bestaat al. Wil je dit bestand vervangen?", path);
+            GTK_MESSAGE_QUESTION, GTK_BUTTONS_YES_NO, "%s already exists. Do you want to replace it?", path);
         gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_NO);
         int answer = gtk_dialog_run(GTK_DIALOG(dialog));
         gtk_widget_destroy(dialog);
@@ -675,7 +685,7 @@ static void generate(GtkWidget *widget, gpointer data) {
         notify_error(app, error->message);
         g_clear_error(&error);
     } else {
-        char *message = g_strdup_printf("Opgeslagen: %s", path);
+        char *message = g_strdup_printf("Saved: %s", path);
         gtk_label_set_text(GTK_LABEL(app->status), message);
         g_free(message);
     }
@@ -695,12 +705,37 @@ static void attach_field(GtkWidget *grid, const char *label, GtkWidget *field, i
     gtk_grid_attach(GTK_GRID(grid), field, 0, row+1, 1, 1);
 }
 
+static void show_abbreviations(GtkWidget *widget,gpointer data) {
+    (void)widget; App *app=data;
+    GtkWidget *dialog=gtk_dialog_new_with_buttons("Abbreviations",GTK_WINDOW(app->window),
+        GTK_DIALOG_MODAL,"_Close",GTK_RESPONSE_CLOSE,NULL);
+    gtk_window_set_default_size(GTK_WINDOW(dialog),720,600);
+    GtkWidget *content=gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    GtkWidget *hint=gtk_label_new("Scroll down for more abbreviations.");
+    gtk_widget_set_halign(hint,GTK_ALIGN_START);
+    gtk_widget_set_margin_start(hint,12); gtk_widget_set_margin_top(hint,12);
+    gtk_box_pack_start(GTK_BOX(content),hint,FALSE,FALSE,0);
+    GtkWidget *scroll=gtk_scrolled_window_new(NULL,NULL);
+    gtk_scrolled_window_set_overlay_scrolling(GTK_SCROLLED_WINDOW(scroll),FALSE);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll),GTK_POLICY_NEVER,GTK_POLICY_ALWAYS);
+    gtk_container_set_border_width(GTK_CONTAINER(scroll),12);
+    GtkWidget *view=gtk_text_view_new();
+    gtk_text_view_set_editable(GTK_TEXT_VIEW(view),FALSE);
+    gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(view),FALSE);
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(view),GTK_WRAP_WORD_CHAR);
+    gtk_text_view_set_left_margin(GTK_TEXT_VIEW(view),8);
+    gtk_text_view_set_right_margin(GTK_TEXT_VIEW(view),8);
+    gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(view)),app_abbreviations_text(),-1);
+    gtk_container_add(GTK_CONTAINER(scroll),view);
+    gtk_box_pack_start(GTK_BOX(gtk_dialog_get_content_area(GTK_DIALOG(dialog))),scroll,TRUE,TRUE,0);
+    gtk_widget_show_all(dialog); gtk_dialog_run(GTK_DIALOG(dialog)); gtk_widget_destroy(dialog);
+}
 static void show_about(GtkWidget *widget, gpointer data) {
     (void)widget;
     App *app = data;
     GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(app->window), GTK_DIALOG_MODAL,
         GTK_MESSAGE_INFO, GTK_BUTTONS_CLOSE, "%s", app_info_text());
-    gtk_window_set_title(GTK_WINDOW(dialog), "Over dit programma");
+    gtk_window_set_title(GTK_WINDOW(dialog), "About");
     gtk_dialog_run(GTK_DIALOG(dialog));
     gtk_widget_destroy(dialog);
 }
@@ -708,7 +743,7 @@ static void show_codec_license(GtkWidget *widget, gpointer data) {
     (void)widget; App *app=data;
     GtkWidget *dialog=gtk_message_dialog_new(GTK_WINDOW(app->window),GTK_DIALOG_MODAL,
         GTK_MESSAGE_INFO,GTK_BUTTONS_CLOSE,"%s",app_codec_license());
-    gtk_window_set_title(GTK_WINDOW(dialog),"OpenH264-licentie");
+    gtk_window_set_title(GTK_WINDOW(dialog),"OpenH264 licence");
     gtk_dialog_run(GTK_DIALOG(dialog)); gtk_widget_destroy(dialog);
 }
 
@@ -759,11 +794,11 @@ static void apply_config(App *app, const AppConfig *s) {
 }
 static void edit_teletext(GtkWidget *widget, gpointer data) {
     (void)widget; App *app=data;
-    GtkWidget *dialog=gtk_dialog_new_with_buttons("Teletekst - pagina 100",GTK_WINDOW(app->window),
-        GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,"_Annuleren",GTK_RESPONSE_CANCEL,"_Opslaan",GTK_RESPONSE_ACCEPT,NULL);
+    GtkWidget *dialog=gtk_dialog_new_with_buttons("Teletext - page 100",GTK_WINDOW(app->window),
+        GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,"_Cancel",GTK_RESPONSE_CANCEL,"_Save",GTK_RESPONSE_ACCEPT,NULL);
     GtkWidget *box=gtk_dialog_get_content_area(GTK_DIALOG(dialog));
     gtk_container_set_border_width(GTK_CONTAINER(box),12);
-    GtkWidget *note=gtk_label_new("23 regels van 40 tekens. Gebruik Enter voor een nieuwe regel.\nLetters zonder accenten, cijfers en eenvoudige leestekens.");
+    GtkWidget *note=gtk_label_new("23 lines of 40 characters. Press Enter for a new line.\nUnaccented letters, digits and basic punctuation.");
     gtk_box_pack_start(GTK_BOX(box),note,FALSE,FALSE,4);
     GtkWidget *scroll=gtk_scrolled_window_new(NULL,NULL), *view=gtk_text_view_new();
     gtk_text_view_set_monospace(GTK_TEXT_VIEW(view),TRUE);
@@ -789,19 +824,19 @@ static void edit_teletext(GtkWidget *widget, gpointer data) {
         gboolean saved=config_save(path,&settings); g_free(path);
         if (!saved) {
             app->teletext=previous;
-            gtk_label_set_text(GTK_LABEL(status),"Opslaan mislukt. Controleer schrijfrechten naast het programma.");
+            gtk_label_set_text(GTK_LABEL(status),"Save failed. Check write permissions in the application directory.");
             continue;
         }
-        gtk_label_set_text(GTK_LABEL(app->status),"Teletekstpagina opgeslagen in atv-contestnummer.conf.");
+        gtk_label_set_text(GTK_LABEL(app->status),"Teletext page saved to atv-contestnummer.conf.");
         break;
     }
     gtk_widget_destroy(dialog);
 }
 static void edit_eit(GtkWidget *widget, gpointer data) {
     (void)widget; App *app=data;
-    GtkWidget *dialog=gtk_dialog_new_with_buttons("EIT-programma-informatie",GTK_WINDOW(app->window),
-        GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,"_Annuleren",GTK_RESPONSE_CANCEL,
-        "_Toepassen",GTK_RESPONSE_ACCEPT,NULL);
+    GtkWidget *dialog=gtk_dialog_new_with_buttons("EIT programme information",GTK_WINDOW(app->window),
+        GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,"_Cancel",GTK_RESPONSE_CANCEL,
+        "_Apply",GTK_RESPONSE_ACCEPT,NULL);
     GtkWidget *grid=gtk_grid_new();
     gtk_grid_set_row_spacing(GTK_GRID(grid),8); gtk_grid_set_column_spacing(GTK_GRID(grid),12);
     gtk_container_set_border_width(GTK_CONTAINER(grid),16);
@@ -818,8 +853,8 @@ static void edit_eit(GtkWidget *widget, gpointer data) {
     gtk_entry_set_width_chars(GTK_ENTRY(description),48);
     gtk_entry_set_text(GTK_ENTRY(city),app->station.city);
     gtk_entry_set_text(GTK_ENTRY(description),app->station.description);
-    const char *labels[]={"Roepnaam (automatisch)","Locator (automatisch)","_Stad (max. 40 tekens)",
-        "_Operatornaam (max. 40 tekens)","Stations_omschrijving (max. 240 tekens)"};
+    const char *labels[]={"Callsign (automatic)","Locator (automatic)","_City (max. 40 characters)",
+        "_Operator name (max. 40 characters)","Station _description (max. 240 characters)"};
     GtkWidget *fields[]={call,locator,city,operator_name,description};
     for (int i=0;i<5;++i) {
         GtkWidget *label=gtk_label_new_with_mnemonic(labels[i]);
@@ -828,7 +863,7 @@ static void edit_eit(GtkWidget *widget, gpointer data) {
         gtk_grid_attach(GTK_GRID(grid),label,0,i,1,1);
         gtk_grid_attach(GTK_GRID(grid),fields[i],1,i,1,1);
     }
-    GtkWidget *note=gtk_label_new("Schakel EIT in bij TS-export of UDP-uitvoer.\nBewaar via Config → Huidige instellingen opslaan.");
+    GtkWidget *note=gtk_label_new("Enable EIT in TS export or UDP output.\nSave via Config → Save current settings.");
     gtk_grid_attach(GTK_GRID(grid),note,0,5,2,1);
     gtk_widget_show_all(dialog);
     while (gtk_dialog_run(GTK_DIALOG(dialog))==GTK_RESPONSE_ACCEPT) {
@@ -846,9 +881,9 @@ static void save_config(GtkWidget *widget, gpointer data) {
     (void)widget; App *app=data; AppConfig s=capture_config(app);
     char *path=g_build_filename(app->directory,CONFIG_FILENAME,NULL);
     if (config_save(path,&s)) {
-        char *message=g_strdup_printf("Instellingen opgeslagen in %s",path);
+        char *message=g_strdup_printf("Settings saved to %s",path);
         gtk_label_set_text(GTK_LABEL(app->status),message); g_free(message);
-    } else notify_error(app,"Instellingen opslaan mislukt. Controleer de invoer en schrijfrechten naast het programma.");
+    } else notify_error(app,"Failed to save settings. Check the input and write permissions in the application directory.");
     g_free(path);
 }
 static void load_config(App *app) {
@@ -856,15 +891,15 @@ static void load_config(App *app) {
     int result=config_load(path,&s); g_free(path);
     if (result==1) {
         apply_config(app,&s);
-        gtk_label_set_text(GTK_LABEL(app->status),"Opgeslagen instellingen geladen. UDP-uitvoer staat uit.");
+        gtk_label_set_text(GTK_LABEL(app->status),"Saved settings loaded. UDP output is off.");
     } else if (result<0) {
-        notify_error(app,"Het configuratiebestand is ongeldig of onleesbaar. De standaardinstellingen worden gebruikt.");
+        notify_error(app,"The configuration file is invalid or unreadable. Using default settings.");
     }
 }
 
 static void create_ui(App *app) {
     app->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(app->window), "ATV contestnummer generator");
+    gtk_window_set_title(GTK_WINDOW(app->window), "ATV contest number generator");
     gtk_window_set_default_size(GTK_WINDOW(app->window), 940, 650);
     GtkWidget *layout = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     GtkWidget *menubar = gtk_menu_bar_new();
@@ -876,14 +911,14 @@ static void create_ui(App *app) {
     app->ts_dvb=app->udp_dvb=dvb_defaults();
     app->datv.bitrate=app->udp.video.bitrate=dvb_bitrate(app->ts_dvb);
     GtkWidget *config=gtk_menu_item_new_with_label("Config"), *config_menu=gtk_menu_new();
-    GtkWidget *level1=gtk_radio_menu_item_new_with_label(NULL,"Genius level 1 (standaard)");
+    GtkWidget *level1=gtk_radio_menu_item_new_with_label(NULL,"Genius level 1 (default)");
     GtkWidget *level2=gtk_radio_menu_item_new_with_label_from_widget(GTK_RADIO_MENU_ITEM(level1),"Genius level 2");
     app->level1=level1; app->level2=level2;
-    GtkWidget *save=gtk_menu_item_new_with_label("Huidige instellingen opslaan");
+    GtkWidget *save=gtk_menu_item_new_with_label("Save current settings");
     g_signal_connect(save,"activate",G_CALLBACK(save_config),app);
     gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),level1); gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),level2);
     gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),gtk_separator_menu_item_new());
-    GtkWidget *ttx_item=gtk_menu_item_new_with_label("Teletekst...");
+    GtkWidget *ttx_item=gtk_menu_item_new_with_label("Teletext...");
     g_signal_connect(ttx_item,"activate",G_CALLBACK(edit_teletext),app);
     gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),ttx_item);
     GtkWidget *eit_item=gtk_menu_item_new_with_label("EIT...");
@@ -891,17 +926,17 @@ static void create_ui(App *app) {
     gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),eit_item);
     gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),save);
     gtk_menu_item_set_submenu(GTK_MENU_ITEM(config),config_menu);
-    app->ts_menu=gtk_menu_item_new_with_label("Exporteer TS-proefbestand...");
+    app->ts_menu=gtk_menu_item_new_with_label("Export TS test file...");
     gtk_widget_set_no_show_all(app->ts_menu,TRUE);
-    app->udp_menu=gtk_menu_item_new_with_label("DATV UDP-uitvoer...");
+    app->udp_menu=gtk_menu_item_new_with_label("DATV UDP output...");
     gtk_widget_set_no_show_all(app->udp_menu,TRUE);
     g_signal_connect(app->udp_menu,"activate",G_CALLBACK(output_udp),app);
     g_signal_connect(level2,"toggled",G_CALLBACK(genius_changed),app);
     g_signal_connect(app->ts_menu,"activate",G_CALLBACK(export_ts),app);
-    app->export_menu = gtk_menu_item_new_with_mnemonic("_Exporteer JPG");
-    app->export_as_menu = gtk_menu_item_new_with_mnemonic("Exporteren _naar...");
+    app->export_menu = gtk_menu_item_new_with_mnemonic("_Export JPG");
+    app->export_as_menu = gtk_menu_item_new_with_mnemonic("Export _as...");
     app->quit_menu = gtk_menu_item_new_with_mnemonic("_Quit");
-    app->about_menu = gtk_menu_item_new_with_mnemonic("_Over dit programma");
+    app->about_menu = gtk_menu_item_new_with_mnemonic("_About");
     gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), app->export_menu);
     gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), app->export_as_menu);
     gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), app->ts_menu);
@@ -909,7 +944,10 @@ static void create_ui(App *app) {
     gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), gtk_separator_menu_item_new());
     gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), app->quit_menu);
     gtk_menu_shell_append(GTK_MENU_SHELL(info_menu), app->about_menu);
-    GtkWidget *license=gtk_menu_item_new_with_label("OpenH264-licentie");
+    GtkWidget *abbreviations=gtk_menu_item_new_with_label("Abbreviations...");
+    gtk_menu_shell_append(GTK_MENU_SHELL(info_menu),abbreviations);
+    g_signal_connect(abbreviations,"activate",G_CALLBACK(show_abbreviations),app);
+    GtkWidget *license=gtk_menu_item_new_with_label("OpenH264 licence");
     gtk_menu_shell_append(GTK_MENU_SHELL(info_menu),license);
     g_signal_connect(license,"activate",G_CALLBACK(show_codec_license),app);
     gtk_menu_item_set_submenu(GTK_MENU_ITEM(file), file_menu);
@@ -926,7 +964,7 @@ static void create_ui(App *app) {
     gtk_container_set_border_width(GTK_CONTAINER(grid), 18);
     gtk_box_pack_start(GTK_BOX(layout), grid, TRUE, TRUE, 0);
     GtkWidget *mode_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-    GtkWidget *mode_label = gtk_label_new_with_mnemonic("Beeld_type");
+    GtkWidget *mode_label = gtk_label_new_with_mnemonic("Image _type");
     app->mode = gtk_combo_box_text_new();
     for (int i=0; i<IMAGE_MODE_COUNT; ++i) {
         char *name=utf8(image_modes[image_mode_order[i]]);
@@ -946,19 +984,19 @@ static void create_ui(App *app) {
     gtk_entry_set_placeholder_text(GTK_ENTRY(app->locator), "JO21QK");
     gtk_entry_set_text(GTK_ENTRY(app->code), "----");
     gtk_entry_set_input_purpose(GTK_ENTRY(app->code), GTK_INPUT_PURPOSE_DIGITS);
-    attach_field(fields, "_Roepnaam", app->call, 0);
+    attach_field(fields, "_Callsign", app->call, 0);
     attach_field(fields, "_QTH locator", app->locator, 2);
-    app->show = gtk_check_button_new_with_mnemonic("_Locator in beeld");
+    app->show = gtk_check_button_new_with_mnemonic("Show _locator");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->show), TRUE);
     gtk_grid_attach(GTK_GRID(fields), app->show, 0, 4, 1, 1);
-    app->automatic = gtk_radio_button_new_with_mnemonic(NULL, "_Automatisch nummer");
-    app->manual = gtk_radio_button_new_with_mnemonic_from_widget(GTK_RADIO_BUTTON(app->automatic), "Zelf _intypen");
+    app->automatic = gtk_radio_button_new_with_mnemonic(NULL, "_Automatic number");
+    app->manual = gtk_radio_button_new_with_mnemonic_from_widget(GTK_RADIO_BUTTON(app->automatic), "_Manual entry");
     gtk_grid_attach(GTK_GRID(fields), app->automatic, 0, 5, 1, 1);
     gtk_grid_attach(GTK_GRID(fields), app->manual, 0, 6, 1, 1);
     GtkWidget *code_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     gtk_entry_set_width_chars(GTK_ENTRY(app->code), 5);
     gtk_entry_set_max_width_chars(GTK_ENTRY(app->code), 5);
-    app->new_code = gtk_button_new_with_mnemonic("_Nieuw nummer");
+    app->new_code = gtk_button_new_with_mnemonic("_New number");
     gtk_box_pack_start(GTK_BOX(code_row), app->code, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(code_row), app->new_code, TRUE, TRUE, 0);
     gtk_grid_attach(GTK_GRID(fields), code_row, 0, 7, 1, 1);
@@ -966,8 +1004,8 @@ static void create_ui(App *app) {
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app->aspect), "4:3");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app->aspect), "16:9");
     gtk_combo_box_set_active(GTK_COMBO_BOX(app->aspect), 0);
-    attach_field(fields, "_Beeldverhouding", app->aspect, 8);
-    attach_field(fields, "Re_solutie", app->resolution, 10);
+    attach_field(fields, "_Aspect ratio", app->aspect, 8);
+    attach_field(fields, "Re_solution", app->resolution, 10);
     app->band = gtk_combo_box_text_new();
     for (int i=0; bands[i]; ++i) {
         char *band = utf8(bands[i]);
@@ -975,14 +1013,14 @@ static void create_ui(App *app) {
         g_free(band);
     }
     gtk_combo_box_set_active(GTK_COMBO_BOX(app->band), 3);
-    attach_field(fields, "_Frequentieband", app->band, 12);
-    app->inverse = gtk_check_button_new_with_mnemonic("In_verse (kleuren omwisselen)");
+    attach_field(fields, "Frequency _band", app->band, 12);
+    app->inverse = gtk_check_button_new_with_mnemonic("In_vert colours");
     gtk_grid_attach(GTK_GRID(fields), app->inverse, 0, 14, 1, 1);
-    app->show_sum = gtk_check_button_new_with_mnemonic("Cijfer_som in beeld");
+    app->show_sum = gtk_check_button_new_with_mnemonic("Show digit _sum");
     gtk_grid_attach(GTK_GRID(fields), app->show_sum, 0, 15, 1, 1);
-    app->top_code = gtk_check_button_new_with_mnemonic("Code rechts_boven (DATV)");
+    app->top_code = gtk_check_button_new_with_mnemonic("Code at top _right (DATV)");
     gtk_grid_attach(GTK_GRID(fields), app->top_code, 0, 16, 1, 1);
-    app->blue_yellow = gtk_check_button_new_with_mnemonic("Blauw/_geel");
+    app->blue_yellow = gtk_check_button_new_with_mnemonic("Blue/_yellow");
     gtk_grid_attach(GTK_GRID(fields), app->blue_yellow, 0, 17, 1, 1);
     char *advice_text = utf8(contest_color_advice);
     GtkWidget *advice = gtk_label_new(advice_text);
@@ -992,20 +1030,20 @@ static void create_ui(App *app) {
     gtk_label_set_max_width_chars(GTK_LABEL(advice), 30);
     gtk_grid_attach(GTK_GRID(fields), advice, 0, 18, 2, 1);
     GtkWidget *ebu_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    app->ebu_top = gtk_check_button_new_with_mnemonic("EBU b_oven");
-    app->ebu_bottom = gtk_check_button_new_with_mnemonic("EBU o_nder");
+    app->ebu_top = gtk_check_button_new_with_mnemonic("EBU _top");
+    app->ebu_bottom = gtk_check_button_new_with_mnemonic("EBU _bottom");
     gtk_box_pack_start(GTK_BOX(ebu_row), app->ebu_top, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(ebu_row), app->ebu_bottom, FALSE, FALSE, 0);
     gtk_grid_attach(GTK_GRID(fields), ebu_row, 0, 19, 2, 1);
-    GtkWidget *frame = gtk_frame_new("Voorbeeld");
+    GtkWidget *frame = gtk_frame_new("Preview");
     app->preview = gtk_drawing_area_new();
     gtk_widget_set_size_request(app->preview, 480, 360);
     gtk_widget_set_hexpand(frame, TRUE); gtk_widget_set_vexpand(frame, TRUE);
     gtk_container_add(GTK_CONTAINER(frame), app->preview);
     gtk_grid_attach(GTK_GRID(grid), frame, 1, 1, 1, 1);
-    GtkWidget *button = gtk_button_new_with_mnemonic("_Exporteer JPG");
+    GtkWidget *button = gtk_button_new_with_mnemonic("_Export JPG");
     gtk_grid_attach(GTK_GRID(grid), button, 0, 2, 1, 1);
-    app->status = gtk_label_new("Vul je gegevens in. JPG-bestanden worden naast het programma opgeslagen.");
+    app->status = gtk_label_new("Enter your details. JPG files are saved in the application directory.");
     gtk_label_set_line_wrap(GTK_LABEL(app->status), TRUE);
     gtk_label_set_max_width_chars(GTK_LABEL(app->status), 65);
     gtk_label_set_xalign(GTK_LABEL(app->status), 0);
@@ -1092,10 +1130,10 @@ int main(int argc, char **argv) {
     if (argc>=3 && (!strcmp(argv[1],"--ts-test") || !strcmp(argv[1],"--ts-ebu-test") || !strcmp(argv[1],"--ts-fubk-test") || !strcmp(argv[1],"--ts-pm5644-test"))) {
         DatvSettings s; int w,h;
         if (!datv_test_options(argc-3,(const char *const *)(argv+3),&s,&w,&h)) {
-            g_printerr("Ongeldige TS-testinstellingen.\n"); return 1;
+            g_printerr("Invalid TS test settings.\n"); return 1;
         }
         cairo_surface_t *im=!strcmp(argv[1],"--ts-pm5644-test") ? render_pattern((Resolution){w,h},"PE1ITR","JO21QK86DV",IMAGE_PM5644) : !strcmp(argv[1],"--ts-fubk-test") ? render_pattern((Resolution){w,h},"PE1ITR","JO21QK86DV",IMAGE_FUBK) : render((Resolution){w,h},"PE1ITR","1957","JO21QK",TRUE,"436 MHz",FALSE,TRUE,TRUE,FALSE, !strcmp(argv[1],"--ts-ebu-test"), !strcmp(argv[1],"--ts-ebu-test"));
-        FILE *f=fopen(argv[2],"wbx"); char error[256]="Kan geen nieuw TS-bestand maken (bestaat het al?).";
+        FILE *f=fopen(argv[2],"wbx"); char error[256]="Cannot create a new TS file (does it already exist?).";
         DatvResult result;
         int ok=f && cairo_surface_status(im)==CAIRO_STATUS_SUCCESS && datv_write(f,
             (uint32_t *)cairo_image_surface_get_data(im),w,h,cairo_image_surface_get_stride(im),"PE1ITR",s,&result,error);
@@ -1103,13 +1141,13 @@ int main(int argc, char **argv) {
         if (!ok && f) unlink(argv[2]);
         cairo_surface_destroy(im);
         if (!ok) { g_printerr("%s\n",error); return 1; }
-        g_print("TS: %d bit/s, QP %d, %d beelden, grootste IDR %d bytes\n",s.bitrate,result.qp,result.frames,result.largest_idr);
+        g_print("TS: %d bit/s, QP %d, %d frames, largest IDR %d bytes\n",s.bitrate,result.qp,result.frames,result.largest_idr);
         return 0;
     }
     if (argc == 3 && !strcmp(argv[1], "--smoke-test")) return smoke_test(argv[2]);
-    if (argc != 1) { g_printerr("Gebruik: %s [--smoke-test uitvoermap | --ts-test bestand.ts [bitrate [duur [fps [gop [breedte [hoogte]]]]]]]\n", argv[0]); return 1; }
+    if (argc != 1) { g_printerr("Usage: %s [--smoke-test output-directory | --ts-test file.ts [bitrate [duration [fps [gop [width [height [buffer-ms]]]]]]]]\n", argv[0]); return 1; }
     if (!gtk_init_check(&argc, &argv)) {
-        g_printerr("Kan geen grafische sessie openen. Start vanuit je Linux-desktop.\n"); return 1;
+        g_printerr("Cannot open a graphical session. Start from your Linux desktop.\n"); return 1;
     }
     GError *error = NULL;
     char *executable = g_file_read_link("/proc/self/exe", &error);

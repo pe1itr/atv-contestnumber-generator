@@ -104,7 +104,7 @@ static void quality_poll(HWND window,QualityDialog *d) {
     HBITMAP image=CreateDIBSection(NULL,&info,DIB_RGB_COLORS,&pixels,NULL,0);
     if (!image || !datv_preview_image(d->job,pixels,d->size.width,d->size.height,d->size.width*4)) {
         if (image) DeleteObject(image);
-        SetDlgItemTextW(window,IDC_QUALITY_STATUS,L"Kan het gecomprimeerde voorbeeld niet weergeven."); return;
+        SetDlgItemTextW(window,IDC_QUALITY_STATUS,L"Cannot display the compressed preview."); return;
     }
     d->images[1]=image;
     char text[1300]; wchar_t message[1300];
@@ -141,13 +141,13 @@ static INT_PTR CALLBACK quality_dialog(HWND window,UINT msg,WPARAM wp,LPARAM lp)
 }
 static void quality_compare(HWND parent,HBITMAP original,Resolution size,const char *call,DatvSettings settings) {
     DIBSECTION dib={0};
-    if (GetObjectW(original,sizeof(dib),&dib)!=sizeof(dib) || !dib.dsBm.bmBits) { error(parent,L"Kan het beeld niet lezen."); return; }
+    if (GetObjectW(original,sizeof(dib),&dib)!=sizeof(dib) || !dib.dsBm.bmBits) { error(parent,L"Cannot read the image."); return; }
     QualityDialog d={0}; d.images[0]=original; d.size=size; d.settings=settings; d.zoom=size.width<=240?2:1;
     char detail[256];
     d.job=datv_preview_start(dib.dsBm.bmBits,size.width,size.height,dib.dsBm.bmWidthBytes,call,settings,detail);
     if (!d.job) { ts_error(parent,detail); return; }
     if (DialogBoxParamW((HINSTANCE)GetWindowLongPtrW(parent,GWLP_HINSTANCE),MAKEINTRESOURCEW(IDD_QUALITY),parent,quality_dialog,(LPARAM)&d)==-1)
-        error(parent,L"Kan het vergelijkingsvenster niet openen.");
+        error(parent,L"Cannot open the comparison window.");
     datv_udp_destroy(d.job);
     if (d.images[1]) DeleteObject(d.images[1]);
 }
