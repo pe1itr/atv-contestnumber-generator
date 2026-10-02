@@ -25,6 +25,7 @@ typedef struct {
 } StationInfo;
 typedef struct {
     int bitrate, seconds, fps, gop;
+    int buffer_ms; /* 0 is the legacy 1000 ms default; explicit range 1000..10000. */
     int eit_enabled;
     TeletextSettings teletext;
     /* Snapshot of the station at Start/export, owned by the worker. */
@@ -48,8 +49,26 @@ typedef struct {
     double first_image_ms;
     char error[256];
 } DatvUdpStatus;
+/* Local diagnostic only. Bins accumulate actual mux packet occupancy: IDR, P, other, null.
+ * Views cover the first second and one GOP plus the configured buffer.
+ * Unscheduled time stays empty, including after a failed deadline. */
+#define DATV_TIMELINE_BINS 480
+typedef struct {
+    int ready, fits, qp, idr_bytes;
+    uint64_t packets, failed_frame;
+    double first_image_ms, idr_min_ms, idr_max_ms, end_ms, span_ms[2];
+    int idr_count;
+    double bins[2][DATV_TIMELINE_BINS][4];
+} DatvTimeline;
+int datv_preview_timeline(DatvStream *job, DatvTimeline *out);
+void datv_timeline_text(const DatvTimeline *t, DatvSettings s, char *out, size_t size);
+typedef void (*DatvPlotRect)(void *context, int x, int y, int w, int h, unsigned rgb);
+typedef void (*DatvPlotText)(void *context, int x, int y, const char *text);
+void datv_timeline_plot(const DatvTimeline *t, DatvSettings s, int width, int height,
+                        DatvPlotRect rect, DatvPlotText text, void *context);
 /* The bitrate is the complete 188-byte TS bitrate, in bits per second. */
 DatvSettings datv_defaults(void);
+int datv_buffer_ms(DatvSettings s);
 DatvUdpSettings datv_udp_defaults(void);
 const char *datv_udp_validate(DatvUdpSettings s, int width, int height);
 void datv_udp_status_text(DatvUdpSettings s, DatvUdpStatus status, char *text, size_t size);
@@ -70,7 +89,7 @@ void datv_udp_stop(DatvStream *stream);
 void datv_udp_destroy(DatvStream *stream);
 const char *datv_validate(DatvSettings s, int width, int height);
 int datv_test_options(int count, const char *const *values, DatvSettings *s, int *w, int *h);
-/* RGB words 0x00RRGGBB, top-down, stride in bytes. Output has one second
+/* RGB words 0x00RRGGBB, top-down, stride in bytes. Output has the configured
  * decoder lead-in, then `seconds` of video; rounded to seven TS packets.
  * No output is written until encoding and transport scheduling succeed.
  * error must have room for 256 bytes. No FFmpeg or external processes. */

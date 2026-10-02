@@ -25,7 +25,7 @@ BEGIN
         MENUITEM "OpenH264-licentie", IDM_CODEC_LICENSE
     END
 END
-IDD_TS DIALOGEX 0, 0, 447, 354
+IDD_TS DIALOGEX 0, 0, 447, 378
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "DATV: TS-proefbestand"
 FONT 9, "Segoe UI"
@@ -51,11 +51,13 @@ BEGIN
     LTEXT "Guard interval (DVB-T, 2K)", -1, 12, 213, 192, 12
     COMBOBOX IDC_DVB_GUARD, 210, 210, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT "DVB-S2: normale frames. DVB-T: SR/BW is bandbreedte in kHz.", -1, 12, 232, 410, 12
-    LTEXT "Zonder audio. Service = roepnaam; ID = 1.\nHet bestand bevat ook 1 seconde aanloop voor de decoder.", -1, 12, 255, 410, 24
+    LTEXT "Zonder audio. Service = roepnaam; ID = 1.\nDe transportbuffer bepaalt de extra aanloop voor de decoder.", -1, 12, 255, 410, 24
     CONTROL "EIT-programma-informatie meesturen (Config > EIT)", IDC_INCLUDE_EIT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 284, 423, 16
     CONTROL "Teletekstpagina 100 meesturen", IDC_INCLUDE_TELETEXT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 304, 423, 16
-    DEFPUSHBUTTON "Verder", IDOK, 300, 330, 65, 16
-    PUSHBUTTON "Annuleren", IDCANCEL, 370, 330, 65, 16
+    DEFPUSHBUTTON "Verder", IDOK, 300, 354, 65, 16
+    PUSHBUTTON "Annuleren", IDCANCEL, 370, 354, 65, 16
+    LTEXT "Transportbuffer (1000-10000 ms)", -1, 12, 330, 192, 12
+    EDITTEXT IDC_TRANSPORT_BUFFER, 210, 327, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
 END
 IDD_TS_PROGRESS DIALOGEX 0, 0, 260, 45
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION
@@ -64,7 +66,7 @@ FONT 9, "Segoe UI"
 BEGIN
     LTEXT "TS maken en bitrate controleren...", -1, 12, 16, 236, 16
 END
-IDD_UDP DIALOGEX 0, 0, 447, 420
+IDD_UDP DIALOGEX 0, 0, 447, 444
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "DATV: UDP-uitvoer"
 FONT 9, "Segoe UI"
@@ -96,12 +98,14 @@ BEGIN
     LTEXT "Start zendt het huidige beeld, zonder audio.\nStop en sluit dit venster om het beeld te wijzigen. Sluiten stopt ook de stream.", -1, 12, 288, 423, 28
     CONTROL "EIT-programma-informatie meesturen (Config > EIT)", IDC_INCLUDE_EIT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 320, 423, 16
     CONTROL "Teletekstpagina 100 meesturen", IDC_INCLUDE_TELETEXT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 340, 423, 16
-    LTEXT "Vul het IP-adres van Portsdown in en kies Start.", IDC_UDP_STATUS, 12, 359, 423, 30
-    DEFPUSHBUTTON "Start", IDC_UDP_START, 12, 396, 50, 16
-    PUSHBUTTON "Stop", IDC_UDP_STOP, 68, 396, 50, 16
-    PUSHBUTTON "Toepassen en sluiten", IDC_UDP_APPLY, 124, 396, 123, 16
-    PUSHBUTTON "Beeld &controleren", IDC_UDP_PREVIEW, 253, 396, 110, 16
-    PUSHBUTTON "Sluiten", IDCANCEL, 369, 396, 66, 16
+    LTEXT "Vul het IP-adres van Portsdown in en kies Start.", IDC_UDP_STATUS, 12, 383, 423, 30
+    DEFPUSHBUTTON "Start", IDC_UDP_START, 12, 420, 50, 16
+    PUSHBUTTON "Stop", IDC_UDP_STOP, 68, 420, 50, 16
+    PUSHBUTTON "Toepassen en sluiten", IDC_UDP_APPLY, 124, 420, 123, 16
+    PUSHBUTTON "Beeld &controleren", IDC_UDP_PREVIEW, 253, 420, 110, 16
+    PUSHBUTTON "Sluiten", IDCANCEL, 369, 420, 66, 16
+    LTEXT "Transportbuffer (1000-10000 ms)", -1, 12, 359, 192, 12
+    EDITTEXT IDC_TRANSPORT_BUFFER, 210, 356, 113, 16, ES_NUMBER | ES_AUTOHSCROLL
 END
 IDD_MAIN DIALOGEX 0, 0, 460, 327
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
@@ -139,19 +143,20 @@ BEGIN
     LTEXT "", IDC_STATUS, 12, 302, 436, 20
 END
 
-IDD_QUALITY DIALOGEX 0, 0, 600, 402
+IDD_QUALITY DIALOGEX 0, 0, 600, 492
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "DATV: Beeld controleren"
 FONT 9, "Segoe UI"
 BEGIN
     LTEXT "Origineel", -1, 12, 10, 280, 12
     LTEXT "Na compressie", -1, 306, 10, 280, 12
-    CONTROL "", IDC_QUALITY_BEFORE, "Static", SS_BLACKRECT | WS_HSCROLL | WS_VSCROLL | WS_TABSTOP, 12, 26, 282, 235
-    CONTROL "", IDC_QUALITY_AFTER, "Static", SS_BLACKRECT | WS_HSCROLL | WS_VSCROLL | WS_TABSTOP, 306, 26, 282, 235
-    CONTROL "2x vergroten (beide beelden)", IDC_QUALITY_ZOOM, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 268, 260, 14
-    LTEXT "Beeld voorbereiden en decoderen... Er wordt niets uitgezonden.", IDC_QUALITY_STATUS, 12, 288, 576, 58
-    LTEXT "Eerste volledige videobeeld na H.264-compressie. Andere videobeelden kunnen verschillen.\nZonder ontvangstverliezen of beeldbewerking van je ontvanger. Scroll om details te bekijken.", -1, 12, 351, 576, 26
-    DEFPUSHBUTTON "Sluiten", IDCANCEL, 518, 382, 70, 16
+    CONTROL "", IDC_QUALITY_BEFORE, "Static", SS_BLACKRECT | WS_HSCROLL | WS_VSCROLL | WS_TABSTOP, 12, 26, 282, 170
+    CONTROL "", IDC_QUALITY_AFTER, "Static", SS_BLACKRECT | WS_HSCROLL | WS_VSCROLL | WS_TABSTOP, 306, 26, 282, 170
+    CONTROL "2x vergroten (beide beelden)", IDC_QUALITY_ZOOM, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 203, 260, 14
+    LTEXT "Beeld voorbereiden en decoderen... Er wordt niets uitgezonden.", IDC_QUALITY_STATUS, 12, 223, 576, 88
+    CONTROL "", IDC_QUALITY_TIMELINE, "Static", SS_OWNERDRAW, 12, 316, 576, 122
+    LTEXT "Eerste volledige videobeeld na H.264-compressie. Andere videobeelden kunnen verschillen.\nZonder ontvangstverliezen of beeldbewerking van je ontvanger. Scroll om details te bekijken.", -1, 12, 443, 576, 26
+    DEFPUSHBUTTON "Sluiten", IDCANCEL, 518, 472, 70, 16
 END
 
 IDD_EIT DIALOGEX 0, 0, 447, 208

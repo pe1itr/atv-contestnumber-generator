@@ -5,6 +5,80 @@
 #include <errno.h>
 #include <limits.h>
 
+void datv_timeline_text(const DatvTimeline *t, DatvSettings s, char *out, size_t size) {
+    char first[180], result[220], contest[220], idr[220];
+    if (t->idr_count) snprintf(idr,sizeof(idr),"Zelfstandig beeld (IDR): %.1f - %.1f ms inclusief TS-overhead (%d beelden gemeten).",
+        t->idr_min_ms,t->idr_max_ms,t->idr_count);
+    else snprintf(idr,sizeof(idr),"Zelfstandig beeld (IDR): overdracht niet voltooid.");
+    snprintf(contest,sizeof(contest),"Contestrichtpunt < 1000 ms: %s. Keuze van de operator.",
+        !t->idr_count?"geen volledige meting":t->idr_max_ms<1000?"gemeten IDR-beelden eronder":"gemeten IDR op/boven de marker");
+    if (t->first_image_ms>0)
+        snprintf(first,sizeof(first),"Eerste volledige beeld: %.1f ms vanaf TS-start.",t->first_image_ms);
+    else snprintf(first,sizeof(first),"Eerste volledige beeld: niet voltooid voordat de planning stopte.");
+    if (t->fits) snprintf(result,sizeof(result),"Past in de doorlopende planning; QP %d. Eerste presentatietijd: %d ms.",t->qp,datv_buffer_ms(s));
+    else snprintf(result,sizeof(result),"Past niet: planning stopt bij beeld %llu, na %.1f ms; diagnose bij QP %d.",
+        (unsigned long long)t->failed_frame+1,t->end_ms,t->qp);
+    snprintf(out,size,"%s\n%s\n%s\n%s\nFrameperiode: %.1f ms; IDR-interval: %.1f ms (GOP %d). Wachten op IDR komt er apart bij.\nEerste IDR: %d bytes H.264; minimaal %.1f ms zonder TS-overhead.\nTS-tijd; netwerk- en decodervertraging niet inbegrepen.",
+        idr,contest,first,result,1000.0/s.fps,1000.0*s.gop/s.fps,s.gop,t->idr_bytes,8000.0*t->idr_bytes/s.bitrate);
+}
+
+void datv_timeline_plot(const DatvTimeline *t, DatvSettings s, int width, int height,
+                        DatvPlotRect rect, DatvPlotText text, void *ctx) {
+    const unsigned colors[]={0x2676c8,0x32a476,0xda9b32,0xc4cad1};
+    const char *labels[]={"IDR: volledig beeld","P: vervolgbeeld","TS-overhead*","Null: vrije ruimte"};
+    rect(ctx,0,0,width,height,0xffffff);
+    if (!t->ready || width<200 || height<130) { text(ctx,8,8,"Transportplanning berekenen..."); return; }
+    int left=8, plot=width-16;
+    for (int k=0;k<4;++k) {
+        int x=left+k*plot/4;
+        rect(ctx,x,4,10,10,colors[k]); text(ctx,x+14,1,labels[k]);
+    }
+    for (int view=0;view<2;++view) {
+        int y=24+view*65;
+        char label[180];
+        snprintf(label,sizeof(label),"%s: 0 - %.1f ms",view?"Een GOP + buffer":"Eerste seconde",t->span_ms[view]);
+        text(ctx,left,y,label);
+        rect(ctx,left,y+19,plot,24,0xeceff2);
+        for (int i=0;i<DATV_TIMELINE_BINS;++i) {
+            int x=left+i*plot/DATV_TIMELINE_BINS;
+            int w=left+(i+1)*plot/DATV_TIMELINE_BINS-x;
+            double sum=0;
+            for (int k=0;k<4;++k) {
+                int bottom=(int)(sum*24+0.5);
+                sum+=t->bins[view][i][k];
+                int top=(int)(sum*24+0.5);
+                if (top>24) top=24;
+                if (top>bottom) rect(ctx,x,y+43-top,w,top-bottom,colors[k]);
+            }
+        }
+        /* Frame boundaries refer to encoder release times, not presentation. */
+        int frames=(int)(t->span_ms[view]*s.fps/1000);
+        int step=frames>40?(frames+39)/40:1;
+        for (int f=0;f<=frames;f+=step) {
+            int x=left+(int)(1000.0*f/s.fps/t->span_ms[view]*(plot-1));
+            rect(ctx,x,y+44,1,4,0x555555);
+        }
+        for (int tick=0;tick<=4;++tick) {
+            char value[40]; snprintf(value,sizeof(value),"%.0f",t->span_ms[view]*tick/4);
+            int x=left+tick*(plot-1)/4;
+            if (tick==4) x-=(int)strlen(value)*8;
+            text(ctx,x,y+48,value);
+        }
+        if (t->first_image_ms>0 && t->first_image_ms<=t->span_ms[view]) {
+            int x=left+(int)(t->first_image_ms/t->span_ms[view]*(plot-1));
+            rect(ctx,x,y+18,2,26,0x111111);
+        }
+        int marker=left+(int)(1000.0/t->span_ms[view]*(plot-1));
+        for (int dy=0;dy<26;dy+=6) rect(ctx,marker,y+18+dy,2,3,0x8a3db5);
+        if (!t->fits && t->end_ms<=t->span_ms[view]) {
+            int x=left+(int)(t->end_ms/t->span_ms[view]*(plot-1));
+            rect(ctx,x,y+18,2,26,0xc02020);
+        }
+    }
+    text(ctx,left,155,"Paars: contest 1000 ms; zwart: beeld compleet; rood: planning stopt. Streepjes: frameperioden.");
+    text(ctx,left,173,"* Overige TS-pakketten incl. SI/teletekst. Videobalken bevatten ook pakketheaders; kleuren tonen tijdsaandeel.");
+}
+
 const wchar_t *const image_modes[IMAGE_MODE_COUNT] = {L"Contest", L"PM5544", L"FUBK", L"PM5644"};
 /* Display order is independent of the persistent configuration IDs. */
 const int image_mode_order[IMAGE_MODE_COUNT] = {IMAGE_CONTEST, IMAGE_PM5544, IMAGE_PM5644, IMAGE_FUBK};
@@ -72,6 +146,7 @@ int dvb_bitrate(DvbSettings s) {
     return (int)(top/bottom);
 }
 
+int datv_buffer_ms(DatvSettings s) { return s.buffer_ms?s.buffer_ms:1000; }
 DatvSettings datv_defaults(void) { return (DatvSettings){.bitrate=120000, .seconds=10, .fps=5, .gop=5}; }
 DatvUdpSettings datv_udp_defaults(void) {
     DatvUdpSettings s={.port=10000,.video={.bitrate=120000,.seconds=10,.fps=10,.gop=2}};
@@ -111,8 +186,8 @@ const char *datv_udp_validate(DatvUdpSettings s, int width, int height) {
 }
 int datv_test_options(int count, const char *const *values, DatvSettings *s, int *w, int *h) {
     *s=datv_defaults(); *w=320; *h=240;
-    if (count<0 || count>6) return 0;
-    int *fields[]={&s->bitrate,&s->seconds,&s->fps,&s->gop,w,h};
+    if (count<0 || count>7) return 0;
+    int *fields[]={&s->bitrate,&s->seconds,&s->fps,&s->gop,w,h,&s->buffer_ms};
     for (int i=0; i<count; ++i) {
         char *end; errno=0;
         long n=strtol(values[i],&end,10);
@@ -175,6 +250,7 @@ const char *datv_validate(DatvSettings s, int width, int height) {
         return "TS-bitrate moet tussen 30080 en 2000000 bit/s liggen. Kies een beschikbare combinatie van systeem, symbolrate, FEC en pilots.";
     if (s.seconds < 1 || s.seconds > 60) return "Duur moet tussen 1 en 60 seconden liggen.";
     if (s.fps < 1 || s.fps > 25) return "Beeldfrequentie moet tussen 1 en 25 beelden/s liggen.";
+    if (s.buffer_ms && (s.buffer_ms<1000 || s.buffer_ms>10000)) return "Transportbuffer moet tussen 1000 en 10000 ms liggen.";
     if (s.gop < 1 || s.gop > 250) return "GOP moet tussen 1 en 250 beelden liggen (1 = alleen IDR).";
     if (width < 16 || height < 16 || width > 1920 || height > 1440 || width % 2 || height % 2)
         return "Kies voor TS een even resolutie van minimaal 16 x 16 en maximaal 1920 x 1440.";
@@ -326,6 +402,7 @@ static const ConfigField config_fields[]={
     CONFIG_INT_FIELD(ebu_top,0,1), CONFIG_INT_FIELD(ebu_bottom,0,1),
     CONFIG_INT_FIELD(show_sum,0,1), CONFIG_INT_FIELD(top_code,0,1), CONFIG_INT_FIELD(genius,1,2),
     CONFIG_INT_FIELD(ts.bitrate,DATV_MIN_BITRATE,2000000), CONFIG_INT_FIELD(ts.seconds,1,60),
+    CONFIG_INT_FIELD(ts.buffer_ms,0,10000),
     CONFIG_INT_FIELD(ts.fps,1,25), CONFIG_INT_FIELD(ts.gop,1,250),
     CONFIG_INT_FIELD(ts.eit_enabled,0,1), CONFIG_INT_FIELD(udp.video.eit_enabled,0,1),
     CONFIG_INT_FIELD(teletext.enabled,0,1), CONFIG_TEXT_FIELD(teletext.text),
@@ -333,6 +410,7 @@ static const ConfigField config_fields[]={
     CONFIG_TEXT_FIELD(udp.ip), CONFIG_INT_FIELD(udp.port,1,65535),
     CONFIG_INT_FIELD(udp.video.bitrate,DATV_MIN_BITRATE,2000000), CONFIG_INT_FIELD(udp.video.fps,1,25),
     CONFIG_INT_FIELD(udp.video.gop,1,250),
+    CONFIG_INT_FIELD(udp.video.buffer_ms,0,10000),
     CONFIG_INT_FIELD(ts_dvb.system,0,DVB_SYSTEM_COUNT-1),
     CONFIG_INT_FIELD(ts_dvb.symbol_rate,0,DVB_SYMBOL_RATE_COUNT-1),
     CONFIG_INT_FIELD(ts_dvb.fec,0,DVB_FEC_COUNT-1),
@@ -408,6 +486,7 @@ static int config_valid(const AppConfig *s) {
         }
         else if (*(const int *)value<f->min || *(const int *)value>f->max) return 0;
     }
+    if (s->ts.buffer_ms && (s->ts.buffer_ms<1000 || s->ts.buffer_ms>10000)) return 0;
     if (teletext_validate(&s->teletext)) return 0;
     if (station_validate(&s->station)) return 0;
     DatvUdpSettings udp=s->udp;
@@ -475,7 +554,9 @@ int config_load(const char *path, AppConfig *out) {
     uint64_t required = (UINT64_C(1)<<CONFIG_FIELDS)-1;
     for (size_t i=0; i<CONFIG_FIELDS; ++i)
         if (config_fields[i].offset==offsetof(AppConfig,ebu_top) ||
-            config_fields[i].offset==offsetof(AppConfig,ebu_bottom)) required &= ~(UINT64_C(1)<<i);
+            config_fields[i].offset==offsetof(AppConfig,ebu_bottom) ||
+            config_fields[i].offset==offsetof(AppConfig,ts.buffer_ms) ||
+            config_fields[i].offset==offsetof(AppConfig,udp.video.buffer_ms)) required &= ~(UINT64_C(1)<<i);
     uint64_t tt_fields=0;
     for (size_t i=0;i<CONFIG_FIELDS;++i)
         if (!strncmp(config_fields[i].key,"teletext.",9)) tt_fields|=UINT64_C(1)<<i;

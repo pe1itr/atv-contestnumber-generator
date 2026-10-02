@@ -10,14 +10,18 @@ static BOOL CALLBACK drive(HWND window,LPARAM unused) {
         if (stage==0) {
             SetDlgItemTextW(window,IDC_UDP_IP,L"invalid"); SetDlgItemTextW(window,IDC_UDP_PORT,L"");
             SetDlgItemInt(window,IDC_UDP_BITRATE,115196,FALSE); SetDlgItemInt(window,IDC_UDP_FPS,test_fps,FALSE); SetDlgItemInt(window,IDC_UDP_GOP,2,FALSE);
+            SetDlgItemInt(window,IDC_TRANSPORT_BUFFER,test_fps==4?3000:1000,FALSE);
             stage=1; PostMessageW(window,WM_COMMAND,IDC_UDP_PREVIEW,0);
         } else if (stage==2) { stage=3; PostMessageW(window,WM_COMMAND,IDCANCEL,0); }
     } else if (!wcscmp(title,L"DATV: Beeld controleren")) {
         QualityDialog *d=(QualityDialog *)GetWindowLongPtrW(window,DWLP_USER);
         if (d && d->done) {
-            assert(d->images[1]); DatvUdpStatus status; datv_udp_status(d->job,&status);
+            assert(d->images[1] && d->timeline.ready && d->timeline.fits);
+            assert(datv_buffer_ms(d->settings)==(test_fps==4?3000:1000));
+            assert(IsWindowVisible(GetDlgItem(window,IDC_QUALITY_TIMELINE)));
+            DatvUdpStatus status; datv_udp_status(d->job,&status);
             qp=status.qp; assert(qp>=24 && qp<=48 && !status.packets);
-            wchar_t text[512]; GetDlgItemTextW(window,IDC_QUALITY_STATUS,text,512);
+            wchar_t text[1500]; GetDlgItemTextW(window,IDC_QUALITY_STATUS,text,1500);
             const wchar_t *timing=wcsstr(text,L"Eerste volledige beeld: ");
             double ms=0; assert(timing && swscanf(timing,L"Eerste volledige beeld: %lf ms",&ms)==1);
             assert(ms>0 && ms<=1000 && fabs(ms-status.first_image_ms)<0.051);

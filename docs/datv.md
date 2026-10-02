@@ -8,7 +8,7 @@
 4. Kies **DVB-S, DVB-S2 of DVB-T**, SR/BW, FEC en eventueel pilots of GI.
    De **totale TS-bitrate in bit/s** wordt automatisch berekend. Dit is niet
    alleen de videobitrate. Zie [de berekening](dvb-bitrate.md).
-5. Stel beeldduur, beelden per seconde en GOP-lengte in. **GOP 1** maakt ieder
+5. Stel beeldduur, beelden per seconde, GOP-lengte en transportbuffer in. **GOP 1** maakt ieder
    beeld een zelfstandig IDR-beeld. Bij 5 beelden/s en GOP 5 komt iedere seconde
    een IDR-beeld. Kies een opslaglocatie; bij vervangen volgt een bevestiging.
 
@@ -20,10 +20,10 @@ het programma. Bij opstarten wordt dit bestand automatisch geladen, zonder UDP
 te starten. Zonder bestand blijven de normale standaardinstellingen gelden.
 
 Grenzen: bitrate 30080–2000000 bit/s, beeldduur 1–60 s, 1–25 beelden/s, GOP 1–250
-beelden. Het gekozen beeld moet even afmetingen hebben, maximaal 1920 × 1440.
+beelden; transportbuffer 1000–10000 ms (standaard 1000 ms). Het gekozen beeld moet even afmetingen hebben, maximaal 1920 × 1440.
 De resolutie is niet aan een vaste SR-grens gekoppeld: de encoder controleert of
 het beeld bij de gekozen bitrate, beeldfrequentie en GOP past. Bij te weinig
-ruimte volgt een melding; kies dan minder pixels, minder beelden/s of een langere GOP.
+ruimte volgt een melding; kies dan meer transportbuffer, minder pixels, minder beelden/s of een langere GOP.
 De export draait op een achtergrondthread en publiceert pas een compleet bestand.
 
 ## Encoder en transport
@@ -53,9 +53,9 @@ De passingstest garandeert op zichzelf geen leesbaarheid: beoordeel vooral code
 en roepnaam in het afgespeelde beeld. Een onhaalbare combinatie geeft een
 foutmelding en vervangt geen bestaand bestand.
 
-De transportplanning gebruikt één seconde decoderbuffer: de eerste PTS is 1 s.
-Een bestand met 10 s beeldduur bevat circa 11 s transportdata, afgerond op zeven
-TS-pakketten. Null-pakketten vullen de beschikbare bitrate op. Het bestand bestaat
+De transportplanning gebruikt de gekozen transportbuffer: de eerste PTS ligt
+op 1000–10000 ms. Standaard is dit 1000 ms. Een bestand met 10 s beeldduur en
+1000 ms buffer bevat circa 11 s transportdata, afgerond op zeven TS-pakketten. Null-pakketten vullen de beschikbare bitrate op. Het bestand bestaat
 uit gewone 188-byte TS-pakketten, met een totale lengte deelbaar door 1316.
 Bij bestandsexport wordt geen UDP-verkeer verstuurd; de aparte UDP-uitvoer staat hieronder beschreven.
 
@@ -143,7 +143,8 @@ die de totale bestandsgrootte deelt door de videoduur, zonder de decoder-aanloop
 Op beide platforms bestaat een testinterface met een vast referentiebeeld:
 `PE1ITR`, `JO21QK`, code `1957`, 436 MHz, cijfersom en extra code rechtsboven.
 De argumenten zijn achtereenvolgens bestand, bitrate, beeldduur, fps, GOP,
-breedte en hoogte. Getallen zijn optioneel; standaard: 120000, 10, 5, 5, 320, 240.
+breedte, hoogte en optioneel de transportbuffer in ms. Getallen zijn optioneel;
+standaard: 120000, 10, 5, 5, 320, 240, 1000.
 Deze testinterface weigert bestaande bestanden te overschrijven.
 
 ```sh
@@ -269,3 +270,66 @@ De asynchrone taak ondersteunt stoppen en opruimen via de bestaande jobfuncties;
 `datv_preview_image` kopieert alleen een voltooid voorbeeld. `DATV_STOPPED` betekent
 voor deze lokale taak dat de verwerking gereed is, `DATV_FAILED` bevat een fout.
 Het voorbeeld is één IDR, geen simulatie van RF-ontvangst of bewijs van leesbaarheid.
+
+### Grafische transporttijdlijn
+
+**File → DATV UDP-uitvoer → Beeld controleren** toont bij de gekozen bitrate,
+fps, GOP en het huidige testbeeld twee tijdlijnen: de eerste seconde en één GOP
+plus de gekozen transportbuffer. Sluit het voorbeeld, verander de instellingen en
+kies opnieuw **Beeld controleren** om te vergelijken. Er wordt niets uitgezonden.
+
+- Blauw: pakketten van zelfstandige IDR-beelden; groen: P-vervolgbeelden.
+- Oranje: overige TS-pakketten, waaronder tabellen, teletekst en losse PCR's.
+- Grijs: null-pakketten die vrije capaciteit opvullen.
+- Paars: het contestrichtpunt van **1000 ms**, een adviesmarker voor de operator.
+- Zwart: het einde van het eerste volledige IDR-beeld; rood: waar de planning faalt.
+
+De kleuren tonen tijdsaandelen per klein tijdvak; bij uitzoomen kunnen meerdere
+pakkettypen boven elkaar staan. Videopakketten bevatten ook hun TS-/PES-headers
+en eventuele PCR. De streepjes onder de balk tonen frameperioden vanaf de
+encoder-vrijgave; bij lange GOP's zijn deze gegroepeerd. De getallen zijn ms.
+
+**Zelfstandig beeld (IDR)** is de hoofdwaarde: het minimum en maximum van de
+volledig overgebrachte IDR-beelden tijdens de proefplanning, vanaf het begin van
+het eerste videopakket tot het einde van het laatste pakket van die IDR.
+Tussenliggende overhead telt mee. Dit is geen GOP-duur of wachttijd op een IDR.
+De contestindicatie vergelijkt het gemeten maximum met 1000 ms, zonder de
+operator te verbieden langere overdrachten te kiezen. De marker is een gekozen
+contestrichtpunt, geen algemene natuurkundige grens voor vliegtuigscatter.
+
+**Eerste volledige beeld** is de tijd vanaf TS-start tot het einde van het laatste
+TS-pakket van de eerste IDR, inclusief tussenliggende overhead. Het betreft de
+CBR-transportklok, geen gemeten UDP-ontvangsttijd. UDP bundelt zeven TS-pakketten;
+netwerkvertraging, signaalvergrendeling en decodervertraging zijn niet inbegrepen.
+De eerste geplande presentatietijd is gelijk aan de gekozen transportbuffer. De werkelijke beeldgrootte is
+pas bekend na H.264-compressie; alleen resolutie en bitrate volstaan dus niet.
+
+Een videoframe is geen TS-pakket. Eén volledig IDR-beeld mag al over meerdere
+**frameperioden** worden verstuurd, zolang het voor zijn deadline aankomt.
+Een P-beeld beschrijft veranderingen ten opzichte van eerdere beelden en is niet
+zelfstandig te decoderen. De frameperiode is `1000 / fps` ms; het IDR-interval is
+`1000 × GOP / fps` ms. Dat interval is niet de overdrachtstijd van een IDR.
+Bij later instappen kan daarnaast wachten op een volgende IDR nodig zijn.
+
+Bij een onhaalbare combinatie toont het voorbeeld de mislukte planning bij de
+laatst beproefde QP en het nummer van het beeld waar de planning stopt. Alleen
+voltooide overdrachten krijgen een gemeten eerste-beeldtijd. De aanvullende
+waarde `8000 × IDR-bytes / TS-bitrate` is een **ondergrens zonder transportoverhead**,
+geen voorspelling van een werkende stream. Extra buffertijd geeft een groot IDR meer tijd, maar lost een blijvend tekort
+aan gemiddelde capaciteit niet op. De buffer wordt afzonderlijk voor TS-export
+en UDP bewaard via Config → Huidige instellingen opslaan. Oudere configuraties
+blijven 1000 ms gebruiken.
+
+Bij buffers groter dan 1000 ms bewaakt de muxer bovendien conservatief de
+opgestapelde PES-bytes tegen de AVC-CPB-capaciteit van het SPS-level. Bytes worden
+pas op hun PTS vrijgegeven (geen B-frames); PES-headers tellen voorzichtigheidshalve
+mee. Dit is geen volledige T-STD-simulatie. De bovengrens van 10000 ms houdt
+rekening met gewone AVC, zonder een speciaal still-picture-profiel te claimen.
+Referenties: [H.222.0 (05/2006)](https://www.itu.int/rec/dologin_pub.asp?id=T-REC-H.222.0-200605-S!!PDF-E&lang=s&type=items)
+§2.14.3.1 en [H.264 (08/2024)](https://www.itu.int/rec/dologin_pub.asp?id=T-REC-H.264-202408-S!!PDF-E&lang=e&type=items)
+§A.3.1, tabel A-1.
+Ontvangercompatibiliteit bij lange buffers moet ook op de echte ontvanger worden
+gecontroleerd.
+
+`build/test-timeline` en `build/test-timeline.exe` controleren de tijdlijn tegen
+werkelijke muxpakketten, inclusief een onhaalbare combinatie, lange GOP, langere overdracht en decoderbuffergrens.

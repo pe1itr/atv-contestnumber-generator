@@ -5,10 +5,33 @@ struct QualityDialog {
     HBITMAP images[2];
     Resolution size;
     DatvSettings settings;
+    DatvTimeline timeline;
     DatvStream *job;
     QualityPane panes[2];
     int zoom, x, y, done;
 };
+static void quality_rect(void *context,int x,int y,int w,int h,unsigned rgb) {
+    HDC dc=(HDC)context; RECT r={x,y,x+w,y+h};
+    HBRUSH brush=CreateSolidBrush(RGB((rgb>>16)&255,(rgb>>8)&255,rgb&255));
+    FillRect(dc,&r,brush); DeleteObject(brush);
+}
+static void quality_text(void *context,int x,int y,const char *text) {
+    HDC dc=(HDC)context; wchar_t wide[256];
+    MultiByteToWideChar(CP_UTF8,0,text,-1,wide,256);
+    SetBkMode(dc,TRANSPARENT); SetTextColor(dc,RGB(25,25,25));
+    TextOutW(dc,x,y,wide,(int)wcslen(wide));
+}
+static LRESULT CALLBACK quality_timeline(HWND window,UINT msg,WPARAM wp,LPARAM lp,UINT_PTR id,DWORD_PTR data) {
+    (void)id;
+    if (msg==WM_PAINT) {
+        QualityDialog *d=(QualityDialog *)data;
+        PAINTSTRUCT paint; HDC dc=BeginPaint(window,&paint); RECT r; GetClientRect(window,&r);
+        HGDIOBJ old=SelectObject(dc,(HFONT)SendMessageW(GetParent(window),WM_GETFONT,0,0));
+        datv_timeline_plot(&d->timeline,d->settings,r.right,r.bottom,quality_rect,quality_text,dc);
+        SelectObject(dc,old); EndPaint(window,&paint); return 0;
+    }
+    return DefSubclassProc(window,msg,wp,lp);
+}
 static void quality_ranges(QualityDialog *d) {
     for (int i=0;i<2;++i) {
         RECT r; GetClientRect(d->panes[i].window,&r);
@@ -64,8 +87,14 @@ static void quality_poll(HWND window,QualityDialog *d) {
     DatvUdpStatus status; datv_udp_status(d->job,&status);
     if (status.state==DATV_PREPARING) return;
     d->done=1;
+    int traced=datv_preview_timeline(d->job,&d->timeline);
+    if (traced) InvalidateRect(GetDlgItem(window,IDC_QUALITY_TIMELINE),NULL,FALSE);
     if (status.state==DATV_FAILED) {
-        wchar_t message[256]; MultiByteToWideChar(CP_UTF8,0,status.error,-1,message,256);
+        char text[1800], detail[1300]; wchar_t message[1800];
+        if (traced) { datv_timeline_text(&d->timeline,d->settings,detail,sizeof(detail));
+            snprintf(text,sizeof(text),"%s\n%s",status.error,detail); }
+        else snprintf(text,sizeof(text),"%s",status.error);
+        MultiByteToWideChar(CP_UTF8,0,text,-1,message,1800);
         SetDlgItemTextW(window,IDC_QUALITY_STATUS,message); return;
     }
     BITMAPINFO info={0}; info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
@@ -78,11 +107,9 @@ static void quality_poll(HWND window,QualityDialog *d) {
         SetDlgItemTextW(window,IDC_QUALITY_STATUS,L"Kan het gecomprimeerde voorbeeld niet weergeven."); return;
     }
     d->images[1]=image;
-    wchar_t message[768];
-    swprintf(message,768,L"%d x %d · %d bit/s · %d beelden/s · GOP %d · QP %d\nEerste volledige beeld: %.1f ms vanaf TS-start (incl. TS-overhead; excl. ontvangervertraging).\nIDR-interval: %.1f ms; wachten + beeld: circa %.1f ms (excl. signaalvergrendeling).\nVergelijk vooral de kleine letters. Lagere QP is geen garantie voor leesbaarheid.",
-        d->size.width,d->size.height,d->settings.bitrate,d->settings.fps,d->settings.gop,status.qp,status.first_image_ms,
-                1000.0*d->settings.gop/d->settings.fps,
-                1000.0*d->settings.gop/d->settings.fps+status.first_image_ms);
+    char text[1300]; wchar_t message[1300];
+    datv_timeline_text(&d->timeline,d->settings,text,sizeof(text));
+    MultiByteToWideChar(CP_UTF8,0,text,-1,message,1300);
     SetDlgItemTextW(window,IDC_QUALITY_STATUS,message);
     InvalidateRect(d->panes[1].window,NULL,FALSE);
 }
@@ -93,6 +120,9 @@ static INT_PTR CALLBACK quality_dialog(HWND window,UINT msg,WPARAM wp,LPARAM lp)
         for (int i=0;i<2;++i) {
             d->panes[i]=(QualityPane){d,GetDlgItem(window,i?IDC_QUALITY_AFTER:IDC_QUALITY_BEFORE),i};
             if (!SetWindowSubclass(d->panes[i].window,quality_pane,1,(DWORD_PTR)&d->panes[i])) { EndDialog(window,-1); return TRUE; }
+        }
+        if (!SetWindowSubclass(GetDlgItem(window,IDC_QUALITY_TIMELINE),quality_timeline,1,(DWORD_PTR)d)) {
+            EndDialog(window,-1); return TRUE;
         }
         CheckDlgButton(window,IDC_QUALITY_ZOOM,d->zoom==2?BST_CHECKED:BST_UNCHECKED);
         quality_ranges(d);

@@ -22,6 +22,7 @@
 #include <memory>
 #include <new>
 #include <vector>
+#include <deque>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -106,7 +107,7 @@ bool encode(Bytes &yuv, int w, int h, DatvSettings s, int qp,
         SFrameBSInfo bs{};
         if (encoder->EncodeFrame(&pic, &bs) != 0 || bs.eFrameType==videoFrameTypeSkip) return false;
         Frame f{{0,0,1,0xe0,0,0,0x80,0x80,5}, uint64_t(i)*CLOCK/s.fps,
-                 CLOCK+uint64_t(i)*CLOCK/s.fps, bs.eFrameType==videoFrameTypeIDR};
+                 uint64_t(datv_buffer_ms(s))*90+uint64_t(i)*CLOCK/s.fps, bs.eFrameType==videoFrameTypeIDR};
         timestamp(f.pes, f.deadline);
         // Access unit delimiter, followed by Annex B NAL units (SPS/PPS on IDR).
         f.pes.insert(f.pes.end(), {0,0,0,1,9,0xf0});
@@ -308,6 +309,21 @@ Bytes teletext_pes(const TeletextSettings &s, int part, uint64_t pts) {
     }
     return b;
 }
+// Conservative ES occupancy guard for the extended transport buffer.
+// H.264 (08/2024) Annex A, table A-1; H.222.0 (05/2006) 2.14.3.1:
+// without NAL HRD, CPB capacity = 1200 * MaxCPB bits.
+size_t avc_cpb_capacity(const Frame &frame) {
+    const auto &p=frame.pes;
+    for (size_t i=14;i+6<p.size();++i) if (!p[i] && !p[i+1] && p[i+2]==1 && (p[i+3]&31)==7) {
+        int level=p[i+6];
+        if (level==11 && (p[i+5]&0x10)) return 350*150;
+        const int levels[]={10,11,12,13,20,21,22,30,31,32,40,41,42,50,51,52,60,61,62};
+        const int cpb[]={175,500,1000,2000,2000,4000,4000,10000,14000,20000,25000,62500,62500,135000,240000,240000,240000,480000,800000};
+        for (size_t n=0;n<sizeof(levels)/sizeof(*levels);++n) if (level==levels[n]) return size_t(cpb[n])*150;
+        break;
+    }
+    throw std::runtime_error("Kan de AVC-decoderbuffer voor dit beeld niet bepalen.");
+}
 class Mux {
     const std::vector<Frame> &frames;
     DatvSettings s;
@@ -325,16 +341,23 @@ class Mux {
     int64_t epoch;
     size_t offset=0;
     bool repeat;
+    size_t cpb_capacity=0, cpb_used=0;
+    std::deque<std::pair<uint64_t,size_t>> buffered;
 public:
     uint64_t frame=0;
     Mux(const std::vector<Frame> &f, DatvSettings settings, const char *name, bool loop=false, int64_t utc=utc_now())
-        : frames(f),s(settings),tables{pat(),pmt(settings.teletext.enabled,si_version(2,settings.teletext.enabled?"TTX":"")),sdt(name,settings.eit_enabled,si_version(false,std::string(name)+(settings.eit_enabled?"+EIT":"")))},call(name),epoch(utc),repeat(loop) {}
+        : frames(f),s(settings),tables{pat(),pmt(settings.teletext.enabled,si_version(2,settings.teletext.enabled?"TTX":"")),sdt(name,settings.eit_enabled,si_version(false,std::string(name)+(settings.eit_enabled?"+EIT":"")))},call(name),epoch(utc),repeat(loop) {
+            if (datv_buffer_ms(s)>1000) cpb_capacity=avc_cpb_capacity(frames.front());
+        }
     bool next(unsigned char packet[188]) {
         uint64_t now=byte_time(index*188,CLOCK,s.bitrate);
         uint64_t end=byte_time((index+1)*188,CLOCK,s.bitrate);
         uint64_t release=(frame/s.fps)*CLOCK+(frame%s.fps)*CLOCK/s.fps;
+        while (!buffered.empty() && buffered.front().first<=now) {
+            cpb_used-=buffered.front().second; buffered.pop_front();
+        }
         bool ready=(repeat || frame<frames.size()) && release<=now;
-        if (ready && end>release+CLOCK) return false;
+        if (ready && end>release+uint64_t(datv_buffer_ms(s))*90) return false;
         const Frame *f=ready?&frames[frame%frames.size()]:nullptr;
         const uint64_t pcr_packets=std::max(2,s.bitrate*(s.teletext.enabled?80:40)/(1504*1000));
         bool pcr=(index==0 || index-last_pcr_packet>=pcr_packets);
@@ -367,7 +390,7 @@ public:
             bool random=start && f->idr;
             if (start) {
                 pes=f->pes;
-                Bytes pts; timestamp(pts,release+CLOCK);
+                Bytes pts; timestamp(pts,release+uint64_t(datv_buffer_ms(s))*90);
                 std::copy(pts.begin(),pts.end(),pes.begin()+9);
             }
             header(packet,VIDEO,start,ready?video_cc:((video_cc+15)&15));
@@ -379,6 +402,12 @@ public:
                 if (pcr) { write_pcr(packet+6,index,s.bitrate); last_pcr_packet=index; }
             }
             if (payload) {
+                if (cpb_capacity) {
+                    // Count PES bytes too: slightly conservative vs. ES-only capacity.
+                    if (cpb_used+payload>cpb_capacity) return false;
+                    if (start) buffered.emplace_back(release+uint64_t(datv_buffer_ms(s))*90,0);
+                    buffered.back().second+=payload; cpb_used+=payload;
+                }
                 std::memcpy(packet+188-payload,pes.data()+offset,payload);
                 video_cc=(video_cc+1)&15; offset+=payload;
                 if (offset==pes.size()) { ++frame; offset=0; }
@@ -422,7 +451,7 @@ public:
 
 bool multiplex(const std::vector<Frame> &frames, DatvSettings s, const char *call, Bytes &out) {
     Mux mux(frames,s,call);
-    uint64_t count=(uint64_t(s.seconds+1)*s.bitrate+1504*7-1)/(1504*7)*7;
+    uint64_t count=((uint64_t(s.seconds)*1000+datv_buffer_ms(s))*s.bitrate+1504000*7-1)/(1504000*7)*7;
     out.clear(); out.reserve(count*188);
     for (uint64_t i=0; i<count; ++i) {
         unsigned char packet[188];
@@ -459,7 +488,7 @@ int datv_write(FILE *output, const uint32_t *rgb, int width, int height,
             if (result) *result={qp,static_cast<int>(frames.size()),largest};
             return 1;
         }
-        std::snprintf(error,256,"Beeld past niet binnen deze TS-bitrate en een seconde buffer. Kies een lagere resolutie, lagere beeldfrequentie of langere GOP.");
+        std::snprintf(error,256,"Beeld past niet binnen deze TS-bitrate en transportbuffer. Vergroot de buffer of kies een lagere resolutie, lagere beeldfrequentie of langere GOP.");
     } catch (const std::bad_alloc &) { std::snprintf(error,256,"Onvoldoende geheugen voor TS-export."); }
     catch (const std::runtime_error &e) { std::snprintf(error,256,"%s",e.what()); }
     return 0;
@@ -474,6 +503,7 @@ struct DatvStream {
     bool preview_only=false;
     int width=0, height=0;
     std::vector<uint32_t> preview;
+    DatvTimeline timeline{};
     std::chrono::steady_clock::time_point started;
 };
 
@@ -553,6 +583,8 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
         std::vector<Frame> frames;
         int selected=0;
         uint64_t first_image_packets=0;
+        DatvTimeline timeline{};
+        std::string planning_error;
         for (int qp=24; qp<=48 && !stream->stop; qp+=4) {
             int largest=0;
             // Consecutive IDR access units must have different idr_pic_id
@@ -565,19 +597,59 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
             // Exercise a continuous, repeated closed GOP, including PSI phases.
             // A finite file's trailing second must never hide a bitrate deficit.
             Mux probe(frames,s,call.c_str(),true);
-            uint64_t duration=std::max(30,(3*s.gop+s.fps-1)/s.fps);
+            uint64_t duration=std::max(30,(3*s.gop+s.fps-1)/s.fps)+4*((datv_buffer_ms(s)+999)/1000);
             uint64_t count=duration*s.bitrate/1504;
             bool fits=true; unsigned char packet[188];
             first_image_packets=0;
+            uint64_t idr_start=0;
+            timeline={}; timeline.qp=qp;
+            timeline.idr_bytes=static_cast<int>(frames.front().pes.size())-14;
+            timeline.span_ms[0]=1000;
+            timeline.span_ms[1]=1000.0*s.gop/s.fps+datv_buffer_ms(s);
             for (uint64_t i=0;i<count;++i) {
                 if (stream->stop) { fits=false; break; }
-                if (!probe.next(packet)) { fits=false; break; }
+                uint64_t frame=probe.frame;
+                try {
+                    if (!probe.next(packet)) { fits=false; timeline.failed_frame=frame; break; }
+                } catch (const std::runtime_error &e) {
+                    if (!stream->preview_only) throw;
+                    planning_error=e.what(); fits=false; timeline.failed_frame=frame; break;
+                }
                 if (!first_image_packets && probe.frame) first_image_packets=i+1;
+                if (stream->preview_only) {
+                    int pid=((packet[1]&31)<<8)|packet[2];
+                    bool payload=(packet[3]&0x10)!=0;
+                    int kind=pid==0x1fff?3:(pid==VIDEO && payload?(frames[frame%frames.size()].idr?0:1):2);
+                    if (kind==0 && (packet[1]&0x40)) idr_start=i;
+                    if (kind==0 && probe.frame!=frame) {
+                        double duration_ms=(i+1-idr_start)*1504000.0/s.bitrate;
+                        if (!timeline.idr_count || duration_ms<timeline.idr_min_ms) timeline.idr_min_ms=duration_ms;
+                        timeline.idr_max_ms=std::max(timeline.idr_max_ms,duration_ms);
+                        ++timeline.idr_count;
+                    }
+                    double ms=i*1504000.0/s.bitrate;
+                    for (int view=0;view<2;++view) {
+                        double scale=DATV_TIMELINE_BINS/timeline.span_ms[view];
+                        double a=ms*scale, b=(ms+1504000.0/s.bitrate)*scale;
+                        for (int bin=static_cast<int>(a);bin<DATV_TIMELINE_BINS && bin<b;++bin)
+                            timeline.bins[view][bin][kind]+=std::min(b,bin+1.0)-std::max(a,double(bin));
+                    }
+                    timeline.packets=i+1;
+                }
             }
             if (fits) { selected=qp; break; }
+            if (!planning_error.empty()) break;
         }
+        if (!stream->stop && stream->preview_only) {
+            timeline.ready=1; timeline.fits=selected!=0;
+            timeline.first_image_ms=first_image_packets*1504000.0/s.bitrate;
+            timeline.end_ms=timeline.packets*1504000.0/s.bitrate;
+            std::lock_guard<std::mutex> lock(stream->mutex);
+            stream->timeline=timeline;
+        }
+        if (!stream->stop && !planning_error.empty()) throw std::runtime_error(planning_error);
         if (!stream->stop && !selected)
-            throw std::runtime_error("Beeld past niet in de doorlopende TS. Kies een lagere resolutie, lagere beeldfrequentie of langere GOP.");
+            throw std::runtime_error("Beeld past niet in de doorlopende TS. Vergroot de transportbuffer of kies een lagere resolutie, lagere beeldfrequentie of langere GOP.");
         if (!stream->stop && stream->preview_only) {
             auto pixels=decode_preview(frames.front(),w,h);
             std::lock_guard<std::mutex> lock(stream->mutex);
@@ -657,6 +729,13 @@ DatvStream *datv_preview_start(const uint32_t *rgb, int width, int height, int s
                               const char *call, DatvSettings settings, char error[256]) {
     DatvUdpSettings udp{}; udp.video=settings;
     return start_job(rgb,width,height,stride,call,udp,error,true);
+}
+int datv_preview_timeline(DatvStream *job, DatvTimeline *out) {
+    if (!job || !out) return 0;
+    std::lock_guard<std::mutex> lock(job->mutex);
+    if (!job->timeline.ready) return 0;
+    *out=job->timeline;
+    return 1;
 }
 int datv_preview_image(DatvStream *job, uint32_t *rgb, int width, int height, int stride) {
     if (!job || !rgb || width!=job->width || height!=job->height || stride<width*4 || stride%4) return 0;

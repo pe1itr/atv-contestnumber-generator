@@ -18,9 +18,9 @@ int main(void) {
     original.band=10; original.show=0; original.inverse=1; original.blue_yellow=1;
     original.show_sum=1; original.top_code=1; original.genius=2;
     strcpy(original.call,"PE1ITR/P"); strcpy(original.locator,"JO21QK86DV12"); strcpy(original.code,"1957");
-    original.ts=(DatvSettings){.bitrate=60000,.seconds=60,.fps=2,.gop=1};
+    original.ts=(DatvSettings){.bitrate=60000,.seconds=60,.fps=2,.gop=1,.buffer_ms=5000};
     strcpy(original.udp.ip,"192.168.1.50"); original.udp.port=12345;
-    original.udp.video=(DatvSettings){.bitrate=240000,.seconds=10,.fps=10,.gop=2};
+    original.udp.video=(DatvSettings){.bitrate=240000,.seconds=10,.fps=10,.gop=2,.buffer_ms=10000};
     original.ts.eit_enabled=original.udp.video.eit_enabled=1;
     original.teletext.enabled=1;
     assert(!teletext_from_text(&original.teletext,"ATV CONTEST\nPagina 100\n\n73 de PE1ITR"));
@@ -88,6 +88,8 @@ int main(void) {
     AppConfig bad=original; bad.ts.seconds=61;
     assert(!config_save(TEST_PATH,&bad)); assert(config_load(TEST_PATH,&loaded)==1);
     assert(!memcmp(&original,&loaded,sizeof(original)));
+    bad=original; bad.ts.buffer_ms=999; assert(!config_save(TEST_PATH,&bad));
+    bad=original; bad.udp.video.buffer_ms=10001; assert(!config_save(TEST_PATH,&bad));
     bad=original; strcpy(bad.udp.ip,"999.1.2.3"); assert(!config_save(TEST_PATH,&bad));
     bad=original; strcpy(bad.call,"PE1\nITR"); assert(!config_save(TEST_PATH,&bad));
     bad=original; strcpy(bad.call,"\xc0\x80"); assert(!config_save(TEST_PATH,&bad));
@@ -109,10 +111,11 @@ int main(void) {
     char old_config[8192]="", line[1024];
     f=fopen(TEST_PATH,"rb"); assert(f);
     while (fgets(line,sizeof(line),f))
-        if (strncmp(line,"ebu_top=",8) && strncmp(line,"ebu_bottom=",11)) strcat(old_config,line);
+        if (strncmp(line,"ebu_top=",8) && strncmp(line,"ebu_bottom=",11) && !strstr(line,".buffer_ms=")) strcat(old_config,line);
     assert(!fclose(f)); f=fopen(TEST_PATH,"wb"); assert(f);
     assert(fputs(old_config,f)>=0); assert(!fclose(f));
     assert(config_load(TEST_PATH,&loaded)==1 && !loaded.ebu_top && !loaded.ebu_bottom);
+    assert(datv_buffer_ms(loaded.ts)==1000 && datv_buffer_ms(loaded.udp.video)==1000);
     /* Blank inputs and an unused UDP address can be saved before setup. */
     original=config_defaults(); assert(config_save(TEST_PATH,&original));
     assert(config_load(TEST_PATH,&loaded)==1); assert(!memcmp(&original,&loaded,sizeof(original)));

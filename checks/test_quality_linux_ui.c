@@ -20,6 +20,7 @@ static gboolean drive(gpointer unused) {
                 gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,2)),115196);
                 gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,3)),test_fps);
                 gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,4)),2);
+                gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,10)),test_fps==4?3000:1000);
                 stage=1; gtk_dialog_response(GTK_DIALOG(w),4);
             } else if (stage==2) { stage=3; gtk_dialog_response(GTK_DIALOG(w),GTK_RESPONSE_CLOSE); }
         } else {
@@ -27,6 +28,9 @@ static gboolean drive(gpointer unused) {
             const char *value=strstr(text,"QP ");
             if (value) {
                 qp=atoi(value+3); assert(qp>=24 && qp<=48);
+                assert(GTK_IS_DRAWING_AREA(gtk_grid_get_child_at(grid,0,4)));
+                assert(strstr(text,test_fps==4?"presentatietijd: 3000 ms":"presentatietijd: 1000 ms"));
+                assert(strstr(text,"Frameperiode:") && strstr(text,"zonder TS-overhead"));
                 const char *timing=strstr(text,"Eerste volledige beeld: ");
                 double ms=0; assert(timing && sscanf(timing,"Eerste volledige beeld: %lf ms",&ms)==1);
                 assert(ms>0 && ms<=1000);

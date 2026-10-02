@@ -139,3 +139,8 @@ build/test-teletext.exe: checks/test_teletext.cpp src/datv.cpp src/datv.h src/co
 test-teletext: build/test-teletext
 	build/test-teletext build/teletext-linux
 	$(PYTHON) checks/check_teletext.py build/teletext-linux
+
+build/test-timeline: checks/test_timeline.cpp src/datv.cpp src/datv.h src/core.h build/core-linux.o build/openh264-linux/libopenh264.a
+	$(CXX) $(CXXFLAGS) -Isrc -Ibuild/openh264-linux/codec/api $< build/core-linux.o build/openh264-linux/libopenh264.a -lpthread -o $@
+build/test-timeline.exe: checks/test_timeline.cpp src/datv.cpp src/datv.h src/core.h build/core-windows.o build/openh264-windows/libopenh264.a
+	$(WINCXX) $(CXXFLAGS) -static -Isrc -Ibuild/openh264-windows/codec/api $< build/core-windows.o build/openh264-windows/libopenh264.a -lws2_32 -lwinmm -lwinpthread -lssp -o $@

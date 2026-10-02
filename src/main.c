@@ -273,8 +273,8 @@ static void udp_poll(HWND window,UdpDialog *d) {
     char text[512]; datv_udp_status_text(udp_settings,status,text,sizeof(text));
     udp_status_message(window,text);
     BOOL busy=status.state==DATV_PREPARING || status.state==DATV_RUNNING;
-    const int fields[]={IDC_UDP_IP,IDC_UDP_PORT,IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP,IDC_UDP_START,IDC_UDP_APPLY,IDC_UDP_PREVIEW,IDC_INCLUDE_EIT,IDC_INCLUDE_TELETEXT};
-    for (int i=0;i<10;++i) EnableWindow(GetDlgItem(window,fields[i]),!busy);
+    const int fields[]={IDC_UDP_IP,IDC_UDP_PORT,IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP,IDC_TRANSPORT_BUFFER,IDC_UDP_START,IDC_UDP_APPLY,IDC_UDP_PREVIEW,IDC_INCLUDE_EIT,IDC_INCLUDE_TELETEXT};
+    for (int i=0;i<11;++i) EnableWindow(GetDlgItem(window,fields[i]),!busy);
     dvb_window_enable(window,!busy);
     EnableWindow(GetDlgItem(window,IDC_UDP_STOP),busy);
 }
@@ -291,6 +291,7 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         dvb_window_init(window,IDC_UDP_BITRATE,udp_dvb);
         SetDlgItemInt(window,IDC_UDP_FPS,udp_settings.video.fps,FALSE);
         SetDlgItemInt(window,IDC_UDP_GOP,udp_settings.video.gop,FALSE);
+        SetDlgItemInt(window,IDC_TRANSPORT_BUFFER,datv_buffer_ms(udp_settings.video),FALSE);
         EnableWindow(GetDlgItem(window,IDC_UDP_STOP),FALSE);
         if (!SetTimer(window,1,200,NULL)) { EndDialog(window,0); return TRUE; }
         return TRUE;
@@ -324,6 +325,9 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         if ((LOWORD(wp)!=IDC_UDP_PREVIEW && !valid) || !datv_test_options(4,values,&s.video,&w,&h)) {
             udp_status_message(window,"Gebruik poort 1-65535, bitrate 30080-2000000 bit/s, 1-25 beelden/s en GOP 1-250."); return TRUE;
         }
+        s.video.buffer_ms=(int)GetDlgItemInt(window,IDC_TRANSPORT_BUFFER,NULL,FALSE);
+        if (s.video.buffer_ms<1000 || s.video.buffer_ms>10000) { udp_status_message(window,"Transportbuffer moet tussen 1000 en 10000 ms liggen."); return TRUE; }
+        if (s.video.buffer_ms==1000) s.video.buffer_ms=0;
         s.video.eit_enabled=IsDlgButtonChecked(window,IDC_INCLUDE_EIT)==BST_CHECKED;
         DatvUdpSettings check=s;
         if (LOWORD(wp)==IDC_UDP_APPLY && !check.ip[0]) strcpy(check.ip,"127.0.0.1");
@@ -437,6 +441,7 @@ static INT_PTR CALLBACK ts_options(HWND window, UINT message, WPARAM wp, LPARAM 
         SetDlgItemInt(window,IDC_TS_SECONDS,ts_settings.seconds,FALSE);
         SetDlgItemInt(window,IDC_TS_FPS,ts_settings.fps,FALSE);
         SetDlgItemInt(window,IDC_TS_GOP,ts_settings.gop,FALSE);
+        SetDlgItemInt(window,IDC_TRANSPORT_BUFFER,datv_buffer_ms(ts_settings),FALSE);
         return TRUE;
     }
     if (message==WM_COMMAND && LOWORD(wp)==IDOK) {
@@ -449,6 +454,9 @@ static INT_PTR CALLBACK ts_options(HWND window, UINT message, WPARAM wp, LPARAM 
         if (!datv_test_options(4,values,&s,&w,&h)) {
             error(window,L"Gebruik bitrate 30080-2000000 bit/s, duur 1-60 s, 1-25 beelden/s en GOP 1-250."); return TRUE;
         }
+        s.buffer_ms=(int)GetDlgItemInt(window,IDC_TRANSPORT_BUFFER,NULL,FALSE);
+        if (s.buffer_ms<1000 || s.buffer_ms>10000) { error(window,L"Transportbuffer moet tussen 1000 en 10000 ms liggen."); return TRUE; }
+        if (s.buffer_ms==1000) s.buffer_ms=0;
         s.eit_enabled=IsDlgButtonChecked(window,IDC_INCLUDE_EIT)==BST_CHECKED;
         s.teletext=teletext_settings;
         s.teletext.enabled=IsDlgButtonChecked(window,IDC_INCLUDE_TELETEXT)==BST_CHECKED;
@@ -927,9 +935,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
     int argc=0;
     LPWSTR *argv=CommandLineToArgvW(GetCommandLineW(),&argc);
     if (argv && argc>=3 && (!wcscmp(argv[1],L"--ts-test") || !wcscmp(argv[1],L"--ts-ebu-test") || !wcscmp(argv[1],L"--ts-fubk-test") || !wcscmp(argv[1],L"--ts-pm5644-test"))) {
-        char text[6][32]; const char *values[6];
+        char text[7][32]; const char *values[7];
         result=1;
-        if (argc<=9) {
+        if (argc<=10) {
             BOOL converted=TRUE;
             for (int i=3; i<argc; ++i) {
                 text[i-3][0]=0;
