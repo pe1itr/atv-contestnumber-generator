@@ -81,6 +81,8 @@ Automatische codes volgen deze regels: eerste cijfer 1–9, vier verschillende c
 | 4:3 | 16:9 |
 | --- | --- |
 | 120 × 90 | 120 × 68 |
+| 128 × 96 | 128 × 72 |
+| 144 × 108 | 144 × 82 |
 | 160 × 120 | 160 × 90 |
 | 320 × 240 | 320 × 180 |
 | 640 × 480 | 640 × 360 |

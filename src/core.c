@@ -271,12 +271,12 @@ const char *datv_validate(DatvSettings s, int width, int height) {
     return NULL;
 }
 const Resolution resolutions43[RESOLUTION_COUNT] = {
-    {120,90},{160,120},{240,180},
+    {120,90},{128,96},{144,108},{160,120},{240,180},
     {320,240},{640,480},{800,600},{1024,768},
     {1080,810},{1280,960},{1600,1200},{1920,1440}
 };
 const Resolution resolutions169[RESOLUTION_COUNT] = {
-    {120,68},{160,90},{240,136}, /* Even heights for H.264. */
+    {120,68},{128,72},{144,82},{160,90},{240,136}, /* Even heights for H.264. */
     {320,180},{640,360},{800,450},{960,540},
     {1024,576},{1280,720},{1600,900},{1920,1080}
 };
@@ -523,7 +523,7 @@ int config_load(const char *path, AppConfig *out) {
         char *value=strchr(line,'=');
         if (!value) { ok=0; break; } *value++=0;
         if (!strcmp(line,"version")) {
-            if (version || (strcmp(value,"1") && strcmp(value,"2") && strcmp(value,"3") && strcmp(value,"4") && strcmp(value,"5"))) { ok=0; break; }
+            if (version || (strcmp(value,"1") && strcmp(value,"2") && strcmp(value,"3") && strcmp(value,"4") && strcmp(value,"5") && strcmp(value,"6"))) { ok=0; break; }
             version=value[0]-'0'; continue;
         }
         size_t i;
@@ -591,11 +591,14 @@ int config_load(const char *path, AppConfig *out) {
     if (migrated_ts) s.ts.bitrate=dvb_bitrate(s.ts_dvb);
     if (migrated_udp) s.udp.video.bitrate=dvb_bitrate(s.udp_dvb);
     if (!ok || !version || (seen&required)!=required || !config_valid(&s)) return -1;
+    if (version<6 && s.resolution>=11) return -1;
     /* Version 1 stored 240px at index 10; version 2 sorts by width. */
     if (version==1) {
         if (s.resolution==10) s.resolution=2;
         else if (s.resolution>=2) ++s.resolution;
     }
+    /* Version 6 inserts 128px and 144px after 120px. */
+    if (version<6 && s.resolution>=1) s.resolution+=2;
     *out=s; return 1;
 }
 int config_save(const char *path, const AppConfig *s) {
@@ -605,7 +608,7 @@ int config_save(const char *path, const AppConfig *s) {
     snprintf(temporary,n,"%s.tmp",path);
     FILE *f=config_open(temporary,1);
     if (!f) { free(temporary); return 0; }
-    int ok=fprintf(f,"# ATV contest number generator\nversion=5\n")>=0;
+    int ok=fprintf(f,"# ATV contest number generator\nversion=6\n")>=0;
     for (size_t i=0;i<CONFIG_FIELDS && ok;++i) {
         const ConfigField *field=&config_fields[i]; const char *value=(const char *)s+field->offset;
         ok=(field->size?fprintf(f,"%s=%s\n",field->key,value):

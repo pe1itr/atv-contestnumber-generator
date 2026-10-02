@@ -53,8 +53,8 @@ int config_load(const char *path, AppConfig *out);
 int config_save(const char *path, const AppConfig *settings);
 typedef struct { int width, height; } Resolution;
 #define LOCATOR_MAX_LENGTH 12
-#define RESOLUTION_COUNT 11
-#define DEFAULT_RESOLUTION_INDEX 3 /* 320x240 (4:3), 320x180 (16:9). */
+#define RESOLUTION_COUNT 13
+#define DEFAULT_RESOLUTION_INDEX 5 /* 320x240 (4:3), 320x180 (16:9). */
 extern const Resolution resolutions43[RESOLUTION_COUNT], resolutions169[RESOLUTION_COUNT];
 extern const wchar_t *const bands[12];
 extern const wchar_t *const band_files[12];
