@@ -108,6 +108,23 @@ int main(void) {
     bad=original; strcpy(bad.station.operator_name,"\xf0\x9f\x98\x80"); assert(!config_save(TEST_PATH,&bad));
     bad=original; strcpy(bad.station.city,"Stad\nextra=1"); assert(!config_save(TEST_PATH,&bad));
     /* Malformed, duplicate, unknown and unsupported data never partially apply. */
+    /* Audio settings persist cross-platform; RF/level eligibility is shared. */
+    AppConfig audio=config_defaults(), loaded_audio;
+    audio.genius=3; audio.udp_dvb.symbol_rate=4;
+    audio.udp.video.bitrate=dvb_bitrate(audio.udp_dvb);
+    audio.udp.video.audio.bitrate=48000;
+    strcpy(audio.udp.video.audio.source,"ffmix.monitor");
+    assert(dvb_audio_allowed(audio.udp_dvb));
+    assert(config_save(TEST_PATH,&audio)==1);
+    assert(config_load(TEST_PATH,&loaded_audio)==1);
+    assert(!memcmp(&audio,&loaded_audio,sizeof(audio)));
+    audio.genius=2; assert(config_save(TEST_PATH,&audio)==0); audio.genius=3;
+    audio.udp_dvb.symbol_rate=5; assert(dvb_audio_allowed(audio.udp_dvb));
+    audio.udp_dvb.symbol_rate=3; assert(!dvb_audio_allowed(audio.udp_dvb));
+    assert(config_save(TEST_PATH,&audio)==0);
+    audio.udp_dvb.symbol_rate=4; audio.udp_dvb.system=DVB_T;
+    assert(!dvb_audio_allowed(audio.udp_dvb)); assert(config_save(TEST_PATH,&audio)==0);
+    assert(config_save(TEST_PATH,&original)==1);
     const char *invalid[]={"version=1\n","version=2\n","udp.port=0\n","udp.port=999999999999999999999999\n","unknown=1\n","broken\n"};
     for (unsigned i=0;i<sizeof(invalid)/sizeof(invalid[0]);++i) {
         assert(config_save(TEST_PATH,&original)); append(invalid[i]);
@@ -127,6 +144,21 @@ int main(void) {
     assert(fputs(old_config,f)>=0); assert(!fclose(f));
     assert(config_load(TEST_PATH,&loaded)==1 && !loaded.ebu_top && !loaded.ebu_bottom);
     assert(datv_buffer_ms(loaded.ts)==1000 && datv_buffer_ms(loaded.udp.video)==1000);
+    /* A real pre-audio v6 file has neither audio key; v7 requires both. */
+    assert(config_save(TEST_PATH,&original)); old_config[0]=0;
+    f=fopen(TEST_PATH,"rb"); assert(f);
+    while (fgets(line,sizeof(line),f)) {
+        if (!strncmp(line,"version=",8)) strcpy(line,"version=6\n");
+        if (strncmp(line,"udp.video.audio.",16)) strcat(old_config,line);
+    }
+    assert(!fclose(f)); f=fopen(TEST_PATH,"wb"); assert(f);
+    assert(fputs(old_config,f)>=0); assert(!fclose(f));
+    assert(config_load(TEST_PATH,&loaded)==1);
+    assert(!loaded.udp.video.audio.bitrate && !loaded.udp.video.audio.source[0]);
+    f=fopen(TEST_PATH,"r+b"); assert(f);
+    assert(!fseek(f,(long)strlen("# ATV contest number generator\nversion="),SEEK_SET));
+    assert(fputc('7',f)!=EOF); assert(!fclose(f));
+    assert(config_load(TEST_PATH,&loaded)==-1);
     /* Blank inputs and an unused UDP address can be saved before setup. */
     original=config_defaults(); assert(config_save(TEST_PATH,&original));
     assert(config_load(TEST_PATH,&loaded)==1); assert(!memcmp(&original,&loaded,sizeof(original)));

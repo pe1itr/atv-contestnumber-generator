@@ -33,12 +33,13 @@ betekenis voor reflecties van 2–3 seconden, zie
 [Kleurkeuze voor een DATV-contestbeeld](contest-kleurkeuze.md).
 
 **OpenH264 2.6.0** is statisch ingebouwd. De MPEG-TS-muxer is eigen gedeelde code in
-`src/datv.cpp`. Er worden geen FFmpeg-programma's of FFmpeg-bibliotheken gebruikt.
+`src/datv.cpp`. Linux gebruikt voor optionele live audio de systeemlibraries
+`libpulse`, `libavcodec` en `libavutil`; er worden geen FFmpeg-processen gestart.
 Windows blijft één verspreidbare executable, zonder losse codec-DLL.
 **Info → OpenH264-licentie** bevat de ingebouwde bibliotheeklicentie.
 
 De TS bevat één H.264 Constrained Baseline-videokanaal met vierkante pixels en
-BT.601-kleuromzetting, zonder B-frames en zonder audio-PID. Servicenaam én provider
+BT.601-kleuromzetting, zonder B-frames. Zonder ingeschakelde Linux-audio is er geen audio-PID. Servicenaam én provider
 komen uit de roepnaam, inclusief een eventuele `/`. Service-ID, TS-ID en
 original-network-ID zijn 1; video/PCR-PID is `0x0100`, PMT-PID `0x1000`.
 PAT en PMT worden ongeveer iedere 200 ms herhaald. SDT wordt na 800 ms opnieuw
@@ -333,3 +334,93 @@ gecontroleerd.
 
 `build/test-timeline` en `build/test-timeline.exe` controleren de tijdlijn tegen
 werkelijke muxpakketten, inclusief een onhaalbare combinatie, lange GOP, langere overdracht en decoderbuffergrens.
+
+
+## Optionele live audio op Linux (Genius level 3)
+
+Kies **Config → Genius level 3 (Linux audio)** en open **File → DATV UDP output**.
+Audio is standaard uit. Kies DVB-S of DVB-S2 met **333 of 500 ksym/s**, vink
+**Include Linux audio** aan en gebruik `ffmix.monitor` of vul een bestaande
+PulseAudio/PipeWire-bron in.
+Bij een virtuele sink `ffmix` is de opnamebron **`ffmix.monitor`**. Een directe
+microfoonbron is ook mogelijk. `pactl list short sources` toont de beschikbare
+namen; de toepassing opent uitsluitend de ingevulde bron en schakelt bij verlies
+niet ongemerkt over naar een andere microfoon.
+
+Keuzes zijn **48.000 bit/s mono** en **96.000 bit/s stereo**, beide AAC-LC met
+48.000 samples/s. Bitrate en samplefrequentie zijn verschillende instellingen.
+De ontvanger moet AAC-LC in LATM/LOAS ondersteunen. Windows blijft voorlopig
+zonder audio; bij laden van een Linux-configuratie wordt level 3 daar level 2
+en wordt audio uitgeschakeld. TS-bestandsexport blijft zonder audio.
+
+Bij **Start met audio** maakt de toepassing automatisch de virtuele sink
+`ffmix` aan wanneer de gekozen bron `ffmix.monitor` nog niet bestaat. Een bestaande
+sink wordt hergebruikt. Andere bronnamen moeten al bestaan. De sink wordt pas
+bij Start aangemaakt, niet bij Beeld controleren of Instellingen toepassen.
+Na Start volstaat bijvoorbeeld:
+
+```sh
+ffmpeg -hide_banner -i https://icecast.omroep.nl/radio2-bb-aac -af volume=0.5 -f wav - | PULSE_SINK=ffmix paplay
+```
+
+Handmatig aanmaken kan ook:
+
+```sh
+pactl load-module module-null-sink sink_name=ffmix rate=48000 channels=2
+```
+
+Speel daarin audio af, bijvoorbeeld met het eigen radiostreamscript of:
+
+```sh
+PULSE_SINK=ffmix paplay opname.wav
+```
+
+De sink blijft bij Stop en sluiten bestaan, zodat externe spelers hun
+bestemming behouden; herstarten gebruikt dezelfde sink. Stop tijdens een
+lopende aanmaak kan de serveractie niet altijd annuleren, dus ook dan kan
+`ffmix` blijven bestaan. Alle menging en bronkeuzes
+kunnen buiten het programma blijven. Een stille sink levert stilte; het wegvallen
+van de bron stopt de UDP-stream met een foutmelding. Stoppen onderbreekt ook het
+wachten tijdens het openen van de audioserver.
+
+De muxer reserveert conservatief **141.000 respectievelijk 211.500 bit/s TS**
+voor audio, inclusief PES/TS-overhead en ruimte voor AAC-pieken: twee of drie
+TS-pakketten per 1024 audiosamples. Ongebruikte gereserveerde plekken worden
+null-pakketten. De totale ingestelde TS-bitrate verandert niet. De beeldcontrole
+gebruikt exact dezelfde reservering; een lage FEC kan ook bij 333/500 ksym/s te
+weinig ruimte overlaten. Er moet minimaal 40 kbit/s overblijven, waarna de
+werkelijke beeldplanning nog moet slagen. Tijdens verzending worden deadlines
+opnieuw bewaakt; een te grote audiopiek geeft een fout in plaats van een te late PES.
+
+Audio gebruikt PID `0x0102`, PMT stream_type `0x11`, AAC-descriptor `7c 01 51`
+en PES stream_id `0xc0`. Elk frame herhaalt StreamMuxConfig voor instappen in de
+stream. Eén AAC-frame bevat 1024 samples, dus de PTS-stap is 1920 ticks bij 90 kHz.
+De eerste audio-PTS is gelijk aan de eerste video-PTS. Audio wordt pas maximaal
+100 ms vóór zijn PTS verstuurd, ook met een videotransportbuffer van 10 seconden.
+Bij een lange videobuffer verschijnt de eerste audio-PES dus ook pas laat
+(bij 10 s buffer rond 9,9 s). Ontvangers/analysetools met een korte detectietijd
+kunnen audio aanvankelijk missen; gebruik bijvoorbeeld `-analyzeduration 15000000
+-probesize 10000000` bij ffprobe. Een PID-aanwezigheidsalarm met een 5 s-drempel
+kan tijdens deze opstartfase afgaan. Dit is een bekende beperking van dit profiel.
+De capturebuffer is begrensd; een kleine correctie van maximaal één sample per
+AAC-frame met lineaire interpolatie vangt verschil tussen audioklok en TS-klok op.
+Er wordt een statisch beeld verstuurd: dit is geen synchronisatie van een externe
+live videobron met de audio.
+
+Bouwen vereist naast de bestaande libraries de ontwikkelpakketten voor
+PulseAudio, libavcodec en libavutil (Debian/Ubuntu: `libpulse-dev libavcodec-dev
+libavutil-dev`). Audio-opname vereist een actieve PulseAudio-server of PipeWire
+met Pulse-compatibiliteit. Er is geen los `ffmpeg`-programma nodig voor gebruik.
+
+`make test-audio` test een tijdelijke null-sink met stilte, toon en ruis, beide
+bitrates, beide symbol rates, 10 seconden videobuffer, bronverlies en een ontbrekende
+bron. De test gebruikt uitsluitend localhost en verwijdert zijn eigen sink.
+Benodigd: `pactl`, `paplay`, FFmpeg/ffprobe en TSDuck. Captures en logs staan in
+`build/audio-check/`. Deze controles bewijzen geen volledige DVB/ETSI-conformiteit
+of de timing aan een fysieke RF-uitgang.
+
+
+`make test-audio-sink` is een afzonderlijke, expliciete lifecycle-test: `ffmix`
+moet vooraf ontbreken. De test laat de toepassing de sink aanmaken, speelt een
+lokale toon af en controleert Stop/Start met dezelfde sink en ongewijzigde
+standaardapparaten. Hij laat `ffmix` daarna bestaan, net als de toepassing.

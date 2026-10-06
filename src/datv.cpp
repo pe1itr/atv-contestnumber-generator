@@ -29,10 +29,14 @@
 #include <mutex>
 #include <thread>
 #include <stdexcept>
+#include <functional>
 
-namespace {
 using Bytes = std::vector<unsigned char>;
-constexpr int VIDEO = 0x100, PMT = 0x1000;
+#ifndef _WIN32
+#include "audio_linux.h"
+#endif
+namespace {
+constexpr int VIDEO = 0x100, PMT = 0x1000, AUDIO = 0x102;
 constexpr uint64_t CLOCK = 90000;
 struct Frame { Bytes pes; uint64_t release, deadline; bool idr; };
 struct EncoderDelete {
@@ -167,9 +171,10 @@ void crc(Bytes &b) {
 Bytes pat() {
     Bytes b={0,0xb0,13,0,1,0xc1,0,0,0,1,0xf0,0}; crc(b); return b;
 }
-Bytes pmt(bool teletext=false, unsigned version=0) {
+Bytes pmt(bool teletext=false, unsigned version=0, bool audio=false) {
     Bytes b={2,0xb0,18,0,1,0xc1,0,0,0xe1,0,0xf0,0,0x1b,0xe1,0,0xf0,0};
     if (teletext) b.insert(b.end(),{0x06,0xe1,0x01,0xf0,7,0x56,5,'n','l','d',0x09,0x00});
+    if (audio) b.insert(b.end(),{0x11,0xe1,0x02,0xf0,3,0x7c,1,0x51});
     b[5]|=(version&31)<<1; b[2]=b.size()+1; crc(b); return b;
 }
 Bytes sdt(const char *call, bool eit=false, unsigned version=0) {
@@ -324,6 +329,31 @@ size_t avc_cpb_capacity(const Frame &frame) {
     }
     throw std::runtime_error("Cannot determine the AVC decoder buffer for this image.");
 }
+// ISO/IEC 14496-3 AudioMuxElement: one AAC-LC raw_data_block, explicit
+// StreamMuxConfig every frame for mid-stream acquisition. LOAS sync 0x2b7.
+Bytes audio_pes(const Bytes &aac, int channels, uint64_t pts) {
+    Bytes latm; unsigned bits=0;
+    auto put=[&](unsigned value,int count) {
+        for (int i=count-1;i>=0;--i) {
+            if (!(bits%8)) latm.push_back(0);
+            latm.back()|=((value>>i)&1)<<(7-bits%8); ++bits;
+        }
+    };
+    put(0,1); put(0,1); put(1,1); // useSameStreamMux, audioMuxVersion, sameTimeFraming
+    put(0,6); put(0,4); put(0,3); // subframes, programs, layers
+    put(2,5); put(3,4); put(channels,4); put(0,3); // ASC: LC, 48kHz, channels, GASpecific
+    put(0,3); put(255,8); put(0,1); put(0,1); // frameLengthType, fullness, otherData, CRC
+    size_t length=aac.size();
+    while (length>=255) { put(255,8); length-=255; }
+    put(length,8);
+    for (unsigned char byte:aac) put(byte,8);
+    if (latm.size()>8191) throw std::runtime_error("AAC frame exceeds LOAS length.");
+    Bytes pes={0,0,1,0xc0,0,0,0x80,0x80,5}; timestamp(pes,pts);
+    pes.push_back(0x56); pes.push_back(0xe0|(latm.size()>>8)); pes.push_back(latm.size());
+    pes.insert(pes.end(),latm.begin(),latm.end());
+    size_t size=pes.size()-6; pes[4]=size>>8; pes[5]=size;
+    return pes;
+}
 class Mux {
     const std::vector<Frame> &frames;
     DatvSettings s;
@@ -344,12 +374,20 @@ class Mux {
     size_t cpb_capacity=0, cpb_used=0;
     std::deque<std::pair<uint64_t,size_t>> buffered;
 public:
+    bool audio_reserved=false;
+    std::function<Bytes()> audio_encoder;
+    uint64_t audio_frame=0, audio_slot=0;
+    size_t audio_offset=0;
+    int audio_cc=0;
+    bool audio_first=true;
+    std::deque<std::pair<uint64_t,Bytes>> audio_queue;
     uint64_t frame=0;
     Mux(const std::vector<Frame> &f, DatvSettings settings, const char *name, bool loop=false, int64_t utc=utc_now())
-        : frames(f),s(settings),tables{pat(),pmt(settings.teletext.enabled,si_version(2,settings.teletext.enabled?"TTX":"")),sdt(name,settings.eit_enabled,si_version(false,std::string(name)+(settings.eit_enabled?"+EIT":"")))},call(name),epoch(utc),repeat(loop) {
+        : frames(f),s(settings),tables{pat(),pmt(settings.teletext.enabled,si_version(2,std::string(settings.teletext.enabled?"TTX":"")+(settings.audio.bitrate?"+AAC":"")),settings.audio.bitrate!=0),sdt(name,settings.eit_enabled,si_version(false,std::string(name)+(settings.eit_enabled?"+EIT":"")))},call(name),epoch(utc),repeat(loop) {
             if (datv_buffer_ms(s)>1000) cpb_capacity=avc_cpb_capacity(frames.front());
         }
     bool next(unsigned char packet[188]) {
+        audio_reserved=false;
         uint64_t now=byte_time(index*188,CLOCK,s.bitrate);
         uint64_t end=byte_time((index+1)*188,CLOCK,s.bitrate);
         uint64_t release=(frame/s.fps)*CLOCK+(frame%s.fps)*CLOCK/s.fps;
@@ -371,6 +409,18 @@ public:
             for (int t=0;t<6;++t) if (end-completed[t]>limits[t])
                 throw std::runtime_error("EIT and image do not fit the TS schedule. Increase the bitrate or shorten the station description.");
         }
+        const uint64_t audio_base=uint64_t(datv_buffer_ms(s))*90-9000; // max 100ms receiver lead
+        const int audio_slots=s.audio.bitrate==48000?2:3;
+        bool audio_due=s.audio.bitrate && now>=audio_base+audio_slot*1920/audio_slots;
+        if (audio_encoder && now>=audio_base+audio_frame*1920) {
+            uint64_t pts=uint64_t(datv_buffer_ms(s))*90+audio_frame*1920;
+            Bytes aac=audio_encoder();
+            if (aac.empty()) throw std::runtime_error("AAC encoder did not supply a frame.");
+            audio_queue.emplace_back(pts,audio_pes(aac,s.audio.bitrate==48000?1:2,pts));
+            ++audio_frame;
+        }
+        if (!audio_queue.empty() && end>=audio_queue.front().first)
+            throw std::runtime_error("Audio exceeds its transport budget. Try 48 kbit/s or restart.");
         bool ttx=s.teletext.enabled && now>=teletext_due;
         if (!pcr && ttx && teletext_first) {
             header(packet,0x101,false,15); packet[3]=0x2f; packet[4]=183; packet[5]=0x80;
@@ -385,6 +435,21 @@ public:
             teletext_last_end=end;
             if (++teletext_part==10) { teletext_part=0; teletext_due=teletext_cycle+CLOCK*2; }
             else teletext_due=end+CLOCK/50; // >=20 ms erase time; <=100 ms packet gap.
+        } else if (!pcr && table<0 && audio_due) {
+            ++audio_slot; audio_reserved=true;
+            if (!audio_queue.empty()) {
+                const Bytes &data=audio_queue.front().second;
+                int payload=static_cast<int>(std::min<size_t>(audio_first?182:184,data.size()-audio_offset));
+                header(packet,AUDIO,audio_offset==0,audio_cc); audio_cc=(audio_cc+1)&15;
+                if (payload<184) {
+                    packet[3]|=0x20; packet[4]=183-payload;
+                    if (packet[4]) packet[5]=audio_first?0x80:0;
+                }
+                audio_first=false;
+                std::memcpy(packet+188-payload,data.data()+audio_offset,payload);
+                audio_offset+=payload;
+                if (audio_offset==data.size()) { audio_queue.pop_front(); audio_offset=0; }
+            } else header(packet,0x1fff,false,0); // fixed reservation also during quality probe
         } else if (pcr || (ready && table<0)) {
             bool start=ready && offset==0;
             bool random=start && f->idr;
@@ -465,6 +530,7 @@ bool multiplex(const std::vector<Frame> &frames, DatvSettings s, const char *cal
 int datv_write(FILE *output, const uint32_t *rgb, int width, int height,
                int stride, const char *call, DatvSettings s, DatvResult *result, char error[256]) {
     error[0]=0;
+    if (s.audio.bitrate) { std::snprintf(error,256,"Live audio is only available for Linux UDP output."); return 0; }
     const char *invalid=datv_validate(s,width,height);
     if (invalid) { std::snprintf(error,256,"%s",invalid); return 0; }
     if (!output || !rgb || !call || stride<width*4 || stride%4 || std::strlen(call)<3 || std::strlen(call)>24) {
@@ -619,7 +685,7 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
                 if (stream->preview_only) {
                     int pid=((packet[1]&31)<<8)|packet[2];
                     bool payload=(packet[3]&0x10)!=0;
-                    int kind=pid==0x1fff?3:(pid==VIDEO && payload?(frames[frame%frames.size()].idr?0:1):2);
+                    int kind=probe.audio_reserved?2:pid==0x1fff?3:(pid==VIDEO && payload?(frames[frame%frames.size()].idr?0:1):2);
                     if (kind==0 && (packet[1]&0x40)) idr_start=i;
                     if (kind==0 && probe.frame!=frame) {
                         double duration_ms=(i+1-idr_start)*1504000.0/s.bitrate;
@@ -659,7 +725,23 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
             return;
         }
         if (!stream->stop) {
+#ifndef _WIN32
+            LinuxAudio audio;
+            if (s.audio.bitrate) {
+                audio.open(s.audio);
+                auto timeout=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+                while (!stream->stop && !audio.poll(s.audio.source)) {
+                    if (std::chrono::steady_clock::now()>timeout)
+                        throw std::runtime_error("Audio source timed out. Check PulseAudio/PipeWire and the source name.");
+                    std::unique_lock<std::mutex> lock(stream->mutex);
+                    stream->wake.wait_for(lock,std::chrono::milliseconds(5),[&]{return stream->stop.load();});
+                }
+            }
+#endif
             Mux mux(frames,s,call.c_str(),true);
+#ifndef _WIN32
+            if (s.audio.bitrate) mux.audio_encoder=[&]{return audio.next();};
+#endif
             const auto origin=std::chrono::steady_clock::now();
             const auto interval=std::chrono::nanoseconds(byte_time(1316,1000000000,s.bitrate));
             {
@@ -667,6 +749,9 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
                 stream->started=origin; stream->status.qp=selected;
             }
             for (uint64_t n=0; !stream->stop; ++n) {
+#ifndef _WIN32
+                if (s.audio.bitrate) audio.poll(s.audio.source);
+#endif
                 unsigned char datagram[1316];
                 for (int p=0;p<7;++p) if (!mux.next(datagram+p*188))
                     throw std::runtime_error("UDP stopped: video data exceeds the available bitrate.");
@@ -703,6 +788,11 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
 static DatvStream *start_job(const uint32_t *rgb, int width, int height, int stride,
                           const char *call, DatvUdpSettings settings, char error[256], bool preview_only) {
     error[0]=0;
+#ifdef _WIN32
+    if (settings.video.audio.bitrate) {
+        std::snprintf(error,256,"Audio input is currently available on Linux only."); return nullptr;
+    }
+#endif
     const char *invalid=preview_only ? datv_validate(settings.video,width,height) : datv_udp_validate(settings,width,height);
     if (invalid) { std::snprintf(error,256,"%s",invalid); return nullptr; }
     if (!rgb || !call || stride<width*4 || stride%4 || std::strlen(call)>24) {

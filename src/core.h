@@ -33,6 +33,7 @@ DvbSettings dvb_defaults(void);
 /* QPSK, S2 normal FECFRAME, T 2K non-hierarchical. Complete 188-byte TS
  * capacity, rounded down to whole bit/s; zero means invalid parameters. */
 int dvb_bitrate(DvbSettings s);
+int dvb_audio_allowed(DvbSettings s);
 /* Selectable persistent FEC IDs, strongest correction first. */
 int dvb_fec_choices(DvbSettings s, int ids[DVB_FEC_COUNT]);
 #define DATV_MIN_BITRATE 30080

@@ -6,17 +6,23 @@
 #include <thread>
 #include <vector>
 int main(int argc,char **argv) {
-    if (argc!=6 && argc!=8 && (argc!=7 || (std::strcmp(argv[6],"eit") && std::strcmp(argv[6],"teletext")))) return 1;
+    if (argc!=10 && argc!=6 && argc!=8 && (argc!=7 || (std::strcmp(argv[6],"eit") && std::strcmp(argv[6],"teletext")))) return 1;
     int width=argc==8?std::atoi(argv[6]):160, height=argc==8?std::atoi(argv[7]):120;
     if (width<16 || height<16 || width>1920 || height>1440 || width%2 || height%2) return 1;
     DatvUdpSettings s=datv_udp_defaults(); std::strcpy(s.ip,"127.0.0.1");
     s.port=std::atoi(argv[1]); double duration=std::atof(argv[2]);
     s.video.bitrate=std::atoi(argv[3]); s.video.fps=std::atoi(argv[4]); s.video.gop=std::atoi(argv[5]);
-    if (argc==7 && !std::strcmp(argv[6],"teletext")) {
+    if (argc==10) {
+        if (std::strcmp(argv[6],"audio") && std::strcmp(argv[6],"audio-plain")) return 1;
+        s.video.audio.bitrate=std::atoi(argv[7]);
+        std::snprintf(s.video.audio.source,sizeof(s.video.audio.source),"%s",argv[8]);
+        s.video.buffer_ms=std::atoi(argv[9]);
+    }
+    if ((argc==7 && !std::strcmp(argv[6],"teletext")) || (argc==10 && !std::strcmp(argv[6],"audio"))) {
         s.video.teletext.enabled=1;
         if (teletext_from_text(&s.video.teletext,"ATV CONTEST\nPagina 100\n\n73 de PE1ITR")) return 1;
     }
-    if (argc==7) {
+    if (argc==7 || (argc==10 && !std::strcmp(argv[6],"audio"))) {
         s.video.eit_enabled=1; std::strcpy(s.video.locator,"JO21QK");
         std::strcpy(s.video.station.city,"Eindhoven");
         std::strcpy(s.video.station.operator_name,"René");

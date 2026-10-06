@@ -23,8 +23,11 @@ typedef struct {
     char city[EIT_CITY_LENGTH*4+1], description[EIT_DESCRIPTION_LENGTH*4+1];
     char operator_name[EIT_OPERATOR_LENGTH*4+1]; /* UTF-8 */
 } StationInfo;
+typedef struct { int bitrate; char source[256]; } AudioSettings; /* 0 = disabled; Linux UDP only. */
+int datv_audio_reservation(int bitrate);
 typedef struct {
     int bitrate, seconds, fps, gop;
+    AudioSettings audio;
     int buffer_ms; /* 0 is the legacy 1000 ms default; explicit range 1000..10000. */
     int eit_enabled;
     TeletextSettings teletext;

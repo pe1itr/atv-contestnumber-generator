@@ -173,7 +173,7 @@ offline werken. `tools/prepare_openh264.py` bouwt de bronmappen voor Linux en Wi
 afzonderlijk op. De bibliotheek wordt statisch gelinkt. De applicatie blijft C;
 de encoder/muxer-module gebruikt C++17.
 
-Op Linux met C- en C++-compilers, MinGW-w64 (ook g++), NASM, `pkg-config`, Python 3.12+ met Pillow en de ontwikkelpakketten voor GTK 3 en Pango/Cairo:
+Op Linux met C- en C++-compilers, MinGW-w64 (ook g++), NASM, `pkg-config`, Python 3.12+ met Pillow en de ontwikkelpakketten voor GTK 3, Pango/Cairo, PulseAudio, libavcodec en libavutil:
 
 ```sh
 make
@@ -293,3 +293,8 @@ naar de gekozen resolutie en JPEG/H.264-compressie kunnen de fijne testpatronen
 veranderen; dit is geen gekalibreerde analoge PAL-signaalgenerator.
 `--ts-pm5644-test` accepteert dezelfde argumenten als `--ts-test` en maakt een
 PM5644-proefbestand zonder GUI of netwerkuitzending.
+
+
+Linux ondersteunt optionele AAC-audio via **Config → Genius level 3**, bij DVB-S/S2
+op 333 of 500 ksym/s. Kies een PulseAudio/PipeWire-bron zoals `ffmix.monitor` en
+48 kbit/s mono of 96 kbit/s stereo. Zie [audio-invoer en transportbudget](docs/datv.md#optionele-live-audio-op-linux-genius-level-3).

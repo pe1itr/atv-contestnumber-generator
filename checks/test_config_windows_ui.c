@@ -73,6 +73,15 @@ int wmain(void) {
     wchar_t mode_text[32]; GetDlgItemTextW(w,IDC_MODE,mode_text,32);
     assert(!wcscmp(mode_text,L"PM5644"));
     assert(SendDlgItemMessageW(w,IDC_MODE,CB_GETCURSEL,0,0)==2); DestroyWindow(w);
+    /* A Linux audio configuration must open safely without enabling audio. */
+    wanted.genius=3; wanted.udp_dvb=dvb_defaults(); wanted.udp_dvb.symbol_rate=5;
+    wanted.udp.video.bitrate=dvb_bitrate(wanted.udp_dvb);
+    wanted.udp.video.audio.bitrate=96000; strcpy(wanted.udp.video.audio.source,"ffmix.monitor");
+    assert(config_save(path,&wanted));
+    w=open_app(); actual=capture_config(w);
+    assert(actual.genius==2 && !actual.udp.video.audio.bitrate);
+    assert(GetMenuState(GetSubMenu(GetMenu(w),0),IDM_UDP,MF_BYCOMMAND)!=(UINT)-1);
+    DestroyWindow(w);
     wchar_t wide[32768]; assert(MultiByteToWideChar(CP_UTF8,0,path,-1,wide,32768));
     assert(DeleteFileW(wide)); free(path); pm5544_cleanup(); CoUninitialize();
     puts("Windows config UI: save/reopen, all fields, UDP apply without Start, Genius visibility and automatic code preservation OK.");

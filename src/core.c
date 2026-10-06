@@ -76,7 +76,7 @@ void datv_timeline_plot(const DatvTimeline *t, DatvSettings s, int width, int he
         }
     }
     text(ctx,left,155,"Purple: contest 1000 ms; black: image complete; red: scheduling stops. Ticks: frame periods.");
-    text(ctx,left,173,"* Other TS packets include SI/teletext. Video bars include packet headers; colours show time allocation.");
+    text(ctx,left,173,"* Other: SI, teletext and reserved audio. Video includes TS headers; colours show time allocation.");
 }
 
 const wchar_t *const image_modes[IMAGE_MODE_COUNT] = {L"Contest", L"PM5544", L"FUBK", L"PM5644"};
@@ -146,6 +146,12 @@ int dvb_bitrate(DvbSettings s) {
     return (int)(top/bottom);
 }
 
+int dvb_audio_allowed(DvbSettings s) {
+    return (s.system==DVB_S || s.system==DVB_S2) && s.symbol_rate>=0 &&
+        s.symbol_rate<DVB_SYMBOL_RATE_COUNT &&
+        (dvb_symbol_rates[s.symbol_rate]==333 || dvb_symbol_rates[s.symbol_rate]==500);
+}
+int datv_audio_reservation(int bitrate) { return bitrate==48000?141000:bitrate==96000?211500:0; }
 int datv_buffer_ms(DatvSettings s) { return s.buffer_ms?s.buffer_ms:1000; }
 DatvSettings datv_defaults(void) { return (DatvSettings){.bitrate=120000, .seconds=10, .fps=5, .gop=5}; }
 DatvUdpSettings datv_udp_defaults(void) {
@@ -246,6 +252,14 @@ void teletext_to_text(const TeletextSettings *s, char out[TELETEXT_INPUT_SIZE], 
     out[pos]=0;
 }
 const char *datv_validate(DatvSettings s, int width, int height) {
+    if (s.audio.bitrate && s.audio.bitrate!=48000 && s.audio.bitrate!=96000)
+        return "Audio bitrate must be 48000 or 96000 bit/s.";
+    if (s.audio.bitrate) {
+        if (!s.audio.source[0] || !memchr(s.audio.source,0,sizeof(s.audio.source)))
+            return "Enter a PulseAudio source, for example ffmix.monitor.";
+        if (s.bitrate<datv_audio_reservation(s.audio.bitrate)+40000)
+            return "Insufficient TS capacity for audio and video. Choose a higher FEC rate or 48 kbit/s audio.";
+    }
     if (s.bitrate < DATV_MIN_BITRATE || s.bitrate > 2000000)
         return "TS bitrate must be between 30080 and 2000000 bit/s. Choose an available combination of system, symbol rate, FEC and pilots.";
     if (s.seconds < 1 || s.seconds > 60) return "Duration must be between 1 and 60 seconds.";
@@ -400,7 +414,7 @@ static const ConfigField config_fields[]={
     CONFIG_INT_FIELD(resolution,0,RESOLUTION_COUNT-1), CONFIG_INT_FIELD(band,0,10),
     CONFIG_INT_FIELD(show,0,1), CONFIG_INT_FIELD(inverse,0,1), CONFIG_INT_FIELD(blue_yellow,0,1),
     CONFIG_INT_FIELD(ebu_top,0,1), CONFIG_INT_FIELD(ebu_bottom,0,1),
-    CONFIG_INT_FIELD(show_sum,0,1), CONFIG_INT_FIELD(top_code,0,1), CONFIG_INT_FIELD(genius,1,2),
+    CONFIG_INT_FIELD(show_sum,0,1), CONFIG_INT_FIELD(top_code,0,1), CONFIG_INT_FIELD(genius,1,3),
     CONFIG_INT_FIELD(ts.bitrate,DATV_MIN_BITRATE,2000000), CONFIG_INT_FIELD(ts.seconds,1,60),
     CONFIG_INT_FIELD(ts.buffer_ms,0,10000),
     CONFIG_INT_FIELD(ts.fps,1,25), CONFIG_INT_FIELD(ts.gop,1,250),
@@ -411,6 +425,7 @@ static const ConfigField config_fields[]={
     CONFIG_INT_FIELD(udp.video.bitrate,DATV_MIN_BITRATE,2000000), CONFIG_INT_FIELD(udp.video.fps,1,25),
     CONFIG_INT_FIELD(udp.video.gop,1,250),
     CONFIG_INT_FIELD(udp.video.buffer_ms,0,10000),
+    CONFIG_INT_FIELD(udp.video.audio.bitrate,0,96000), CONFIG_TEXT_FIELD(udp.video.audio.source),
     CONFIG_INT_FIELD(ts_dvb.system,0,DVB_SYSTEM_COUNT-1),
     CONFIG_INT_FIELD(ts_dvb.symbol_rate,0,DVB_SYMBOL_RATE_COUNT-1),
     CONFIG_INT_FIELD(ts_dvb.fec,0,DVB_FEC_COUNT-1),
@@ -481,11 +496,12 @@ static int config_valid(const AppConfig *s) {
             size_t characters=0;
             for (const unsigned char *p=(const unsigned char *)value; *p; ++p)
                 if ((*p&0xc0)!=0x80) ++characters;
-            size_t limit=f->offset==offsetof(AppConfig,teletext.text)?TELETEXT_CELLS:f->size==16?15:(f->size-1)/4;
+            size_t limit=f->offset==offsetof(AppConfig,teletext.text)?TELETEXT_CELLS:f->offset==offsetof(AppConfig,udp.video.audio.source)?255:f->size==16?15:(f->size-1)/4;
             if (characters>limit) return 0;
         }
         else if (*(const int *)value<f->min || *(const int *)value>f->max) return 0;
     }
+    if (s->udp.video.audio.bitrate && (s->genius!=3 || !dvb_audio_allowed(s->udp_dvb))) return 0;
     if (s->ts.buffer_ms && (s->ts.buffer_ms<1000 || s->ts.buffer_ms>10000)) return 0;
     if (teletext_validate(&s->teletext)) return 0;
     if (station_validate(&s->station)) return 0;
@@ -523,7 +539,7 @@ int config_load(const char *path, AppConfig *out) {
         char *value=strchr(line,'=');
         if (!value) { ok=0; break; } *value++=0;
         if (!strcmp(line,"version")) {
-            if (version || (strcmp(value,"1") && strcmp(value,"2") && strcmp(value,"3") && strcmp(value,"4") && strcmp(value,"5") && strcmp(value,"6"))) { ok=0; break; }
+            if (version || (strcmp(value,"1") && strcmp(value,"2") && strcmp(value,"3") && strcmp(value,"4") && strcmp(value,"5") && strcmp(value,"6") && strcmp(value,"7"))) { ok=0; break; }
             version=value[0]-'0'; continue;
         }
         size_t i;
@@ -557,6 +573,10 @@ int config_load(const char *path, AppConfig *out) {
             config_fields[i].offset==offsetof(AppConfig,ebu_bottom) ||
             config_fields[i].offset==offsetof(AppConfig,ts.buffer_ms) ||
             config_fields[i].offset==offsetof(AppConfig,udp.video.buffer_ms)) required &= ~(UINT64_C(1)<<i);
+    uint64_t audio_fields=0;
+    for (size_t i=0;i<CONFIG_FIELDS;++i)
+        if (!strncmp(config_fields[i].key,"udp.video.audio.",16)) audio_fields|=UINT64_C(1)<<i;
+    if (version<7 && !(seen&audio_fields)) required&=~audio_fields;
     uint64_t tt_fields=0;
     for (size_t i=0;i<CONFIG_FIELDS;++i)
         if (!strncmp(config_fields[i].key,"teletext.",9)) tt_fields|=UINT64_C(1)<<i;
@@ -608,7 +628,7 @@ int config_save(const char *path, const AppConfig *s) {
     snprintf(temporary,n,"%s.tmp",path);
     FILE *f=config_open(temporary,1);
     if (!f) { free(temporary); return 0; }
-    int ok=fprintf(f,"# ATV contest number generator\nversion=6\n")>=0;
+    int ok=fprintf(f,"# ATV contest number generator\nversion=7\n")>=0;
     for (size_t i=0;i<CONFIG_FIELDS && ok;++i) {
         const ConfigField *field=&config_fields[i]; const char *value=(const char *)s+field->offset;
         ok=(field->size?fprintf(f,"%s=%s\n",field->key,value):

@@ -40,6 +40,26 @@ static gboolean apply_udp(gpointer unused) {
     }
     g_list_free(windows); return G_SOURCE_CONTINUE;
 }
+static gboolean apply_audio(gpointer unused) {
+    (void)unused;
+    GList *windows=gtk_window_list_toplevels();
+    for (GList *p=windows;p;p=p->next) {
+        GtkWidget *w=p->data;
+        if (g_strcmp0(gtk_window_get_title(GTK_WINDOW(w)),"DATV: UDP output")) continue;
+        GList *children=gtk_container_get_children(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(w))));
+        GtkGrid *grid=GTK_GRID(children->data); g_list_free(children);
+        GtkGrid *audio=GTK_GRID(gtk_grid_get_child_at(grid,0,11));
+        assert(gtk_widget_get_visible(GTK_WIDGET(audio)));
+        GtkGrid *radio=GTK_GRID(gtk_grid_get_child_at(grid,0,5));
+        gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,0)),DVB_S);
+        gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,1)),dvb_symbol_rate_row(5));
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(gtk_grid_get_child_at(audio,0,0)),TRUE);
+        gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(audio,1,2)),1);
+        gtk_entry_set_text(GTK_ENTRY(gtk_grid_get_child_at(audio,1,1)),"testmix.monitor");
+        gtk_dialog_response(GTK_DIALOG(w),3); g_list_free(windows); return G_SOURCE_REMOVE;
+    }
+    g_list_free(windows); return G_SOURCE_CONTINUE;
+}
 static void close_app(App *app) {
     g_signal_handlers_disconnect_by_func(app->window,gtk_main_quit,NULL);
     gtk_widget_destroy(app->window);
@@ -91,6 +111,23 @@ int main(int argc,char **argv) {
     assert(!strcmp(mode_text,"PM5644")); g_free(mode_text);
     assert(gtk_combo_box_get_active(GTK_COMBO_BOX(pm_reopened.mode))==2);
     close_app(&pm_reopened);
+    App audio={0}; audio.directory=directory; create_ui(&audio);
+    wanted.genius=3; wanted.udp_dvb=dvb_defaults(); wanted.udp_dvb.symbol_rate=4;
+    wanted.udp.video.bitrate=dvb_bitrate(wanted.udp_dvb); wanted.udp.video.audio.bitrate=48000;
+    strcpy(wanted.udp.video.audio.source,"ffmix.monitor");
+    apply_config(&audio,&wanted);
+    assert(gtk_widget_get_visible(audio.udp_menu));
+    assert(capture_config(&audio).udp.video.audio.bitrate==48000);
+    g_timeout_add(100,apply_audio,NULL); output_udp(NULL,&audio);
+    assert(audio.udp.video.audio.bitrate==96000 && audio.udp_dvb.symbol_rate==5);
+    assert(!strcmp(audio.udp.video.audio.source,"testmix.monitor"));
+    save_config(NULL,&audio); close_app(&audio);
+    App audio_reopened={0}; audio_reopened.directory=directory; create_ui(&audio_reopened); load_config(&audio_reopened);
+    actual=capture_config(&audio_reopened);
+    assert(actual.genius==3 && actual.udp.video.audio.bitrate==96000);
+    gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(audio_reopened.level2),TRUE);
+    assert(!audio_reopened.udp.video.audio.bitrate && gtk_widget_get_visible(audio_reopened.udp_menu));
+    close_app(&audio_reopened);
     char *path=g_build_filename(directory,CONFIG_FILENAME,NULL); assert(!remove(path)); g_free(path);
     assert(!rmdir(directory)); g_free(directory); pm5544_cleanup();
     puts("Linux config UI: save/reopen, all fields, UDP apply without Start, Genius visibility and automatic code preservation OK.");

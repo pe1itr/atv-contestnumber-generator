@@ -2,7 +2,7 @@
 #include <cassert>
 #include <cmath>
 
-static void check(int bitrate,int fps,int gop,int width,int height,bool noisy,bool expected,int buffer_ms=0) {
+static void check(int bitrate,int fps,int gop,int width,int height,bool noisy,bool expected,int buffer_ms=0,int audio_rate=0) {
     std::vector<uint32_t> rgb(width*height);
     uint32_t seed=123;
     for (int y=0;y<height;++y) for (int x=0;x<width;++x) {
@@ -10,6 +10,7 @@ static void check(int bitrate,int fps,int gop,int width,int height,bool noisy,bo
         rgb[y*width+x]=noisy?seed&0xffffff:((x/16+y/16)%2?0xffffff:0);
     }
     DatvSettings s=datv_defaults(); s.bitrate=bitrate; s.fps=fps; s.gop=gop; s.buffer_ms=buffer_ms;
+    s.audio.bitrate=audio_rate; std::strcpy(s.audio.source,"no-source-needed-for-preview");
     char error[256];
     DatvStream *job=datv_preview_start(rgb.data(),width,height,width*4,"PE1ITR",s,error);
     assert(job);
@@ -33,7 +34,7 @@ static void check(int bitrate,int fps,int gop,int width,int height,bool noisy,bo
     for (uint64_t i=0;i<t.packets;++i) {
         unsigned char p[188]; uint64_t frame=mux.frame; assert(mux.next(p));
         int pid=((p[1]&31)<<8)|p[2], payload=(p[3]&16)!=0;
-        int kind=pid==0x1fff?3:(pid==VIDEO && payload?(frame%gop==0?0:1):2);
+        int kind=mux.audio_reserved?2:pid==0x1fff?3:(pid==VIDEO && payload?(frame%gop==0?0:1):2);
         double a=i*1504000.0/bitrate,b=(i+1)*1504000.0/bitrate;
         for (int v=0;v<2;++v) totals[v][kind]+=std::max(0.0,std::min(b,t.span_ms[v])-std::min(a,t.span_ms[v]));
         if (pid==VIDEO && payload && !first_end) {
@@ -81,5 +82,10 @@ int main() {
     check(30080,1,25,640,480,true,true,10000);
     check(30080,25,1,640,480,true,false,10000);
     check(2000000,1,250,160,120,false,true);
+#ifndef _WIN32
+    check(306882,4,2,160,120,false,true,0,48000);
+    check(306882,4,2,160,120,false,true,0,96000);
+    check(306882,4,2,160,120,false,true,10000,96000);
+#endif
     puts("Timeline: mux payload, timing, bin occupancy, long GOP, failure and no network output OK.");
 }

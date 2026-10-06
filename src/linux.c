@@ -14,7 +14,7 @@ typedef struct {
     GtkWidget *window, *call, *locator, *show, *automatic, *code;
     GtkWidget *aspect, *resolution, *band, *preview, *status, *inverse, *blue_yellow, *show_sum, *top_code, *ebu_top, *ebu_bottom, *mode, *manual, *new_code;
     GtkWidget *export_menu, *export_as_menu, *about_menu, *quit_menu;
-    GtkWidget *ts_menu, *level1, *level2;
+    GtkWidget *ts_menu, *level1, *level2, *level3;
     gboolean restoring;
     DatvSettings datv;
     StationInfo station;
@@ -371,6 +371,7 @@ static gboolean keep_progress(GtkWidget *widget, GdkEvent *event, gpointer data)
 typedef struct {
     App *app;
     GtkWidget *dialog, *fields[6], *status, *eit, *teletext, *localhost;
+    GtkWidget *audio_box, *audio_enabled, *audio_source, *audio_rate;
     DvbControls dvb;
     DatvStream *stream;
 } UdpDialog;
@@ -380,9 +381,19 @@ static void udp_set_localhost(GtkButton *button,gpointer data) {
     gtk_entry_set_text(GTK_ENTRY(d->fields[0]),"127.0.0.1");
     gtk_widget_grab_focus(d->fields[0]);
 }
+static void udp_audio_controls(UdpDialog *d, gboolean busy) {
+    if (!d->audio_box) return;
+    gboolean allowed=gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(d->app->level3)) &&
+        dvb_audio_allowed(dvb_controls_read(&d->dvb));
+    if (!allowed) gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(d->audio_enabled),FALSE);
+    gboolean enabled=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(d->audio_enabled));
+    gtk_widget_set_sensitive(d->audio_enabled,allowed && !busy);
+    gtk_widget_set_sensitive(d->audio_source,allowed && enabled && !busy);
+    gtk_widget_set_sensitive(d->audio_rate,allowed && enabled && !busy);
+}
 static gboolean udp_poll(gpointer data) {
     UdpDialog *d=data;
-    if (!d->stream) return G_SOURCE_CONTINUE;
+    if (!d->stream) { udp_audio_controls(d,FALSE); return G_SOURCE_CONTINUE; }
     DatvUdpStatus status; datv_udp_status(d->stream,&status);
     char text[512]; datv_udp_status_text(d->app->udp,status,text,sizeof(text));
     gtk_label_set_text(GTK_LABEL(d->status),text);
@@ -392,6 +403,7 @@ static gboolean udp_poll(gpointer data) {
     gtk_widget_set_sensitive(d->dvb.box,!busy);
     gtk_widget_set_sensitive(d->eit,!busy);
     gtk_widget_set_sensitive(d->teletext,!busy);
+    udp_audio_controls(d,busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),4,!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),1,!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),3,!busy);
@@ -444,7 +456,7 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     gtk_grid_attach(GTK_GRID(grid),d.localhost,2,0,1,1);
     dvb_controls_init(&d.dvb,d.fields[2],app->udp_dvb);
     gtk_grid_attach(GTK_GRID(grid),d.dvb.box,0,5,3,1);
-    GtkWidget *note=gtk_label_new("Contest tip: use 4 fps and GOP 2.\n\nStart transmits the current image without audio.\nStop and close this window to change the image. Closing also stops the stream.");
+    GtkWidget *note=gtk_label_new("Contest tip: use 4 fps and GOP 2.\n\nStart transmits the current image. Audio is optional at genius level 3.\nStop and close this window to change the image. Closing also stops the stream.");
     gtk_grid_attach(GTK_GRID(grid),note,0,6,3,1);
     d.eit=gtk_check_button_new_with_label("Include EIT programme information (Config → EIT)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(d.eit),app->udp.video.eit_enabled);
@@ -452,11 +464,29 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     d.teletext=gtk_check_button_new_with_label("Include teletext page 100 (edit via Config → Teletext)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(d.teletext),app->teletext.enabled);
     gtk_grid_attach(GTK_GRID(grid),d.teletext,0,9,3,1);
+    d.audio_box=gtk_grid_new();
+    gtk_grid_set_row_spacing(GTK_GRID(d.audio_box),6); gtk_grid_set_column_spacing(GTK_GRID(d.audio_box),12);
+    d.audio_enabled=gtk_check_button_new_with_label("Include Linux audio (DVB-S/S2, 333 or 500 ksym/s)");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(d.audio_enabled),app->udp.video.audio.bitrate!=0);
+    d.audio_source=gtk_entry_new(); gtk_entry_set_max_length(GTK_ENTRY(d.audio_source),255);
+    gtk_entry_set_text(GTK_ENTRY(d.audio_source),app->udp.video.audio.source[0]?app->udp.video.audio.source:"ffmix.monitor");
+    d.audio_rate=gtk_combo_box_text_new();
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(d.audio_rate),"48 kbit/s mono (141 kbit/s TS reserved)");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(d.audio_rate),"96 kbit/s stereo (211.5 kbit/s TS reserved)");
+    gtk_combo_box_set_active(GTK_COMBO_BOX(d.audio_rate),app->udp.video.audio.bitrate==96000?1:0);
+    gtk_grid_attach(GTK_GRID(d.audio_box),d.audio_enabled,0,0,2,1);
+    gtk_grid_attach(GTK_GRID(d.audio_box),gtk_label_new("Audio source (ffmix.monitor is created if missing)"),0,1,1,1);
+    gtk_grid_attach(GTK_GRID(d.audio_box),d.audio_source,1,1,1,1);
+    gtk_grid_attach(GTK_GRID(d.audio_box),gtk_label_new("AAC-LC, 48 kHz"),0,2,1,1);
+    gtk_grid_attach(GTK_GRID(d.audio_box),d.audio_rate,1,2,1,1);
+    gtk_grid_attach(GTK_GRID(grid),d.audio_box,0,11,3,1);
     d.status=gtk_label_new("Enter the Portsdown IP address and select Start.");
     gtk_label_set_line_wrap(GTK_LABEL(d.status),TRUE); gtk_label_set_max_width_chars(GTK_LABEL(d.status),65);
     gtk_label_set_xalign(GTK_LABEL(d.status),0); gtk_grid_attach(GTK_GRID(grid),d.status,0,7,3,1);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d.dialog),2,FALSE);
     gtk_widget_show_all(d.dialog);
+    gtk_widget_set_visible(d.audio_box,gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level3)));
+    udp_audio_controls(&d,FALSE);
     guint timer=g_timeout_add(200,udp_poll,&d);
     for (;;) {
         int response=gtk_dialog_run(GTK_DIALOG(d.dialog));
@@ -474,6 +504,10 @@ static void output_udp(GtkWidget *widget, gpointer data) {
         s.port=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[1]));
         DvbSettings radio=dvb_controls_read(&d.dvb);
         s.video.bitrate=dvb_bitrate(radio);
+        s.video.audio.bitrate=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(d.audio_enabled)) &&
+            gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level3)) && dvb_audio_allowed(radio)?
+            (gtk_combo_box_get_active(GTK_COMBO_BOX(d.audio_rate))==1?96000:48000):0;
+        g_strlcpy(s.video.audio.source,gtk_entry_get_text(GTK_ENTRY(d.audio_source)),sizeof(s.video.audio.source));
         s.video.fps=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[3]));
         s.video.gop=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[4]));
         s.video.buffer_ms=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[5]));
@@ -607,8 +641,12 @@ static void export_ts(GtkWidget *widget, gpointer data) {
 }
 static void genius_changed(GtkCheckMenuItem *item, gpointer data) {
     App *app=data;
-    gtk_widget_set_visible(app->ts_menu,gtk_check_menu_item_get_active(item));
-    gtk_widget_set_visible(app->udp_menu,gtk_check_menu_item_get_active(item));
+    (void)item;
+    gboolean advanced=gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level2)) ||
+        gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level3));
+    gtk_widget_set_visible(app->ts_menu,advanced);
+    gtk_widget_set_visible(app->udp_menu,advanced);
+    if (!app->restoring && !gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level3))) app->udp.video.audio.bitrate=0;
 }
 
 static void generate(GtkWidget *widget, gpointer data) {
@@ -764,7 +802,8 @@ static AppConfig capture_config(App *app) {
     s.top_code=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->top_code));
     s.ebu_top=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->ebu_top));
     s.ebu_bottom=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->ebu_bottom));
-    s.genius=gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level2))?2:1;
+    s.genius=gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level3))?3:
+        gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level2))?2:1;
     s.teletext=app->teletext; s.station=app->station; s.ts=app->datv; s.udp=app->udp; s.ts_dvb=app->ts_dvb; s.udp_dvb=app->udp_dvb; return s;
 }
 static void apply_config(App *app, const AppConfig *s) {
@@ -789,7 +828,7 @@ static void apply_config(App *app, const AppConfig *s) {
     wchar_t locator[LOCATOR_MAX_LENGTH+1]; read_locator(app,locator);
     locator_square_changed(app->contest_square,locator);
     app->teletext=s->teletext; app->station=s->station; app->datv=s->ts; app->udp=s->udp; app->ts_dvb=s->ts_dvb; app->udp_dvb=s->udp_dvb;
-    gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(s->genius==2?app->level2:app->level1),TRUE);
+    gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(s->genius==3?app->level3:s->genius==2?app->level2:app->level1),TRUE);
     app->restoring=FALSE; toggled(NULL,app);
 }
 static void edit_teletext(GtkWidget *widget, gpointer data) {
@@ -913,10 +952,12 @@ static void create_ui(App *app) {
     GtkWidget *config=gtk_menu_item_new_with_label("Config"), *config_menu=gtk_menu_new();
     GtkWidget *level1=gtk_radio_menu_item_new_with_label(NULL,"Genius level 1 (default)");
     GtkWidget *level2=gtk_radio_menu_item_new_with_label_from_widget(GTK_RADIO_MENU_ITEM(level1),"Genius level 2");
-    app->level1=level1; app->level2=level2;
+    GtkWidget *level3=gtk_radio_menu_item_new_with_label_from_widget(GTK_RADIO_MENU_ITEM(level1),"Genius level 3 (Linux audio)");
+    app->level1=level1; app->level2=level2; app->level3=level3;
     GtkWidget *save=gtk_menu_item_new_with_label("Save current settings");
     g_signal_connect(save,"activate",G_CALLBACK(save_config),app);
     gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),level1); gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),level2);
+    gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),level3);
     gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),gtk_separator_menu_item_new());
     GtkWidget *ttx_item=gtk_menu_item_new_with_label("Teletext...");
     g_signal_connect(ttx_item,"activate",G_CALLBACK(edit_teletext),app);
@@ -932,6 +973,7 @@ static void create_ui(App *app) {
     gtk_widget_set_no_show_all(app->udp_menu,TRUE);
     g_signal_connect(app->udp_menu,"activate",G_CALLBACK(output_udp),app);
     g_signal_connect(level2,"toggled",G_CALLBACK(genius_changed),app);
+    g_signal_connect(level3,"toggled",G_CALLBACK(genius_changed),app);
     g_signal_connect(app->ts_menu,"activate",G_CALLBACK(export_ts),app);
     app->export_menu = gtk_menu_item_new_with_mnemonic("_Export JPG");
     app->export_as_menu = gtk_menu_item_new_with_mnemonic("Export _as...");

@@ -717,10 +717,10 @@ static void apply_config(HWND window,const AppConfig *s) {
     contest_square[0]=0;
     read_text(window,IDC_LOCATOR,text,LOCATOR_MAX_LENGTH+1);
     locator_square_changed(contest_square,text);
-    teletext_settings=s->teletext; station_info=s->station; ts_settings=s->ts; udp_settings=s->udp; ts_dvb=s->ts_dvb; udp_dvb=s->udp_dvb;
+    teletext_settings=s->teletext; station_info=s->station; ts_settings=s->ts; udp_settings=s->udp; udp_settings.video.audio=(AudioSettings){0}; ts_dvb=s->ts_dvb; udp_dvb=s->udp_dvb;
     SendDlgItemMessageW(window,IDC_CODE,EM_SETREADONLY,s->automatic,0);
     update_mode(window); ready=1;
-    SendMessageW(window,WM_COMMAND,s->genius==2?IDM_LEVEL2:IDM_LEVEL1,0);
+    SendMessageW(window,WM_COMMAND,s->genius>=2?IDM_LEVEL2:IDM_LEVEL1,0);
     InvalidateRect(GetDlgItem(window,IDC_PREVIEW),NULL,FALSE);
 }
 static INT_PTR CALLBACK teletext_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp) {
