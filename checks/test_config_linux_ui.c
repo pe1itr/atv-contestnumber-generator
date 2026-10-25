@@ -60,6 +60,24 @@ static gboolean apply_audio(gpointer unused) {
     }
     g_list_free(windows); return G_SOURCE_CONTINUE;
 }
+static gboolean apply_motion_udp(gpointer data) {
+    int system=GPOINTER_TO_INT(data);
+    GList *windows=gtk_window_list_toplevels();
+    for (GList *p=windows;p;p=p->next) {
+        GtkWidget *w=p->data;
+        if (g_strcmp0(gtk_window_get_title(GTK_WINDOW(w)),"DATV: UDP output")) continue;
+        GList *children=gtk_container_get_children(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(w))));
+        GtkGrid *grid=GTK_GRID(children->data); g_list_free(children);
+        GtkGrid *radio=GTK_GRID(gtk_grid_get_child_at(grid,0,5));
+        gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,0)),system);
+        gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,1)),dvb_symbol_rate_row(2));
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(gtk_grid_get_child_at(radio,1,4)),system==DVB_S2);
+        gtk_spin_button_set_value(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,4)),5);
+        assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,2)))==(system==DVB_S?115196:120665));
+        gtk_dialog_response(GTK_DIALOG(w),3); g_list_free(windows); return G_SOURCE_REMOVE;
+    }
+    g_list_free(windows); return G_SOURCE_CONTINUE;
+}
 static void close_app(App *app) {
     g_signal_handlers_disconnect_by_func(app->window,gtk_main_quit,NULL);
     gtk_widget_destroy(app->window);
@@ -127,7 +145,26 @@ int main(int argc,char **argv) {
     assert(actual.genius==3 && actual.udp.video.audio.bitrate==96000);
     gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(audio_reopened.level2),TRUE);
     assert(!audio_reopened.udp.video.audio.bitrate && gtk_widget_get_visible(audio_reopened.udp_menu));
+    gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(audio_reopened.level4),TRUE);
+    assert(motion_mode(&audio_reopened) && audio_reopened.datv.motion && audio_reopened.udp.video.motion);
+    assert(audio_reopened.datv.bitrate==30160 && audio_reopened.datv.fps==10 && audio_reopened.datv.gop==20);
+    assert(selected_resolution(&audio_reopened).width==160 && !pattern_mode(&audio_reopened));
+    assert(!gtk_widget_get_sensitive(audio_reopened.resolution) && gtk_widget_get_sensitive(audio_reopened.code));
+    for (int system=DVB_S;system<=DVB_S2;++system) {
+        g_timeout_add(100,apply_motion_udp,GINT_TO_POINTER(system)); output_udp(NULL,&audio_reopened);
+        assert(audio_reopened.udp_dvb.system==system && audio_reopened.udp_dvb.symbol_rate==2 && audio_reopened.udp_dvb.fec==0);
+        assert(audio_reopened.udp.video.motion && audio_reopened.udp.video.fps==10 && audio_reopened.udp.video.gop==5);
+        assert(audio_reopened.udp.video.bitrate==(system==DVB_S?115196:120665));
+    }
+    audio_reopened.datv.gop=10; save_config(NULL,&audio_reopened);
     close_app(&audio_reopened);
+    App motion={0}; motion.directory=directory; create_ui(&motion); load_config(&motion);
+    assert(motion_mode(&motion) && motion.datv.motion && motion.datv.gop==10 && motion.udp.video.motion);
+    assert(motion.udp_dvb.system==DVB_S2 && motion.udp_dvb.symbol_rate==2 && motion.udp_dvb.pilots);
+    assert(motion.udp.video.bitrate==120665 && motion.udp.video.gop==5);
+    gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(motion.level1),TRUE);
+    assert(!motion.datv.motion && !gtk_widget_get_visible(motion.ts_menu));
+    assert(gtk_widget_get_sensitive(motion.resolution)); close_app(&motion);
     char *path=g_build_filename(directory,CONFIG_FILENAME,NULL); assert(!remove(path)); g_free(path);
     assert(!rmdir(directory)); g_free(directory); pm5544_cleanup();
     puts("Linux config UI: save/reopen, all fields, UDP apply without Start, Genius visibility and automatic code preservation OK.");

@@ -26,7 +26,7 @@ def crc(data):
     return value
 
 
-def check(path, bitrate, fps, gop, width, height, seconds):
+def check(path, bitrate, fps, gop, width, height, seconds, motion=False):
     data = path.read_bytes()
     assert len(data) % 1316 == 0
     assert 0 <= len(data)*8/bitrate-(seconds+1) < 1316*8/bitrate
@@ -82,7 +82,7 @@ def check(path, bitrate, fps, gop, width, height, seconds):
     for (_, a), (_, b) in zip(clocks, clocks[1:]):
         assert 0 < (b-a)/27000000 <= 0.1  # TR 101 290 V1.4.1 table 5.0b: maximum 100 ms (inclusive).
     for pid, positions in tables.items():
-        maximum = 1.1 if pid == 17 else 0.3
+        maximum = 1.1 if pid == 17 else 0.5 if motion else 0.3
         assert max((b-a)*1504/bitrate for a, b in zip(positions, positions[1:])) <= maximum
     assert len(units) == fps*seconds
     for n, (pes, end_packet) in enumerate(units):
@@ -117,6 +117,11 @@ def check(path, bitrate, fps, gop, width, height, seconds):
             for start in (0.35, 1.15, 2.65):
                 packet = int(start*bitrate/1504)
                 length = int((gop/fps+1.5)*bitrate/1504)
+                # A four-second motion export has only two IDRs. Late joins
+                # after the last IDR cannot recover; exercise those phases on
+                # the 12/60-second exports with a full reception window.
+                if motion and (packet+length)*188 > len(data):
+                    continue
                 cut = Path(temp)/"join.ts"
                 cut.write_bytes(data[packet*188:(packet+length)*188])
                 result = run(["ffmpeg", "-v", "error", "-i", str(cut), "-f", "framemd5", "-"], check=False)

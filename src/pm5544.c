@@ -1,4 +1,6 @@
 #include "pm5544.h"
+#include "core.h"
+#include <string.h>
 #include <stdlib.h>
 #include "pm_assets.h"
 
@@ -65,6 +67,93 @@ static void label(uint32_t *pixels, int width, int height, int source_width, int
         if (column < 5 && index >= 0 && (glyphs[index][row] & (1 << (4-column))))
             pixels[(y0+y)*width+x0+x] = 0x00ffffff;
     }
+}
+
+/* Original 7 x 11 lettering for motion: finer strokes at the same line height.
+ * Embedded, shared by Linux and Windows; 0 has a slash, I has bars. */
+static const unsigned char motion_glyphs[][11] = {
+    {28,34,65,67,69,73,81,97,65,34,28}, /* 0 */
+    {8,24,40,8,8,8,8,8,8,8,62}, /* 1 */
+    {62,65,65,1,2,4,8,16,32,64,127}, /* 2 */
+    {62,65,1,1,2,28,2,1,1,65,62}, /* 3 */
+    {2,6,10,18,34,66,127,2,2,2,2}, /* 4 */
+    {127,64,64,64,124,2,1,1,1,65,62}, /* 5 */
+    {30,32,64,64,124,66,65,65,65,34,28}, /* 6 */
+    {127,1,2,2,4,4,8,8,16,16,16}, /* 7 */
+    {62,65,65,65,34,28,34,65,65,65,62}, /* 8 */
+    {28,34,65,65,65,63,1,1,1,2,60}, /* 9 */
+    {8,20,34,65,65,65,127,65,65,65,65}, /* A */
+    {126,65,65,65,66,124,66,65,65,65,126}, /* B */
+    {62,65,64,64,64,64,64,64,64,65,62}, /* C */
+    {124,66,65,65,65,65,65,65,65,66,124}, /* D */
+    {127,64,64,64,64,124,64,64,64,64,127}, /* E */
+    {127,64,64,64,64,124,64,64,64,64,64}, /* F */
+    {62,65,64,64,64,79,65,65,65,65,62}, /* G */
+    {65,65,65,65,65,127,65,65,65,65,65}, /* H */
+    {62,8,8,8,8,8,8,8,8,8,62}, /* I */
+    {31,2,2,2,2,2,2,2,66,66,60}, /* J */
+    {65,66,68,72,80,96,80,72,68,66,65}, /* K */
+    {64,64,64,64,64,64,64,64,64,64,127}, /* L */
+    {65,99,85,73,65,65,65,65,65,65,65}, /* M */
+    {65,97,97,81,81,73,69,69,67,67,65}, /* N */
+    {62,65,65,65,65,65,65,65,65,65,62}, /* O */
+    {126,65,65,65,65,126,64,64,64,64,64}, /* P */
+    {62,65,65,65,65,65,65,73,69,66,61}, /* Q */
+    {126,65,65,65,65,126,72,68,66,65,65}, /* R */
+    {62,65,64,64,32,28,2,1,1,65,62}, /* S */
+    {127,8,8,8,8,8,8,8,8,8,8}, /* T */
+    {65,65,65,65,65,65,65,65,65,34,28}, /* U */
+    {65,65,65,65,65,34,34,34,20,20,8}, /* V */
+    {65,65,65,65,65,73,73,73,85,85,34}, /* W */
+    {65,65,34,34,20,8,20,34,34,65,65}, /* X */
+    {65,65,34,34,20,8,8,8,8,8,8}, /* Y */
+    {127,1,2,2,4,8,16,32,32,64,127}, /* Z */
+    {1,1,2,2,4,8,16,32,32,64,64}, /* / */
+};
+
+static void motion_label(uint32_t *pixels, int top, int bottom, const wchar_t *text) {
+    size_t length=wcslen(text);
+    if (!length || length>24) return;
+    int cells=(int)length*8-1;
+    /* Keep every character present for unusually long callsigns: the compact
+     * original alphabet still fits 24 characters without dropping columns. */
+    if (cells>154) {
+        label(pixels,160,120,160,120,0,top,160,bottom,text,0);
+        return;
+    }
+    int th=bottom-top-8, tw=cells*th/11;
+    if (tw>154) { tw=154; th=11*tw/cells; }
+    if (th<1 || tw<1) return;
+    int x0=(160-tw)/2, y0=top+(bottom-top-th)/2;
+    for (int y=0;y<th;++y) for (int x=0;x<tw;++x) {
+        int cell=x*cells/tw, column=cell%8, row=y*11/th;
+        wchar_t c=text[cell/8];
+        int index=c>=L'0' && c<=L'9'?c-L'0':c>=L'A' && c<=L'Z'?c-L'A'+10:c==L'/'?36:-1;
+        if (column<7 && index>=0 && (motion_glyphs[index][row]&(1<<(6-column)))) {
+            pixels[(y0+y)*160+x0+x]=0xffffff;
+            /* Medium weight: add one output pixel, not a whole glyph cell.
+             * Keep compact labels intact and preserve the inter-letter gap. */
+            if (th>=14) {
+                int next=(x+1)*cells/tw;
+                if (x+1<tw && next/8==cell/8 && next%8<7)
+                    pixels[(y0+y)*160+x0+x+1]=0xffffff;
+                if (y+1<th) pixels[(y0+y+1)*160+x0+x]=0xffffff;
+            }
+        }
+    }
+}
+
+int motion_render(uint32_t *pixels, const wchar_t *call, const wchar_t *code,
+                  const wchar_t *locator, unsigned frame) {
+    if (!pixels) return 0;
+    memset(pixels,0,160*120*sizeof(*pixels));
+    motion_label(pixels,0,30,call);
+    motion_label(pixels,28,60,code);
+    motion_label(pixels,58,80,locator);
+    unsigned char y[160*120];
+    motion_luma(y,frame);
+    for (int i=160*80;i<160*120;++i) pixels[i]=y[i]>128?0xffffff:0;
+    return 1;
 }
 
 int pm5544_render(uint32_t *pixels, int width, int height,

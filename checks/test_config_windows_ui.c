@@ -27,6 +27,23 @@ static BOOL CALLBACK apply_udp(HWND window,LPARAM unused) {
 static void CALLBACK drive_timer(HWND w,UINT m,UINT_PTR id,DWORD t) {
     (void)w; (void)m; (void)id; (void)t; EnumThreadWindows(GetCurrentThreadId(),apply_udp,0);
 }
+static int motion_system;
+static BOOL CALLBACK apply_motion_udp(HWND window,LPARAM unused) {
+    (void)unused; wchar_t title[100]; GetWindowTextW(window,title,100);
+    if (wcsncmp(title,L"Motion challenge:",17)) return TRUE;
+    SendDlgItemMessageW(window,IDC_DVB_SYSTEM,CB_SETCURSEL,motion_system,0);
+    SendMessageW(window,WM_COMMAND,MAKEWPARAM(IDC_DVB_SYSTEM,CBN_SELCHANGE),0);
+    SendDlgItemMessageW(window,IDC_DVB_SR,CB_SETCURSEL,dvb_symbol_rate_row(2),0);
+    SendMessageW(window,WM_COMMAND,MAKEWPARAM(IDC_DVB_SR,CBN_SELCHANGE),0);
+    CheckDlgButton(window,IDC_DVB_PILOTS,motion_system==DVB_S2?BST_CHECKED:BST_UNCHECKED);
+    SendMessageW(window,WM_COMMAND,MAKEWPARAM(IDC_DVB_PILOTS,BN_CLICKED),0);
+    SetDlgItemInt(window,IDC_UDP_GOP,5,FALSE);
+    assert(GetDlgItemInt(window,IDC_UDP_BITRATE,NULL,FALSE)==(motion_system==DVB_S?115196u:120665u));
+    PostMessageW(window,WM_COMMAND,IDC_UDP_APPLY,0); return TRUE;
+}
+static void CALLBACK motion_timer(HWND w,UINT m,UINT_PTR id,DWORD t) {
+    (void)w; (void)m; (void)id; (void)t; EnumThreadWindows(GetCurrentThreadId(),apply_motion_udp,0);
+}
 static HWND open_app(void) {
     HWND w=CreateDialogParamW(GetModuleHandleW(NULL),MAKEINTRESOURCEW(IDD_MAIN),NULL,dialog,0);
     assert(w); return w;
@@ -81,6 +98,26 @@ int wmain(void) {
     w=open_app(); actual=capture_config(w);
     assert(actual.genius==2 && !actual.udp.video.audio.bitrate);
     assert(GetMenuState(GetSubMenu(GetMenu(w),0),IDM_UDP,MF_BYCOMMAND)!=(UINT)-1);
+    SendMessageW(w,WM_COMMAND,IDM_LEVEL4,0);
+    assert(genius_level==4 && ts_settings.motion && udp_settings.video.motion);
+    assert(ts_settings.bitrate==30160 && ts_settings.fps==10 && ts_settings.gop==20);
+    assert(resolution(w).width==160 && !pattern_mode(w));
+    assert(!IsWindowEnabled(GetDlgItem(w,IDC_RESOLUTION)) && IsWindowEnabled(GetDlgItem(w,IDC_CODE)));
+    for (motion_system=DVB_S;motion_system<=DVB_S2;++motion_system) {
+        timer=SetTimer(NULL,0,100,motion_timer); assert(timer);
+        SendMessageW(w,WM_COMMAND,IDM_UDP,0); KillTimer(NULL,timer);
+        assert(udp_dvb.system==motion_system && udp_dvb.symbol_rate==2 && udp_dvb.fec==0);
+        assert(udp_settings.video.motion && udp_settings.video.fps==10 && udp_settings.video.gop==5);
+        assert(udp_settings.video.bitrate==(motion_system==DVB_S?115196:120665));
+    }
+    ts_settings.gop=10; SendMessageW(w,WM_COMMAND,IDM_SAVE_CONFIG,0); DestroyWindow(w);
+    w=open_app();
+    assert(genius_level==4 && ts_settings.motion && ts_settings.gop==10 && udp_settings.video.motion);
+    assert(udp_dvb.system==DVB_S2 && udp_dvb.symbol_rate==2 && udp_dvb.pilots);
+    assert(udp_settings.video.bitrate==120665 && udp_settings.video.gop==5);
+    SendMessageW(w,WM_COMMAND,IDM_LEVEL1,0);
+    assert(!ts_settings.motion && IsWindowEnabled(GetDlgItem(w,IDC_RESOLUTION)));
+    assert(GetMenuState(GetSubMenu(GetMenu(w),0),IDM_UDP,MF_BYCOMMAND)==(UINT)-1);
     DestroyWindow(w);
     wchar_t wide[32768]; assert(MultiByteToWideChar(CP_UTF8,0,path,-1,wide,32768));
     assert(DeleteFileW(wide)); free(path); pm5544_cleanup(); CoUninitialize();

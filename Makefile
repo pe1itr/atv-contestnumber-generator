@@ -22,10 +22,10 @@ dist/atv-contestnummer: src/linux.c src/quality_linux.h src/dvb_linux.h src/core
 build/pm_assets.h: tools/embed_pm5544.py tools/pm5644_rom.py $(wildcard assets/pm5644/*.inc.h) assets/pm5544.jpg assets/pm5544w.jpg assets/FuBK-Testbild.png assets/FuBK_wide.jpg
 	$(PYTHON) tools/embed_pm5544.py
 
-build/pm5544-linux.o: src/pm5544.c src/pm5544.h build/pm_assets.h
+build/pm5544-linux.o: src/pm5544.c src/pm5544.h src/core.h build/pm_assets.h
 	$(HOSTCC) $(CFLAGS) -Ibuild -c src/pm5544.c -o $@
 
-build/pm5544-windows.o: src/pm5544.c src/pm5544.h build/pm_assets.h
+build/pm5544-windows.o: src/pm5544.c src/pm5544.h src/core.h build/pm_assets.h
 	$(CC) $(CFLAGS) -Ibuild -c src/pm5544.c -o $@
 
 HOSTCC ?= cc
@@ -80,10 +80,10 @@ build/core-linux.o: src/core.c src/core.h src/datv.h
 	$(HOSTCC) $(CFLAGS) -c $< -o $@
 build/core-windows.o: src/core.c src/core.h src/datv.h
 	$(CC) $(CFLAGS) -c $< -o $@
-build/udp-sender: checks/udp_sender.cpp src/datv.h build/core-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
-	$(CXX) $(CXXFLAGS) -Isrc checks/udp_sender.cpp build/core-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -lpthread $(AUDIO_LIBS) -o $@
-build/udp-sender.exe: checks/udp_sender.cpp src/datv.h build/core-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
-	$(WINCXX) $(CXXFLAGS) -static -Isrc checks/udp_sender.cpp build/core-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a -lws2_32 -lwinmm -lwinpthread -lssp -o $@
+build/udp-sender: checks/udp_sender.cpp src/datv.h build/core-linux.o build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
+	$(CXX) $(CXXFLAGS) -Isrc checks/udp_sender.cpp build/core-linux.o build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -lpthread $(AUDIO_LIBS) -o $@
+build/udp-sender.exe: checks/udp_sender.cpp src/datv.h build/core-windows.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
+	$(WINCXX) $(CXXFLAGS) -static -Isrc checks/udp_sender.cpp build/core-windows.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a -lws2_32 -lwinmm -lwinpthread -lssp -o $@
 .PHONY: test-udp
 test-udp: build/udp-sender build/test-udp-errors
 	build/test-udp-errors
@@ -155,3 +155,12 @@ test-audio: build/udp-sender
 .PHONY: test-audio-sink
 test-audio-sink: build/udp-sender
 	$(PYTHON) checks/check_audio_sink.py
+
+.PHONY: test-motion
+test-motion: all build/udp-sender build/udp-sender.exe build/motion-profiles build/motion-profiles.exe
+	$(PYTHON) checks/check_motion.py
+
+build/motion-profiles: checks/motion_profiles.cpp src/core.h src/datv.h src/pm5544.h build/core-linux.o build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
+	$(CXX) $(CXXFLAGS) -Isrc $< build/core-linux.o build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -lpthread $(AUDIO_LIBS) -o $@
+build/motion-profiles.exe: checks/motion_profiles.cpp src/core.h src/datv.h src/pm5544.h build/core-windows.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
+	$(WINCXX) $(CXXFLAGS) -static -Isrc $< build/core-windows.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a -lws2_32 -lwinmm -lwinpthread -lssp -o $@

@@ -30,6 +30,12 @@ extern const int dvb_bandwidths[DVB_BANDWIDTH_COUNT];
 extern const wchar_t *const dvb_fec_names[DVB_FEC_COUNT];
 extern const wchar_t *const dvb_guard_names[DVB_GUARD_COUNT];
 DvbSettings dvb_defaults(void);
+DvbSettings motion_dvb_defaults(void);
+DatvSettings motion_defaults(void);
+/* Bottom 40 rows, limited-range luma. The other rows remain untouched. */
+void motion_luma(unsigned char *y, unsigned frame);
+int motion_options(int count, const char *const *values, DatvSettings *settings,
+                   wchar_t call[25], wchar_t code[5], wchar_t locator[13]);
 /* QPSK, S2 normal FECFRAME, T 2K non-hierarchical. Complete 188-byte TS
  * capacity, rounded down to whole bit/s; zero means invalid parameters. */
 int dvb_bitrate(DvbSettings s);

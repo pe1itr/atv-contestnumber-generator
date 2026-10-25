@@ -34,6 +34,7 @@ typedef struct {
     /* Snapshot of the station at Start/export, owned by the worker. */
     char locator[49];
     StationInfo station;
+    int motion; /* Genius 4: shared 160x120, 40-frame animation at 10 fps. */
 } DatvSettings;
 const char *station_validate(const StationInfo *station);
 typedef struct { int qp, frames, largest_idr; } DatvResult;

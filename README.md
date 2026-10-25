@@ -294,6 +294,53 @@ veranderen; dit is geen gekalibreerde analoge PAL-signaalgenerator.
 `--ts-pm5644-test` accepteert dezelfde argumenten als `--ts-test` en maakt een
 PM5644-proefbestand zonder GUI of netwerkuitzending.
 
+## Bewegende contestkaart (Genius level 4)
+
+Vul de bestaande velden voor **callsign, contestcode en locator** in en kies
+**Config → Genius level 4 (motion challenge)**. De kaart heeft grote witte
+letters op zwart en een bewegend blokje dat onverwacht een gezicht krijgt en
+knipoogt. De animatie duurt vier seconden en bevat veertig verschillende
+bewegingsfasen. De hoofdpreview en **Check image** tonen het eerste beeld;
+bekijk de geëxporteerde TS om de beweging te beoordelen.
+
+Via **File → Export TS test file...** maak je een bestand met standaard vier
+seconden video. Via **DATV UDP output...** stuur je de animatie doorlopend naar
+`datv-transmitter`, met doorlopende transportklokken. Gebruik voor de geplande
+RF-proef 144,600 MHz in de zender; de generator stelt geen zendfrequentie in.
+
+Het startprofiel is **160 × 120, 10 fps, GOP 20, DVB-T 40 kHz, QPSK 2K,
+FEC 1/2, GI 1/32, 30.160 bit/s totaal**, zonder audio, teletekst of optionele
+EPG. De code blijft ongewijzigd tijdens het filmpje. Kleinere GOPs (5 of 10)
+kunnen te veel ruimte vragen; de encoder controleert de werkelijke animatie.
+Een bestand krijgt één seconde transportaanloop bij de standaardbuffer:
+vier seconden video betekent dus ongeveer vijf seconden TS-transport.
+Een willekeurige viersecondenreflectie levert niet gegarandeerd vier seconden
+ontvangen video op. Synchronisatie en instappen moeten nog over RF worden getest.
+
+Voor **DVB-S of DVB-S2 op 125 ksym/s** gebruik je dezelfde level-4-modus.
+Kies in het TS- of UDP-venster het gewenste systeem, **125 ksym/s**, **FEC 1/2**
+en **GOP 5**. Bij 10 fps komt dan iedere halve seconde een zelfstandig
+startbeeld. Voor DVB-S2 met `datv-transmitter`: **pilots aan**, normale frames.
+De totale TS-bitrate wordt automatisch 115.196 bit/s voor DVB-S of
+120.665 bit/s voor DVB-S2 met pilots. De kaart blijft 160 × 120 bij 10 fps,
+met dezelfde viersecondenanimatie en fijnere letters. Stel de zender op
+hetzelfde systeem, symbol rate, FEC en pilots in.
+
+Headless export met het standaard DVB-T-40-kHz-profiel, op beide platforms
+(vervang de voorbeeldgegevens; kies voor 125 ksym/s het exportvenster):
+
+```sh
+dist/atv-contestnummer --motion-ts filmpje.ts PE1ITR 1957 JO21QK
+# Windows:
+atv-contestnummer.exe --motion-ts filmpje.ts PE1ITR 1957 JO21QK
+```
+
+Optioneel volgen de videoduur (4–60 seconden) en GOP (5, 10 of 20).
+Bestaande bestanden worden via deze CLI niet overschreven. Een statisch
+TS-bestand onbehandeld herhalen geeft tijdsprongen: gebruik de ingebouwde
+UDP-uitvoer voor een doorlopende uitzending. Zie [transportprofiel en
+validatie](docs/datv.md#bewegende-contestkaart-genius-level-4).
+
 
 Linux ondersteunt optionele AAC-audio via **Config → Genius level 3**, bij DVB-S/S2
 op 333 of 500 ksym/s. Kies een PulseAudio/PipeWire-bron zoals `ffmix.monitor` en

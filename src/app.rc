@@ -14,6 +14,7 @@ BEGIN
     BEGIN
         MENUITEM "Genius level &1 (default)", IDM_LEVEL1, CHECKED
         MENUITEM "Genius level &2", IDM_LEVEL2
+        MENUITEM "Genius level &4 (motion challenge)", IDM_LEVEL4
         MENUITEM SEPARATOR
         MENUITEM "&Teletext...", IDM_TELETEXT
         MENUITEM "&EIT...", IDM_EIT
@@ -52,7 +53,7 @@ BEGIN
     LTEXT "Guard interval (DVB-T, 2K)", -1, 12, 213, 192, 12
     COMBOBOX IDC_DVB_GUARD, 210, 210, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT "DVB-S2: normal frames. DVB-T: SR/BW is bandwidth in kHz.", -1, 12, 232, 410, 12
-    LTEXT "No audio. Service = callsign; ID = 1.\nThe transport buffer sets the decoder lead-in time.", -1, 12, 255, 410, 24
+    LTEXT "No audio. Service = callsign; ID = 1.\nThe transport buffer sets the decoder lead-in time.", IDC_TS_NOTE, 12, 255, 410, 24
     CONTROL "Include EIT programme information (Config > EIT)", IDC_INCLUDE_EIT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 284, 423, 16
     CONTROL "Include teletext page 100", IDC_INCLUDE_TELETEXT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 304, 423, 16
     DEFPUSHBUTTON "Continue", IDOK, 300, 354, 65, 16
@@ -96,7 +97,7 @@ BEGIN
     LTEXT "Guard interval (DVB-T, 2K)", -1, 12, 233, 192, 12
     COMBOBOX IDC_DVB_GUARD, 210, 230, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT "DVB-S2: normal frames. DVB-T: SR/BW is bandwidth in kHz.", -1, 12, 252, 410, 12
-    LTEXT "Contest tip: use 4 fps and GOP 2.", -1, 12, 270, 423, 12
+    LTEXT "Contest tip: use 4 fps and GOP 2.", IDC_UDP_NOTE, 12, 270, 423, 12
     LTEXT "Start transmits the current image without audio.\nStop and close this window to change the image. Closing also stops the stream.", -1, 12, 288, 423, 28
     CONTROL "Include EIT programme information (Config > EIT)", IDC_INCLUDE_EIT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 320, 423, 16
     CONTROL "Include teletext page 100", IDC_INCLUDE_TELETEXT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 340, 423, 16

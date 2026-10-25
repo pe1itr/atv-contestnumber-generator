@@ -11,4 +11,6 @@ int fubk_render(uint32_t *pixels, int width, int height,
 int pm5644_render(uint32_t *pixels, int width, int height,
                   const wchar_t *call, const wchar_t *locator);
 void pm5544_cleanup(void);
+int motion_render(uint32_t *pixels, const wchar_t *call, const wchar_t *code,
+                  const wchar_t *locator, unsigned frame);
 #endif

@@ -1,4 +1,7 @@
-#include "datv.h"
+#include "core.h"
+extern "C" {
+#include "pm5544.h"
+}
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -6,7 +9,7 @@
 #include <thread>
 #include <vector>
 int main(int argc,char **argv) {
-    if (argc!=10 && argc!=6 && argc!=8 && (argc!=7 || (std::strcmp(argv[6],"eit") && std::strcmp(argv[6],"teletext")))) return 1;
+    if (argc!=10 && argc!=6 && argc!=8 && (argc!=7 || (std::strcmp(argv[6],"eit") && std::strcmp(argv[6],"teletext") && std::strcmp(argv[6],"motion")))) return 1;
     int width=argc==8?std::atoi(argv[6]):160, height=argc==8?std::atoi(argv[7]):120;
     if (width<16 || height<16 || width>1920 || height>1440 || width%2 || height%2) return 1;
     DatvUdpSettings s=datv_udp_defaults(); std::strcpy(s.ip,"127.0.0.1");
@@ -22,7 +25,7 @@ int main(int argc,char **argv) {
         s.video.teletext.enabled=1;
         if (teletext_from_text(&s.video.teletext,"ATV CONTEST\nPagina 100\n\n73 de PE1ITR")) return 1;
     }
-    if (argc==7 || (argc==10 && !std::strcmp(argv[6],"audio"))) {
+    if ((argc==7 && std::strcmp(argv[6],"motion")) || (argc==10 && !std::strcmp(argv[6],"audio"))) {
         s.video.eit_enabled=1; std::strcpy(s.video.locator,"JO21QK");
         std::strcpy(s.video.station.city,"Eindhoven");
         std::strcpy(s.video.station.operator_name,"René");
@@ -32,6 +35,9 @@ int main(int argc,char **argv) {
     // Scale the same reference pattern so resolution changes preserve the scene.
     for (int y=0;y<height;++y) for (int x=0;x<width;++x)
         pixels[y*width+x]=(((x*160/width)/23+(y*120/height)/29)%2)?0xffff00:0x000080;
+    if (argc==7 && !std::strcmp(argv[6],"motion")) {
+        s.video.motion=1; motion_render(pixels.data(),L"PE1ITR",L"1957",L"JO21QK",0);
+    }
     char error[256];
     DatvStream *stream=datv_udp_start(pixels.data(),width,height,width*4,"PE1ITR",s,error);
     if (!stream) { std::fprintf(stderr,"%s\n",error); return 1; }
@@ -63,7 +69,7 @@ int main(int argc,char **argv) {
     std::printf("{\"packets\":%llu,\"refusals\":%llu,\"stop_ms\":%.3f,\"qp\":%d,\"recent_warning\":%s}\n",(unsigned long long)status.packets,(unsigned long long)status.refusals,stop_ms,status.qp,recent_warning?"true":"false");
     // Cancellation while preparing and repeated destruction must not hang.
     for (int n=0;n<3;++n) {
-        s.video.gop=250;
+        s.video.gop=s.video.motion?20:250;
         stream=datv_udp_start(pixels.data(),width,height,width*4,"PE1ITR",s,error);
         if (!stream) return 5;
         datv_udp_stop(stream); datv_udp_destroy(stream);

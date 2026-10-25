@@ -28,12 +28,14 @@ static TeletextSettings teletext_settings;
 static DvbSettings ts_dvb, udp_dvb;
 static DatvUdpSettings udp_settings;
 static int genius_level=1;
+static int restoring_config;
 
 static void read_text(HWND window, int id, wchar_t *text, int capacity) {
     GetDlgItemTextW(window, id, text, capacity);
     CharUpperBuffW(text, (DWORD)wcslen(text));
 }
 static Resolution resolution(HWND window) {
+    if (genius_level==4) return (Resolution){160,120};
     int aspect = (int)SendDlgItemMessageW(window, IDC_ASPECT, CB_GETCURSEL, 0, 0);
     int index = (int)SendDlgItemMessageW(window, IDC_RESOLUTION, CB_GETCURSEL, 0, 0);
     if (index < 0 || index >= RESOLUTION_COUNT) index = DEFAULT_RESOLUTION_INDEX;
@@ -119,6 +121,9 @@ static HBITMAP render(int width, int height, const wchar_t *call, const wchar_t 
     if (!dc) return NULL;
     HBITMAP bitmap = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &pixels, NULL, 0);
     if (!bitmap) { DeleteDC(dc); return NULL; }
+    if (genius_level==4 && width==160 && height==120) {
+        motion_render(pixels,call,code,locator,0); DeleteDC(dc); return bitmap;
+    }
     HGDIOBJ old = SelectObject(dc, bitmap);
     ContestPalette palette = contest_palette(blue_yellow, inverse);
     SetDCBrushColor(dc, RGB(palette.background.red, palette.background.green, palette.background.blue));
@@ -170,6 +175,7 @@ static HBITMAP render(int width, int height, const wchar_t *call, const wchar_t 
 }
 
 static int selected_mode(HWND window) {
+    if (genius_level==4) return IMAGE_CONTEST;
     int row=(int)SendDlgItemMessageW(window, IDC_MODE, CB_GETCURSEL, 0, 0);
     return row>=0 && row<IMAGE_MODE_COUNT ? image_mode_order[row] : IMAGE_CONTEST;
 }
@@ -188,7 +194,13 @@ static void update_mode(HWND window) {
     for (size_t i=0; i<sizeof(controls)/sizeof(controls[0]); ++i)
         EnableWindow(GetDlgItem(window, controls[i]), !pm);
     EnableWindow(GetDlgItem(window, IDC_NEW_CODE), !pm && IsDlgButtonChecked(window, IDC_AUTO) == BST_CHECKED);
-    EnableWindow(GetDlgItem(window, IDC_LOCATOR), pm || IsDlgButtonChecked(window, IDC_SHOW_LOCATOR) == BST_CHECKED);
+    EnableWindow(GetDlgItem(window, IDC_LOCATOR), genius_level==4 || pm || IsDlgButtonChecked(window, IDC_SHOW_LOCATOR) == BST_CHECKED);
+    const int fixed[]={IDC_MODE,IDC_ASPECT,IDC_RESOLUTION};
+    for (size_t i=0;i<sizeof(fixed)/sizeof(fixed[0]);++i) EnableWindow(GetDlgItem(window,fixed[i]),genius_level!=4);
+    if (genius_level==4) {
+        const int options[]={IDC_INVERSE,IDC_BLUE_YELLOW,IDC_BAND,IDC_SHOW_SUM,IDC_TOP_CODE,IDC_SHOW_LOCATOR,IDC_EBU_TOP,IDC_EBU_BOTTOM};
+        for (size_t i=0;i<sizeof(options)/sizeof(options[0]);++i) EnableWindow(GetDlgItem(window,options[i]),FALSE);
+    }
 }
 static HBITMAP render_pattern(Resolution r, const wchar_t *call, const wchar_t *locator, int mode) {
     BITMAPINFO info = {0};
@@ -276,6 +288,10 @@ static void udp_poll(HWND window,UdpDialog *d) {
     const int fields[]={IDC_UDP_LOCALHOST,IDC_UDP_IP,IDC_UDP_PORT,IDC_UDP_BITRATE,IDC_UDP_FPS,IDC_UDP_GOP,IDC_TRANSPORT_BUFFER,IDC_UDP_START,IDC_UDP_APPLY,IDC_UDP_PREVIEW,IDC_INCLUDE_EIT,IDC_INCLUDE_TELETEXT};
     for (size_t i=0;i<sizeof(fields)/sizeof(fields[0]);++i) EnableWindow(GetDlgItem(window,fields[i]),!busy);
     dvb_window_enable(window,!busy);
+    if (genius_level==4) {
+        EnableWindow(GetDlgItem(window,IDC_UDP_FPS),FALSE);
+        EnableWindow(GetDlgItem(window,IDC_INCLUDE_EIT),FALSE); EnableWindow(GetDlgItem(window,IDC_INCLUDE_TELETEXT),FALSE);
+    }
     EnableWindow(GetDlgItem(window,IDC_UDP_STOP),busy);
 }
 static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp) {
@@ -292,6 +308,12 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         SetDlgItemInt(window,IDC_UDP_FPS,udp_settings.video.fps,FALSE);
         SetDlgItemInt(window,IDC_UDP_GOP,udp_settings.video.gop,FALSE);
         SetDlgItemInt(window,IDC_TRANSPORT_BUFFER,datv_buffer_ms(udp_settings.video),FALSE);
+        if (genius_level==4) {
+            SetWindowTextW(window,L"Motion challenge: continuous 4-second loop, 10 fps (GOP 5/10/20)");
+            SetDlgItemTextW(window,IDC_UDP_NOTE,L"Motion: DVB-T 40 kHz / GOP 20; DVB-S/S2 125 ksym/s / GOP 5.");
+            EnableWindow(GetDlgItem(window,IDC_UDP_FPS),FALSE);
+            EnableWindow(GetDlgItem(window,IDC_INCLUDE_EIT),FALSE); EnableWindow(GetDlgItem(window,IDC_INCLUDE_TELETEXT),FALSE);
+        }
         EnableWindow(GetDlgItem(window,IDC_UDP_STOP),FALSE);
         if (!SetTimer(window,1,200,NULL)) { EndDialog(window,0); return TRUE; }
         return TRUE;
@@ -334,6 +356,7 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         s.video.buffer_ms=(int)GetDlgItemInt(window,IDC_TRANSPORT_BUFFER,NULL,FALSE);
         if (s.video.buffer_ms<1000 || s.video.buffer_ms>10000) { udp_status_message(window,"Transport buffer must be between 1000 and 10000 ms."); return TRUE; }
         if (s.video.buffer_ms==1000) s.video.buffer_ms=0;
+        s.video.motion=genius_level==4;
         s.video.eit_enabled=IsDlgButtonChecked(window,IDC_INCLUDE_EIT)==BST_CHECKED;
         s.video.teletext=teletext_settings;
         s.video.teletext.enabled=IsDlgButtonChecked(window,IDC_INCLUDE_TELETEXT)==BST_CHECKED;
@@ -365,10 +388,10 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
     return FALSE;
 }
 static void output_udp(HWND window) {
-    if (genius_level!=2) return;
+    if (genius_level!=2 && genius_level!=4) return;
     wchar_t call[25],locator[LOCATOR_MAX_LENGTH+1],code[5];
     read_text(window,IDC_CALL,call,25); read_text(window,IDC_LOCATOR,locator,LOCATOR_MAX_LENGTH+1); read_text(window,IDC_CODE,code,5);
-    BOOL pm=pattern_mode(window), show=pm||IsDlgButtonChecked(window,IDC_SHOW_LOCATOR)==BST_CHECKED;
+    BOOL pm=pattern_mode(window), show=genius_level==4||pm||IsDlgButtonChecked(window,IDC_SHOW_LOCATOR)==BST_CHECKED;
     if (!valid_call(call) || ((show||locator[0])&&!(selected_mode(window)==IMAGE_FUBK?valid_fubk_locator(locator):valid_locator(locator))) || (!pm&&!valid_code(code))) {
         error(window,L"Enter a valid callsign and locator first (FUBK: at least 6 locator characters). The contest code must have four digits, not all identical or in ascending or descending sequence."); return;
     }
@@ -451,6 +474,12 @@ static INT_PTR CALLBACK ts_options(HWND window, UINT message, WPARAM wp, LPARAM 
         SetDlgItemInt(window,IDC_TS_FPS,ts_settings.fps,FALSE);
         SetDlgItemInt(window,IDC_TS_GOP,ts_settings.gop,FALSE);
         SetDlgItemInt(window,IDC_TRANSPORT_BUFFER,datv_buffer_ms(ts_settings),FALSE);
+        if (genius_level==4) {
+            SetWindowTextW(window,L"Motion challenge: 160 x 120, 10 fps, 4-second loop (GOP 5/10/20)");
+            SetDlgItemTextW(window,IDC_TS_NOTE,L"DVB-T 40 kHz: GOP 20. DVB-S/S2 125 ksym/s: try GOP 5.\nMatch system, symbol rate, FEC and pilots to your transmitter.");
+            EnableWindow(GetDlgItem(window,IDC_TS_FPS),FALSE);
+            EnableWindow(GetDlgItem(window,IDC_INCLUDE_EIT),FALSE); EnableWindow(GetDlgItem(window,IDC_INCLUDE_TELETEXT),FALSE);
+        }
         return TRUE;
     }
     if (message==WM_COMMAND && LOWORD(wp)==IDOK) {
@@ -466,20 +495,23 @@ static INT_PTR CALLBACK ts_options(HWND window, UINT message, WPARAM wp, LPARAM 
         s.buffer_ms=(int)GetDlgItemInt(window,IDC_TRANSPORT_BUFFER,NULL,FALSE);
         if (s.buffer_ms<1000 || s.buffer_ms>10000) { error(window,L"Transport buffer must be between 1000 and 10000 ms."); return TRUE; }
         if (s.buffer_ms==1000) s.buffer_ms=0;
+        s.motion=genius_level==4;
         s.eit_enabled=IsDlgButtonChecked(window,IDC_INCLUDE_EIT)==BST_CHECKED;
         s.teletext=teletext_settings;
         s.teletext.enabled=IsDlgButtonChecked(window,IDC_INCLUDE_TELETEXT)==BST_CHECKED;
         teletext_settings.enabled=s.teletext.enabled;
+        const char *invalid=datv_validate(s,genius_level==4?160:320,genius_level==4?120:240);
+        if (invalid) { ts_error(window,invalid); return TRUE; }
         ts_settings=s; ts_dvb=radio; EndDialog(window,IDOK); return TRUE;
     }
     if (message==WM_CLOSE || (message==WM_COMMAND && LOWORD(wp)==IDCANCEL)) { EndDialog(window,IDCANCEL); return TRUE; }
     return FALSE;
 }
 static void export_ts(HWND window) {
-    if (genius_level!=2) return;
+    if (genius_level!=2 && genius_level!=4) return;
     wchar_t call[25],locator[LOCATOR_MAX_LENGTH+1],code[5],safe[25];
     read_text(window,IDC_CALL,call,25); read_text(window,IDC_LOCATOR,locator,LOCATOR_MAX_LENGTH+1); read_text(window,IDC_CODE,code,5);
-    BOOL pm=pattern_mode(window), show=pm||IsDlgButtonChecked(window,IDC_SHOW_LOCATOR)==BST_CHECKED;
+    BOOL pm=pattern_mode(window), show=genius_level==4||pm||IsDlgButtonChecked(window,IDC_SHOW_LOCATOR)==BST_CHECKED;
     if (!valid_call(call) || ((show||locator[0])&&!(selected_mode(window)==IMAGE_FUBK?valid_fubk_locator(locator):valid_locator(locator))) || (!pm&&!valid_code(code))) {
         error(window,L"Enter a valid callsign and locator first (FUBK: at least 6 locator characters). The contest code must have four digits, not all identical or in ascending or descending sequence."); return;
     }
@@ -697,6 +729,7 @@ static AppConfig capture_config(HWND window) {
     s.teletext=teletext_settings; s.station=station_info; s.genius=genius_level; s.ts=ts_settings; s.udp=udp_settings; s.ts_dvb=ts_dvb; s.udp_dvb=udp_dvb; return s;
 }
 static void apply_config(HWND window,const AppConfig *s) {
+    restoring_config=1;
     ready=0; wchar_t text[97];
     MultiByteToWideChar(CP_UTF8,0,s->call,-1,text,97); SetDlgItemTextW(window,IDC_CALL,text);
     MultiByteToWideChar(CP_UTF8,0,s->locator,-1,text,97); SetDlgItemTextW(window,IDC_LOCATOR,text);
@@ -720,7 +753,8 @@ static void apply_config(HWND window,const AppConfig *s) {
     teletext_settings=s->teletext; station_info=s->station; ts_settings=s->ts; udp_settings=s->udp; udp_settings.video.audio=(AudioSettings){0}; ts_dvb=s->ts_dvb; udp_dvb=s->udp_dvb;
     SendDlgItemMessageW(window,IDC_CODE,EM_SETREADONLY,s->automatic,0);
     update_mode(window); ready=1;
-    SendMessageW(window,WM_COMMAND,s->genius>=2?IDM_LEVEL2:IDM_LEVEL1,0);
+    SendMessageW(window,WM_COMMAND,s->genius==4?IDM_LEVEL4:s->genius>=2?IDM_LEVEL2:IDM_LEVEL1,0);
+    restoring_config=0;
     InvalidateRect(GetDlgItem(window,IDC_PREVIEW),NULL,FALSE);
 }
 static INT_PTR CALLBACK teletext_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp) {
@@ -850,19 +884,30 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
     case WM_COMMAND:
         if (LOWORD(wp) == IDCANCEL) { EndDialog(window, 0); return TRUE; }
         if (!ready) break;
-        if (LOWORD(wp)==IDM_LEVEL1 || LOWORD(wp)==IDM_LEVEL2) {
-            int level=LOWORD(wp)==IDM_LEVEL2?2:1;
+        if (LOWORD(wp)==IDM_LEVEL1 || LOWORD(wp)==IDM_LEVEL2 || LOWORD(wp)==IDM_LEVEL4) {
+            int level=LOWORD(wp)==IDM_LEVEL4?4:LOWORD(wp)==IDM_LEVEL2?2:1;
             HMENU menu=GetMenu(window), file=GetSubMenu(menu,0);
             if (level!=genius_level) {
-                if (level==2) {
+                if (genius_level==1 && level>=2) {
                     InsertMenuW(file,2,MF_BYPOSITION|MF_STRING,IDM_EXPORT_TS,L"Export TS test file...");
                     InsertMenuW(file,3,MF_BYPOSITION|MF_STRING,IDM_UDP,L"DATV UDP output...");
-                } else {
+                } else if (level==1) {
                     DeleteMenu(file,IDM_EXPORT_TS,MF_BYCOMMAND); DeleteMenu(file,IDM_UDP,MF_BYCOMMAND);
+                }
+                if (level==4 && !restoring_config) {
+                    ts_settings=motion_defaults(); udp_settings.video=motion_defaults();
+                    ts_dvb=udp_dvb=motion_dvb_defaults(); teletext_settings.enabled=0;
+                    SendDlgItemMessageW(window,IDC_MODE,CB_SETCURSEL,image_mode_row(IMAGE_CONTEST),0);
+                    SendDlgItemMessageW(window,IDC_ASPECT,CB_SETCURSEL,0,0); update_resolutions(window);
+                    SendDlgItemMessageW(window,IDC_RESOLUTION,CB_SETCURSEL,3,0);
+                    SendDlgItemMessageW(window,IDC_BAND,CB_SETCURSEL,2,0);
                 }
                 genius_level=level;
             }
-            CheckMenuRadioItem(GetSubMenu(menu,1),IDM_LEVEL1,IDM_LEVEL2,level==2?IDM_LEVEL2:IDM_LEVEL1,MF_BYCOMMAND);
+            ts_settings.motion=udp_settings.video.motion=level==4;
+            const int levels[]={IDM_LEVEL1,IDM_LEVEL2,IDM_LEVEL4};
+            for (int i=0;i<3;++i) CheckMenuItem(GetSubMenu(menu,1),levels[i],MF_BYCOMMAND|(levels[i]==LOWORD(wp)?MF_CHECKED:MF_UNCHECKED));
+            update_mode(window); InvalidateRect(GetDlgItem(window,IDC_PREVIEW),NULL,FALSE);
             DrawMenuBar(window); return TRUE;
         }
         if (LOWORD(wp)==IDM_TELETEXT) {
@@ -970,7 +1015,28 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
     int result;
     int argc=0;
     LPWSTR *argv=CommandLineToArgvW(GetCommandLineW(),&argc);
-    if (argv && argc>=3 && (!wcscmp(argv[1],L"--ts-test") || !wcscmp(argv[1],L"--ts-ebu-test") || !wcscmp(argv[1],L"--ts-fubk-test") || !wcscmp(argv[1],L"--ts-pm5644-test"))) {
+    if (argv && argc>=2 && !wcscmp(argv[1],L"--motion-ts")) {
+        result=1;
+        if (argc>=6 && argc<=8) {
+            char text[5][97]; const char *values[5]; BOOL converted=TRUE;
+            for (int i=3;i<argc;++i) {
+                if (!WideCharToMultiByte(CP_UTF8,0,argv[i],-1,text[i-3],97,NULL,NULL)) converted=FALSE;
+                values[i-3]=text[i-3];
+            }
+            wchar_t call[25],code[5],locator[13]; TsJob job={0};
+            DWORD n=GetFullPathNameW(argv[2],MAX_PATH,job.path,NULL);
+            if (converted && n && n<MAX_PATH && motion_options(argc-3,values,&job.settings,call,code,locator)) {
+                genius_level=4;
+                WideCharToMultiByte(CP_UTF8,0,call,-1,job.call,25,NULL,NULL);
+                job.bitmap=render(160,120,call,code,locator,TRUE,L"144 MHz",FALSE,FALSE,FALSE,FALSE,FALSE,FALSE);
+                if (job.bitmap) { ts_worker(&job); DeleteObject(job.bitmap); result=job.ok?0:1; }
+                if (!job.ok) fprintf(stderr,"%s\n",job.error);
+                else printf("Motion TS: %d bit/s, 160x120, 10 fps, GOP %d, QP %d, %d frames, largest IDR %d bytes\n",job.settings.bitrate,job.settings.gop,job.result.qp,job.result.frames,job.result.largest_idr);
+            }
+        }
+        if (result) fprintf(stderr,"Usage: atv-contestnummer.exe --motion-ts file.ts CALL CODE LOCATOR [seconds 4-60] [GOP 5/10/20]\n");
+    }
+    else if (argv && argc>=3 && (!wcscmp(argv[1],L"--ts-test") || !wcscmp(argv[1],L"--ts-ebu-test") || !wcscmp(argv[1],L"--ts-fubk-test") || !wcscmp(argv[1],L"--ts-pm5644-test"))) {
         char text[7][32]; const char *values[7];
         result=1;
         if (argc<=10) {

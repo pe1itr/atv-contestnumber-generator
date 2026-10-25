@@ -106,6 +106,7 @@ bool encode(Bytes &yuv, int w, int h, DatvSettings s, int qp,
     frames.clear(); largest=0;
     for (int i=0; i<(limit?limit:s.seconds*s.fps); ++i) {
         if (stop && stop->load()) return false;
+        if (s.motion) motion_luma(yuv.data(),static_cast<unsigned>(i));
         pic.uiTimeStamp=static_cast<long long>(i)*1000/s.fps;
         if (i%s.gop==0 && encoder->ForceIntraFrame(true) != 0) return false;
         SFrameBSInfo bs{};
@@ -503,8 +504,11 @@ public:
                 due[table]=end+(table==4?20*CLOCK:table==3?CLOCK/2:table==2?CLOCK*4/5:CLOCK/5);
                 // Compact no-EIT profile with extra scheduling margin at low rates.
                 if (!s.eit_enabled) {
-                    // Leave room for PCR and SDT while retaining <=300 ms PAT/PMT gaps.
-                    uint64_t psi_period=s.bitrate<40000?CLOCK*3/20:CLOCK/5;
+                    // Leave room for PCR and SDT. Legacy profile: <=300 ms PAT/PMT gaps.
+                    // Motion at 30 kbit/s needs spare video slots beyond one
+                    // packet per frame. Keep PAT/PMT below the 500 ms monitoring threshold;
+                    // measure actual completion gaps in the motion tests.
+                    uint64_t psi_period=s.motion?CLOCK*3/10:s.bitrate<40000?CLOCK*3/20:CLOCK/5;
                     due[table]=now+(table==2?CLOCK*4/5:psi_period);
                 }
             }
@@ -546,6 +550,16 @@ int datv_write(FILE *output, const uint32_t *rgb, int width, int height,
             int largest=0;
             if (!encode(yuv,width,height,s,qp,frames,largest)) {
                 std::snprintf(error,256,"OpenH264 could not encode the image."); return 0;
+            }
+            if (s.motion) {
+                std::vector<Frame> cycle(frames.begin(),frames.begin()+40);
+                Mux probe(cycle,s,call,true);
+                bool fits=true; unsigned char packet[188];
+                // Do not let the finite file's decoder lead-out hide a
+                // cumulative deficit in a continuously repeated animation.
+                for (uint64_t n=0;n<60*uint64_t(s.bitrate)/1504;++n)
+                    if (!probe.next(packet)) { fits=false; break; }
+                if (!fits) continue;
             }
             if (!multiplex(frames,s,call,ts)) continue;
             if (std::fwrite(ts.data(),1,ts.size(),output)!=ts.size() || std::fflush(output)!=0) {
@@ -656,7 +670,7 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
             // Consecutive IDR access units must have different idr_pic_id
             // (H.264 7.4.3). Keep two encoder-produced IDRs for GOP=1 so
             // the IDs alternate across template boundaries as well.
-            if (!encode(yuv,w,h,s,qp,frames,largest,&stream->stop,std::max(2,s.gop))) {
+            if (!encode(yuv,w,h,s,qp,frames,largest,&stream->stop,s.motion?40:std::max(2,s.gop))) {
                 if (stream->stop) break;
                 throw std::runtime_error("OpenH264 could not encode the image.");
             }

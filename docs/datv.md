@@ -1,5 +1,91 @@
 # DATV: TS-bestand en UDP-uitvoer
 
+## Bewegende contestkaart (Genius level 4)
+
+Level 4 gebruikt de bestaande callsign-, code- en locatorvelden. Het gedeelde
+ingebouwde bloklettertype maakt op beide platforms dezelfde kaart: 160 × 120,
+wit op zwart, met onderin een groot bewegend blokje dat een gezicht krijgt en
+knipoogt. Er zijn veertig verschillende posities per vier seconden. De bron
+levert 10 echte bewegingsbeelden/s, zonder overslaan of ontvangerinterpolatie.
+De challenge gebruikt een ingebouwd 7 × 11-letterraster met fijnere lijnen
+dan het oorspronkelijke 5 × 7-raster. Normale tekst krijgt één beeldpixel extra
+lijndikte voor een middelzwaar uiterlijk; compacte labels onder 14 pixels hoog
+behouden hun fijne raster zodat de openingen leesbaar blijven. De tekst blijft
+op dezelfde regels staan en de spaties tussen letters blijven vrij.
+Bij callsigns langer dan 19 tekens blijft het compacte 5 × 7-raster nodig om
+alle letters binnen 160 pixels te houden. De overige testbeelden behouden hun
+oorspronkelijke lettertype. Beoordeel de leesbaarheid na H.264-decodering.
+De hoofdpreview en kwaliteitsvergelijking tonen het eerste beeld; de TS bevat
+de volledige animatie. JPG-export blijft een stilstaand beeld.
+
+De standaard is DVB-T 40 kHz, QPSK 2K, FEC 1/2, GI 1/32: 30160 bit/s voor
+de hele TS. De RF-frequentie (geplande proef: 144,600 MHz) wordt op de zender
+ingesteld. GOP 20 geeft iedere twee seconden een IDR met SPS/PPS. GOP 5 en 10
+zijn expliciete alternatieven; de encoder kan onhaalbare combinaties weigeren.
+Audio, teletekst en optionele EIT zijn in dit profiel uitgeschakeld.
+
+Voor DVB-S/S2 op **125 ksym/s** selecteer je in het TS- of UDP-venster het
+systeem en de symbol rate; kies FEC 1/2 en GOP 5. Resolutie, framerate en
+animatie blijven 160 × 120, 10 fps en vier seconden. GOP 5 geeft elke 0,5 s
+een IDR met SPS/PPS. De automatische totale TS-budgetten zijn:
+
+| Systeem (QPSK, FEC 1/2) | Pilots | TS-bitrate |
+| --- | --- | --- |
+| DVB-S, 125 ksym/s | n.v.t. | 115.196 bit/s |
+| DVB-S2, 125 ksym/s, normale frames | aan | 120.665 bit/s |
+| DVB-S2, 125 ksym/s, normale frames | uit | 123.607 bit/s |
+
+Gebruik bij `datv-transmitter` voor DVB-S2 **pilots aan**: diens huidige
+encoder schakelt ze in (`src/codec.cpp`). De generator maakt alleen TS;
+de zender moet dezelfde modulatie-instellingen gebruiken. De CLI-optie
+`--motion-ts` blijft het standaard DVB-T-40-kHz-profiel gebruiken.
+
+De encoder doorloopt alle 40 fasen. UDP herhaalt die volledige gesloten cyclus,
+met doorlopende PTS/PCR en continuity counters. Alle toegestane GOPs delen 40
+en geven een even aantal IDRs per cyclus. Export controleert de eerste cyclus
+ook gedurende 60 seconden met de continue muxer, zodat de transportaanloop
+geen blijvend bitrategebrek kan verbergen. UDP controleert eveneens de
+continue planning. Een hogere QP kan nodig zijn bij langere callsigns/locators;
+passend betekent niet automatisch leesbaar.
+
+Met de standaardbuffer bevat een viersecondenbestand 40 beelden, plus 1000 ms
+transportaanloop en afronding op zeven TS-pakketten. Een willekeurige ontvanger
+moet eerst synchroniseren en een IDR ontvangen; dit is geen bewijs dat iedere
+viersecondenreflectie een volledig viersecondenfilmpje oplevert.
+
+### Experimenteel transportprofiel
+
+Alleen voor motion wordt PAT/PMT na 300 ms opnieuw aangevraagd. De tests eisen
+een werkelijke afstand van maximaal 500 ms, de monitoringdrempel voor
+PAT_error_2/PMT_error_2 in ETSI TR 101 290, §5.2.1. De bestaande statische
+profielen houden hun strengere projecttest van 300 ms. PCR blijft maximaal
+100 ms; SDT blijft op de bestaande planning. Zonder deze afzonderlijke
+PSI-planning blijft bij 30 kbit/s onvoldoende ruimte voor 10 video-PES/s én
+grotere IDR-beelden. De generator en encoder/muxer gebruiken beide dezelfde
+motion-instelling; het is geen algemene versoepeling van de muxer.
+
+Dit is **experimentele DATV-MPEG-TS**, geen volledige DVB/ETSI-conformiteitsclaim.
+De PAT/PMT-planning volgt niet de 100-ms-aanbeveling van
+[ETSI TS 101 154 V2.9.1 §4.1.7](https://www.etsi.org/deliver/etsi_ts/101100_101199/101154/02.09.01_60/ts_101154v020901p.pdf)
+(voor distribution applications een eis). De 160 × 120 / 10 fps / Constrained
+Baseline-video valt buiten het SDTV AVC-profiel in §5.6. NIT en bij uitgeschakelde
+EIT ook EIT/TDT ontbreken zoals in het bestaande vereenvoudigde profiel.
+RF-conformiteit, ontvangeracquisitie en het systeemdoeldecodermodel zijn niet
+volledig geverifieerd door deze tests.
+
+`make test-motion` controleert native export en loopback-UDP. Gebruik
+`python3 checks/check_motion.py --windows` om Windows via Wine mee te nemen.
+FFmpeg/ffprobe en TSDuck zijn vereist voor deze motion-test. De controle omvat
+4/12/60 seconden export, gedecodeerde posities, de zichtbare ogen/mond/knipoog,
+PTS, PCR, tabellen, continuïteit, instappen, de 40-frameovergang in live UDP,
+afwijzen van onhaalbare GOPs en beschermen van bestaande uitvoerbestanden.
+Windows en Linux moeten dezelfde gedecodeerde pixels opleveren.
+Daarnaast worden de drie 125-ksym/s-profielen hierboven gecontroleerd met
+12 seconden export, GOP 5 en live loopback-UDP op beide platforms wanneer
+`--windows` wordt gebruikt. De configuratie-UI-tests controleren selectie en
+heropenen van DVB-S/S2 op 125 ksym/s in level 4. Dit zijn softwaretests;
+ontvangst met een DVB-S/S2-demodulator over RF is niet geverifieerd.
+
 ## Bediening
 
 1. Vul de roepnaam, locator en code in en kies een resolutie tot **1920 × 1080 (16:9)** of **1920 × 1440 (4:3)**.

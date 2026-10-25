@@ -14,7 +14,7 @@ typedef struct {
     GtkWidget *window, *call, *locator, *show, *automatic, *code;
     GtkWidget *aspect, *resolution, *band, *preview, *status, *inverse, *blue_yellow, *show_sum, *top_code, *ebu_top, *ebu_bottom, *mode, *manual, *new_code;
     GtkWidget *export_menu, *export_as_menu, *about_menu, *quit_menu;
-    GtkWidget *ts_menu, *level1, *level2, *level3;
+    GtkWidget *ts_menu, *level1, *level2, *level3, *level4;
     gboolean restoring;
     DatvSettings datv;
     StationInfo station;
@@ -161,7 +161,24 @@ static cairo_surface_t *render_pattern(Resolution r, const char *call, const cha
     }
     return surface;
 }
+static gboolean motion_mode(App *app) {
+    return app->level4 && gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level4));
+}
+static cairo_surface_t *render_motion(const char *call, const char *code, const char *locator) {
+    wchar_t wc[25]={0}, wd[5]={0}, wl[13]={0};
+    for (int i=0;i<24 && call[i];++i) wc[i]=(unsigned char)call[i];
+    for (int i=0;i<4 && code[i];++i) wd[i]=(unsigned char)code[i];
+    for (int i=0;i<12 && locator[i];++i) wl[i]=(unsigned char)locator[i];
+    cairo_surface_t *s=cairo_image_surface_create(CAIRO_FORMAT_RGB24,160,120);
+    if (cairo_surface_status(s)==CAIRO_STATUS_SUCCESS) {
+        cairo_surface_flush(s);
+        motion_render((uint32_t *)cairo_image_surface_get_data(s),wc,wd,wl,0);
+        cairo_surface_mark_dirty(s);
+    }
+    return s;
+}
 static int selected_mode(App *app) {
+    if (motion_mode(app)) return IMAGE_CONTEST;
     int row=gtk_combo_box_get_active(GTK_COMBO_BOX(app->mode));
     return row>=0 && row<IMAGE_MODE_COUNT ? image_mode_order[row] : IMAGE_CONTEST;
 }
@@ -212,6 +229,7 @@ failure:
 }
 
 static Resolution selected_resolution(App *app) {
+    if (motion_mode(app)) return (Resolution){160,120};
     int i = gtk_combo_box_get_active(GTK_COMBO_BOX(app->resolution));
     if (i < 0 || i >= RESOLUTION_COUNT) i = DEFAULT_RESOLUTION_INDEX;
     return (gtk_combo_box_get_active(GTK_COMBO_BOX(app->aspect)) == 1 ? resolutions169 : resolutions43)[i];
@@ -276,13 +294,20 @@ static void toggled(GtkWidget *widget, gpointer data) {
     gtk_widget_set_sensitive(app->new_code, !pm && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->automatic)));
     if (widget == app->automatic && !pm && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->automatic))) new_code(NULL, app);
     gtk_widget_set_sensitive(app->locator, pm || gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show)));
+    if (motion_mode(app)) {
+        GtkWidget *fixed[]={app->mode,app->aspect,app->resolution,app->band,app->show,app->inverse,app->blue_yellow,app->show_sum,app->top_code,app->ebu_top,app->ebu_bottom};
+        for (size_t i=0;i<G_N_ELEMENTS(fixed);++i) gtk_widget_set_sensitive(fixed[i],FALSE);
+        gtk_widget_set_sensitive(app->locator,TRUE);
+    } else {
+        gtk_widget_set_sensitive(app->mode,TRUE); gtk_widget_set_sensitive(app->aspect,TRUE); gtk_widget_set_sensitive(app->resolution,TRUE);
+    }
     changed(widget, app);
 }
 
 static cairo_surface_t *current_image(App *app) {
     char *call = entry_text(app->call), *locator = entry_text(app->locator);
     char *band = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(app->band));
-    cairo_surface_t *surface = pattern_mode(app) ? render_pattern(selected_resolution(app), call, locator, selected_mode(app)) : render(selected_resolution(app), call,
+    cairo_surface_t *surface = motion_mode(app) ? render_motion(call,gtk_entry_get_text(GTK_ENTRY(app->code)),locator) : pattern_mode(app) ? render_pattern(selected_resolution(app), call, locator, selected_mode(app)) : render(selected_resolution(app), call,
         gtk_entry_get_text(GTK_ENTRY(app->code)), locator,
         gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show)), band ? band : "",
         gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->inverse)),
@@ -403,6 +428,10 @@ static gboolean udp_poll(gpointer data) {
     gtk_widget_set_sensitive(d->dvb.box,!busy);
     gtk_widget_set_sensitive(d->eit,!busy);
     gtk_widget_set_sensitive(d->teletext,!busy);
+    if (d->app->level4 && gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(d->app->level4))) {
+        gtk_widget_set_sensitive(d->fields[3],FALSE);
+        gtk_widget_set_sensitive(d->eit,FALSE); gtk_widget_set_sensitive(d->teletext,FALSE);
+    }
     udp_audio_controls(d,busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),4,!busy);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d->dialog),1,!busy);
@@ -416,7 +445,7 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     (void)widget;
     App *app=data;
     char *call=entry_text(app->call), *locator=entry_text(app->locator);
-    gboolean show=pattern_mode(app)||gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show));
+    gboolean show=motion_mode(app)||pattern_mode(app)||gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show));
     if (!validate(call,valid_call) || ((show||*locator) && !validate(locator,selected_mode(app)==IMAGE_FUBK?valid_fubk_locator:valid_locator)) ||
         (!pattern_mode(app) && !validate(gtk_entry_get_text(GTK_ENTRY(app->code)),valid_code))) {
         notify_error(app,"Enter a valid callsign and locator first (FUBK: at least 6 locator characters). The contest code must have four digits, not all identical or in ascending or descending sequence.");
@@ -456,7 +485,7 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     gtk_grid_attach(GTK_GRID(grid),d.localhost,2,0,1,1);
     dvb_controls_init(&d.dvb,d.fields[2],app->udp_dvb);
     gtk_grid_attach(GTK_GRID(grid),d.dvb.box,0,5,3,1);
-    GtkWidget *note=gtk_label_new("Contest tip: use 4 fps and GOP 2.\n\nStart transmits the current image. Audio is optional at genius level 3.\nStop and close this window to change the image. Closing also stops the stream.");
+    GtkWidget *note=gtk_label_new(motion_mode(app)?"Motion challenge: 160 x 120, 10 fps, 4-second loop with a surprise.\nDVB-T 40 kHz: GOP 20. DVB-S/S2 125 ksym/s: try GOP 5.\nSelect the system, rate, FEC and pilots to match your transmitter.":"Contest tip: use 4 fps and GOP 2.\n\nStart transmits the current image. Audio is optional at genius level 3.\nStop and close this window to change the image. Closing also stops the stream.");
     gtk_grid_attach(GTK_GRID(grid),note,0,6,3,1);
     d.eit=gtk_check_button_new_with_label("Include EIT programme information (Config → EIT)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(d.eit),app->udp.video.eit_enabled);
@@ -485,6 +514,10 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     gtk_label_set_xalign(GTK_LABEL(d.status),0); gtk_grid_attach(GTK_GRID(grid),d.status,0,7,3,1);
     gtk_dialog_set_response_sensitive(GTK_DIALOG(d.dialog),2,FALSE);
     gtk_widget_show_all(d.dialog);
+    if (motion_mode(app)) {
+        gtk_widget_set_sensitive(d.fields[3],FALSE);
+        gtk_widget_set_sensitive(d.eit,FALSE); gtk_widget_set_sensitive(d.teletext,FALSE);
+    }
     gtk_widget_set_visible(d.audio_box,gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level3)));
     udp_audio_controls(&d,FALSE);
     guint timer=g_timeout_add(200,udp_poll,&d);
@@ -513,6 +546,7 @@ static void output_udp(GtkWidget *widget, gpointer data) {
         s.video.buffer_ms=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(d.fields[5]));
         if (s.video.buffer_ms==1000) s.video.buffer_ms=0;
         s.video.eit_enabled=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(d.eit));
+        s.video.motion=motion_mode(app);
         DatvUdpSettings check=s;
         if (response==3 && !check.ip[0]) g_strlcpy(check.ip,"127.0.0.1",sizeof(check.ip));
         invalid=response==4 ? datv_validate(s.video,r.width,r.height) : datv_udp_validate(check,r.width,r.height);
@@ -540,8 +574,11 @@ static void output_udp(GtkWidget *widget, gpointer data) {
 static void export_ts(GtkWidget *widget, gpointer data) {
     (void)widget;
     App *app=data;
+    DatvSettings previous=app->datv;
+    DvbSettings previous_radio=app->ts_dvb;
+    int previous_teletext=app->teletext.enabled;
     char *call=entry_text(app->call), *locator=entry_text(app->locator);
-    gboolean show=pattern_mode(app)||gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show));
+    gboolean show=motion_mode(app)||pattern_mode(app)||gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show));
     if (!validate(call,valid_call) || ((show||*locator) && !validate(locator,selected_mode(app)==IMAGE_FUBK?valid_fubk_locator:valid_locator)) ||
         (!pattern_mode(app) && !validate(gtk_entry_get_text(GTK_ENTRY(app->code)),valid_code))) {
         notify_error(app,"Enter a valid callsign and locator first (FUBK: at least 6 locator characters). The contest code must have four digits, not all identical or in ascending or descending sequence.");
@@ -571,7 +608,7 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     DvbControls radio_controls;
     dvb_controls_init(&radio_controls,fields[0],app->ts_dvb);
     gtk_grid_attach(GTK_GRID(grid),radio_controls.box,0,4,3,1);
-    GtkWidget *note=gtk_label_new("Current image, no audio. Service = callsign; ID = 1.\nThe transport buffer sets the decoder lead-in time.");
+    GtkWidget *note=gtk_label_new(motion_mode(app)?"Motion challenge: 160 x 120, 10 fps, 4-second loop with a surprise.\nDVB-T 40 kHz: GOP 20. DVB-S/S2 125 ksym/s: try GOP 5.\nSelect the system, rate, FEC and pilots to match your transmitter.":"Current image, no audio. Service = callsign; ID = 1.\nThe transport buffer sets the decoder lead-in time.");
     gtk_grid_attach(GTK_GRID(grid),note,0,5,3,1);
     GtkWidget *eit=gtk_check_button_new_with_label("Include EIT programme information (Config → EIT)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(eit),app->datv.eit_enabled);
@@ -580,12 +617,17 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(teletext),app->teletext.enabled);
     gtk_grid_attach(GTK_GRID(grid),teletext,0,7,3,1);
     gtk_widget_show_all(dialog);
+    if (motion_mode(app)) {
+        gtk_widget_set_sensitive(fields[2],FALSE);
+        gtk_widget_set_sensitive(eit,FALSE); gtk_widget_set_sensitive(teletext,FALSE);
+    }
     if (gtk_dialog_run(GTK_DIALOG(dialog))!=GTK_RESPONSE_ACCEPT) {
         gtk_widget_destroy(dialog); g_free(call); return;
     }
     for (int i=1; i<5; ++i) gtk_spin_button_update(GTK_SPIN_BUTTON(fields[i]));
     app->ts_dvb=dvb_controls_read(&radio_controls);
     app->datv=(DatvSettings){.bitrate=dvb_bitrate(app->ts_dvb),
+        .motion=motion_mode(app),
         .seconds=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[1])),
         .fps=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[2])),
         .gop=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[3])),
@@ -596,6 +638,11 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     app->teletext.enabled=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(teletext));
     app->datv.teletext.enabled=app->teletext.enabled;
     gtk_widget_destroy(dialog);
+    invalid=datv_validate(app->datv,r.width,r.height);
+    if (invalid) {
+        app->datv=previous; app->ts_dvb=previous_radio; app->teletext.enabled=previous_teletext;
+        notify_error(app,invalid); g_free(call); return;
+    }
     GtkWidget *picker=gtk_file_chooser_dialog_new("Save TS",GTK_WINDOW(app->window),GTK_FILE_CHOOSER_ACTION_SAVE,
         "_Cancel",GTK_RESPONSE_CANCEL,"_Save",GTK_RESPONSE_ACCEPT,NULL);
     GtkFileChooser *chooser=GTK_FILE_CHOOSER(picker);
@@ -641,12 +688,23 @@ static void export_ts(GtkWidget *widget, gpointer data) {
 }
 static void genius_changed(GtkCheckMenuItem *item, gpointer data) {
     App *app=data;
-    (void)item;
-    gboolean advanced=gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level2)) ||
+    if (!gtk_check_menu_item_get_active(item)) return;
+    gboolean motion=motion_mode(app);
+    if (!app->restoring && motion) {
+        app->datv=motion_defaults(); app->udp.video=motion_defaults();
+        app->ts_dvb=app->udp_dvb=motion_dvb_defaults(); app->teletext.enabled=0;
+        gtk_combo_box_set_active(GTK_COMBO_BOX(app->mode),image_mode_row(IMAGE_CONTEST));
+        gtk_combo_box_set_active(GTK_COMBO_BOX(app->aspect),0);
+        gtk_combo_box_set_active(GTK_COMBO_BOX(app->resolution),3);
+        gtk_combo_box_set_active(GTK_COMBO_BOX(app->band),2);
+    }
+    app->datv.motion=app->udp.video.motion=motion;
+    gboolean advanced=motion ||gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level2)) ||
         gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level3));
     gtk_widget_set_visible(app->ts_menu,advanced);
     gtk_widget_set_visible(app->udp_menu,advanced);
     if (!app->restoring && !gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level3))) app->udp.video.audio.bitrate=0;
+    if (app->preview) toggled(NULL,app);
 }
 
 static void generate(GtkWidget *widget, gpointer data) {
@@ -802,7 +860,7 @@ static AppConfig capture_config(App *app) {
     s.top_code=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->top_code));
     s.ebu_top=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->ebu_top));
     s.ebu_bottom=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->ebu_bottom));
-    s.genius=gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level3))?3:
+    s.genius=motion_mode(app)?4:gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level3))?3:
         gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level2))?2:1;
     s.teletext=app->teletext; s.station=app->station; s.ts=app->datv; s.udp=app->udp; s.ts_dvb=app->ts_dvb; s.udp_dvb=app->udp_dvb; return s;
 }
@@ -828,7 +886,8 @@ static void apply_config(App *app, const AppConfig *s) {
     wchar_t locator[LOCATOR_MAX_LENGTH+1]; read_locator(app,locator);
     locator_square_changed(app->contest_square,locator);
     app->teletext=s->teletext; app->station=s->station; app->datv=s->ts; app->udp=s->udp; app->ts_dvb=s->ts_dvb; app->udp_dvb=s->udp_dvb;
-    gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(s->genius==3?app->level3:s->genius==2?app->level2:app->level1),TRUE);
+    gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(s->genius==4?app->level4:s->genius==3?app->level3:s->genius==2?app->level2:app->level1),TRUE);
+    app->datv.motion=app->udp.video.motion=s->genius==4;
     app->restoring=FALSE; toggled(NULL,app);
 }
 static void edit_teletext(GtkWidget *widget, gpointer data) {
@@ -953,11 +1012,13 @@ static void create_ui(App *app) {
     GtkWidget *level1=gtk_radio_menu_item_new_with_label(NULL,"Genius level 1 (default)");
     GtkWidget *level2=gtk_radio_menu_item_new_with_label_from_widget(GTK_RADIO_MENU_ITEM(level1),"Genius level 2");
     GtkWidget *level3=gtk_radio_menu_item_new_with_label_from_widget(GTK_RADIO_MENU_ITEM(level1),"Genius level 3 (Linux audio)");
-    app->level1=level1; app->level2=level2; app->level3=level3;
+    GtkWidget *level4=gtk_radio_menu_item_new_with_label_from_widget(GTK_RADIO_MENU_ITEM(level1),"Genius level 4 (motion challenge)");
+    app->level1=level1; app->level2=level2; app->level3=level3; app->level4=level4;
     GtkWidget *save=gtk_menu_item_new_with_label("Save current settings");
     g_signal_connect(save,"activate",G_CALLBACK(save_config),app);
     gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),level1); gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),level2);
     gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),level3);
+    gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),level4);
     gtk_menu_shell_append(GTK_MENU_SHELL(config_menu),gtk_separator_menu_item_new());
     GtkWidget *ttx_item=gtk_menu_item_new_with_label("Teletext...");
     g_signal_connect(ttx_item,"activate",G_CALLBACK(edit_teletext),app);
@@ -972,6 +1033,8 @@ static void create_ui(App *app) {
     app->udp_menu=gtk_menu_item_new_with_label("DATV UDP output...");
     gtk_widget_set_no_show_all(app->udp_menu,TRUE);
     g_signal_connect(app->udp_menu,"activate",G_CALLBACK(output_udp),app);
+    g_signal_connect(level1,"toggled",G_CALLBACK(genius_changed),app);
+    g_signal_connect(level4,"toggled",G_CALLBACK(genius_changed),app);
     g_signal_connect(level2,"toggled",G_CALLBACK(genius_changed),app);
     g_signal_connect(level3,"toggled",G_CALLBACK(genius_changed),app);
     g_signal_connect(app->ts_menu,"activate",G_CALLBACK(export_ts),app);
@@ -1169,6 +1232,22 @@ static int smoke_test(const char *directory) {
 }
 
 int main(int argc, char **argv) {
+    if (argc>=2 && !strcmp(argv[1],"--motion-ts")) {
+        DatvSettings settings; wchar_t call[25],code[5],locator[13];
+        if (argc<6 || !motion_options(argc-3,(const char *const *)(argv+3),&settings,call,code,locator)) {
+            g_printerr("Usage: %s --motion-ts file.ts CALL CODE LOCATOR [seconds 4-60] [GOP 5/10/20]\n",argv[0]); return 1;
+        }
+        uint32_t pixels[160*120]; motion_render(pixels,call,code,locator,0);
+        char *service=utf8(call), message[256]="Cannot create a new TS file (does it already exist?).";
+        FILE *file=fopen(argv[2],"wbx"); DatvResult result;
+        int ok=file && datv_write(file,pixels,160,120,640,service,settings,&result,message);
+        if (file && fclose(file)!=0) { ok=0; g_strlcpy(message,"Failed to close TS output.",sizeof(message)); }
+        if (!ok && file) unlink(argv[2]);
+        g_free(service);
+        if (!ok) { g_printerr("%s\n",message); return 1; }
+        g_print("Motion TS: %d bit/s, 160x120, 10 fps, GOP %d, QP %d, %d frames, largest IDR %d bytes\n",settings.bitrate,settings.gop,result.qp,result.frames,result.largest_idr);
+        return 0;
+    }
     if (argc>=3 && (!strcmp(argv[1],"--ts-test") || !strcmp(argv[1],"--ts-ebu-test") || !strcmp(argv[1],"--ts-fubk-test") || !strcmp(argv[1],"--ts-pm5644-test"))) {
         DatvSettings s; int w,h;
         if (!datv_test_options(argc-3,(const char *const *)(argv+3),&s,&w,&h)) {

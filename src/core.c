@@ -108,6 +108,53 @@ static const int fec_den[DVB_FEC_COUNT]={2,3,4,6,8,4,3,5,9,10};
 static const int fec_kbch[DVB_FEC_COUNT]={32208,43040,48408,53840,0,16008,21408,38688,57472,58192};
 const wchar_t *const dvb_guard_names[DVB_GUARD_COUNT]={L"1/8",L"1/16",L"1/32"};
 DvbSettings dvb_defaults(void) { return (DvbSettings){DVB_S,2,0,0,2,500}; }
+DvbSettings motion_dvb_defaults(void) { return (DvbSettings){DVB_T,2,0,0,2,40}; }
+DatvSettings motion_defaults(void) {
+    DatvSettings s=datv_defaults();
+    s.bitrate=dvb_bitrate(motion_dvb_defaults()); s.seconds=4;
+    s.fps=10; s.gop=20; s.motion=1;
+    return s;
+}
+void motion_luma(unsigned char *y, unsigned frame) {
+    unsigned phase=frame%40;
+    /* A large block travels out and back on two lanes. Halfway through it
+     * reveals a smiling face and winks. Every phase has a distinct position. */
+    int x=8+6*(phase<20?(int)phase:39-(int)phase);
+    int top=phase<20?82:94;
+    memset(y+160*80,16,160*40);
+    for (int dy=0;dy<24;++dy) for (int dx=0;dx<24;++dx) {
+        int white=1;
+        if (phase>=8 && phase<32) {
+            int eye=(dx>=5 && dx<9 && dy>=6 && dy<10) ||
+                (dx>=15 && dx<19 && dy>=6 && dy<(phase>=14 && phase<18?8:10));
+            int smile=(dy>=17 && dy<19 && dx>=7 && dx<17) ||
+                (dy>=14 && dy<17 && ((dx>=5 && dx<7)||(dx>=17 && dx<19)));
+            white=!(eye||smile);
+        }
+        y[(top+dy)*160+x+dx]=white?235:16;
+    }
+}
+int motion_options(int count, const char *const *values, DatvSettings *s,
+                   wchar_t call[25], wchar_t code[5], wchar_t locator[13]) {
+    if (count<3 || count>5) return 0;
+    wchar_t *out[]={call,code,locator};
+    const size_t max[]={24,4,12};
+    for (int f=0;f<3;++f) {
+        size_t n=strlen(values[f]); if (n>max[f]) return 0;
+        for (size_t i=0;i<=n;++i) {
+            unsigned char c=(unsigned char)values[f][i];
+            out[f][i]=c>='a' && c<='z'?c-'a'+'A':c;
+        }
+    }
+    if (!valid_call(call) || !valid_code(code) || !valid_locator(locator)) return 0;
+    *s=motion_defaults();
+    for (int i=3;i<count;++i) {
+        char *end; errno=0; long value=strtol(values[i],&end,10);
+        if (errno || !*values[i] || *end || value<1 || value>60) return 0;
+        if (i==3) s->seconds=(int)value; else s->gop=(int)value;
+    }
+    return datv_validate(*s,160,120)==NULL;
+}
 int dvb_fec_choices(DvbSettings s, int ids[DVB_FEC_COUNT]) {
     const int order[]={5,6,0,7,1,2,3,4,8,9};
     int count=0;
@@ -252,6 +299,10 @@ void teletext_to_text(const TeletextSettings *s, char out[TELETEXT_INPUT_SIZE], 
     out[pos]=0;
 }
 const char *datv_validate(DatvSettings s, int width, int height) {
+    if (s.motion && (s.motion!=1 || width!=160 || height!=120 || s.fps!=10 ||
+        (s.gop!=5 && s.gop!=10 && s.gop!=20) || s.seconds<4 ||
+        s.audio.bitrate || s.eit_enabled || s.teletext.enabled))
+        return "Motion challenge: 160 x 120, 10 fps, GOP 5/10/20, at least 4 seconds, no audio/EIT/teletext.";
     if (s.audio.bitrate && s.audio.bitrate!=48000 && s.audio.bitrate!=96000)
         return "Audio bitrate must be 48000 or 96000 bit/s.";
     if (s.audio.bitrate) {
@@ -414,7 +465,7 @@ static const ConfigField config_fields[]={
     CONFIG_INT_FIELD(resolution,0,RESOLUTION_COUNT-1), CONFIG_INT_FIELD(band,0,10),
     CONFIG_INT_FIELD(show,0,1), CONFIG_INT_FIELD(inverse,0,1), CONFIG_INT_FIELD(blue_yellow,0,1),
     CONFIG_INT_FIELD(ebu_top,0,1), CONFIG_INT_FIELD(ebu_bottom,0,1),
-    CONFIG_INT_FIELD(show_sum,0,1), CONFIG_INT_FIELD(top_code,0,1), CONFIG_INT_FIELD(genius,1,3),
+    CONFIG_INT_FIELD(show_sum,0,1), CONFIG_INT_FIELD(top_code,0,1), CONFIG_INT_FIELD(genius,1,4),
     CONFIG_INT_FIELD(ts.bitrate,DATV_MIN_BITRATE,2000000), CONFIG_INT_FIELD(ts.seconds,1,60),
     CONFIG_INT_FIELD(ts.buffer_ms,0,10000),
     CONFIG_INT_FIELD(ts.fps,1,25), CONFIG_INT_FIELD(ts.gop,1,250),
@@ -610,6 +661,7 @@ int config_load(const char *path, AppConfig *out) {
     }
     if (migrated_ts) s.ts.bitrate=dvb_bitrate(s.ts_dvb);
     if (migrated_udp) s.udp.video.bitrate=dvb_bitrate(s.udp_dvb);
+    s.ts.motion=s.udp.video.motion=s.genius==4;
     if (!ok || !version || (seen&required)!=required || !config_valid(&s)) return -1;
     if (version<6 && s.resolution>=11) return -1;
     /* Version 1 stored 240px at index 10; version 2 sorts by width. */
