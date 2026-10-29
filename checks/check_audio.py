@@ -144,7 +144,9 @@ def capture(source, bitrate, audio_rate, buffer_ms, duration, name, playback=Non
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--case', choices=['333-mono','333-stereo','333-stereo-plain',
-        '333-s2-mono-long','500-mono','500-stereo-buffer10'])
+        '333-s2-mono-long','500-mono','500-stereo-buffer10',
+        '333-t-mono-min','333-t-stereo-fec34','500-t-stereo-fec34',
+        '500-t-stereo-max'])
     selected=parser.parse_args().case
     for tool in ('pactl','paplay','ffmpeg','ffprobe','tsp'):
         assert shutil.which(tool),f'Required tool missing: {tool}'
@@ -160,7 +162,12 @@ def main():
                 (306882,48000,1000,8,'333-mono'),(306882,96000,1000,8,'333-stereo'),
                 (306882,96000,1000,8,'333-stereo-plain'),
                 (213395,48000,1000,40,'333-s2-mono-long'),
-                (460784,48000,1000,8,'500-mono'),(460784,96000,10000,14,'500-stereo-buffer10')):
+                (460784,48000,1000,8,'500-mono'),(460784,96000,10000,14,'500-stereo-buffer10'),
+                # QPSK 2K DVB-T: BW * 423/544 * 2 * FEC / (1 + GI).
+                (230161,48000,1000,8,'333-t-mono-min'),       # 1/2, GI 1/8
+                (376628,96000,1000,8,'333-t-stereo-fec34'),   # 3/4, GI 1/32
+                (565508,96000,1000,8,'500-t-stereo-fec34'),   # 3/4, GI 1/32
+                (659759,96000,1000,8,'500-t-stereo-max')):    # 7/8, GI 1/32
             if selected and selected!=name: continue
             play=subprocess.Popen(['paplay','--raw','--format=float32le','--rate=48000','--channels=2','--device='+sink,str(noise)])
             try: capture(sink+'.monitor',rate,audio,buffer,duration,name)
@@ -168,6 +175,8 @@ def main():
         if selected: return
         capture('atv_nonexistent_source',306882,48000,1000,1,'missing-source')
         capture(sink+'.monitor',160000,96000,1000,1,'capacity')
+        # Even the shortest GI leaves 333 kHz FEC 1/2 below the stereo budget.
+        capture(sink+'.monitor',251085,96000,1000,1,'capacity')
         # Removing only our own sink must fail capture; no silent fallback to a mic.
         capture(sink+'.monitor',306882,48000,1000,8,'disconnect',remove=module)
         module=None

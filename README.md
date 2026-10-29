@@ -343,5 +343,6 @@ validatie](docs/datv.md#bewegende-contestkaart-genius-level-4).
 
 
 Linux ondersteunt optionele AAC-audio via **Config → Genius level 3**, bij DVB-S/S2
-op 333 of 500 ksym/s. Kies een PulseAudio/PipeWire-bron zoals `ffmix.monitor` en
+op 333 of 500 ksym/s en DVB-T op 333 of 500 kHz, mits het transportbudget past.
+Kies een PulseAudio/PipeWire-bron zoals `ffmix.monitor` en
 48 kbit/s mono of 96 kbit/s stereo. Zie [audio-invoer en transportbudget](docs/datv.md#optionele-live-audio-op-linux-genius-level-3).

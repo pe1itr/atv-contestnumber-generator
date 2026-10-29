@@ -194,6 +194,7 @@ int dvb_bitrate(DvbSettings s) {
 }
 
 int dvb_audio_allowed(DvbSettings s) {
+    if (s.system==DVB_T) return s.bandwidth_khz==333 || s.bandwidth_khz==500;
     return (s.system==DVB_S || s.system==DVB_S2) && s.symbol_rate>=0 &&
         s.symbol_rate<DVB_SYMBOL_RATE_COUNT &&
         (dvb_symbol_rates[s.symbol_rate]==333 || dvb_symbol_rates[s.symbol_rate]==500);

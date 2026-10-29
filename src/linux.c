@@ -495,7 +495,7 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     gtk_grid_attach(GTK_GRID(grid),d.teletext,0,9,3,1);
     d.audio_box=gtk_grid_new();
     gtk_grid_set_row_spacing(GTK_GRID(d.audio_box),6); gtk_grid_set_column_spacing(GTK_GRID(d.audio_box),12);
-    d.audio_enabled=gtk_check_button_new_with_label("Include Linux audio (DVB-S/S2, 333 or 500 ksym/s)");
+    d.audio_enabled=gtk_check_button_new_with_label("Include Linux audio (DVB-S/S2: 333/500 ksym/s; DVB-T: 333/500 kHz)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(d.audio_enabled),app->udp.video.audio.bitrate!=0);
     d.audio_source=gtk_entry_new(); gtk_entry_set_max_length(GTK_ENTRY(d.audio_source),255);
     gtk_entry_set_text(GTK_ENTRY(d.audio_source),app->udp.video.audio.source[0]?app->udp.video.audio.source:"ffmix.monitor");

@@ -122,8 +122,30 @@ int main(void) {
     audio.udp_dvb.symbol_rate=5; assert(dvb_audio_allowed(audio.udp_dvb));
     audio.udp_dvb.symbol_rate=3; assert(!dvb_audio_allowed(audio.udp_dvb));
     assert(config_save(TEST_PATH,&audio)==0);
-    audio.udp_dvb.symbol_rate=4; audio.udp_dvb.system=DVB_T;
-    assert(!dvb_audio_allowed(audio.udp_dvb)); assert(config_save(TEST_PATH,&audio)==0);
+    /* DVB-T audio uses bandwidth, independent of the inactive satellite SR.
+     * Exercise every FEC/GI, including the 333 kHz FEC 1/2 stereo boundary. */
+    audio.udp_dvb.symbol_rate=2; audio.udp_dvb.system=DVB_T;
+    for (int bw=0;bw<DVB_BANDWIDTH_COUNT;++bw) {
+        audio.udp_dvb.bandwidth_khz=dvb_bandwidths[bw];
+        int allowed=dvb_bandwidths[bw]==333 || dvb_bandwidths[bw]==500;
+        assert(dvb_audio_allowed(audio.udp_dvb)==allowed);
+        for (int fec=0;fec<5;++fec) for (int gi=0;gi<DVB_GUARD_COUNT;++gi) {
+            audio.udp_dvb.fec=fec; audio.udp_dvb.guard=gi;
+            audio.udp.video.bitrate=dvb_bitrate(audio.udp_dvb);
+            for (int stereo=0;stereo<2;++stereo) {
+                audio.udp.video.audio.bitrate=stereo?96000:48000;
+                int fits=allowed && !(dvb_bandwidths[bw]==333 && fec==0 && stereo);
+                assert(config_save(TEST_PATH,&audio)==fits);
+                if (fits) {
+                    assert(config_load(TEST_PATH,&loaded_audio)==1);
+                    assert(!memcmp(&audio,&loaded_audio,sizeof(audio)));
+                } else if (allowed) {
+                    const char *error=datv_validate(audio.udp.video,160,120);
+                    assert(error && strstr(error,"Insufficient TS capacity"));
+                }
+            }
+        }
+    }
     assert(config_save(TEST_PATH,&original)==1);
     const char *invalid[]={"version=1\n","version=2\n","udp.port=0\n","udp.port=999999999999999999999999\n","unknown=1\n","broken\n"};
     for (unsigned i=0;i<sizeof(invalid)/sizeof(invalid[0]);++i) {

@@ -40,8 +40,8 @@ static gboolean apply_udp(gpointer unused) {
     }
     g_list_free(windows); return G_SOURCE_CONTINUE;
 }
-static gboolean apply_audio(gpointer unused) {
-    (void)unused;
+static gboolean apply_audio(gpointer data) {
+    int bandwidth=GPOINTER_TO_INT(data);
     GList *windows=gtk_window_list_toplevels();
     for (GList *p=windows;p;p=p->next) {
         GtkWidget *w=p->data;
@@ -51,8 +51,18 @@ static gboolean apply_audio(gpointer unused) {
         GtkGrid *audio=GTK_GRID(gtk_grid_get_child_at(grid,0,11));
         assert(gtk_widget_get_visible(GTK_WIDGET(audio)));
         GtkGrid *radio=GTK_GRID(gtk_grid_get_child_at(grid,0,5));
-        gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,0)),DVB_S);
-        gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,1)),dvb_symbol_rate_row(5));
+        gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,0)),bandwidth?DVB_T:DVB_S);
+        if (bandwidth) {
+            gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,2)),bandwidth==333?4:5);
+            gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,3)),2); /* FEC 3/4 */
+        } else {
+            gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(radio,1,1)),dvb_symbol_rate_row(5));
+        }
+        /* Audio sensitivity is refreshed by the dialog's periodic callback. */
+        gint64 deadline=g_get_monotonic_time()+G_TIME_SPAN_SECOND;
+        while (!gtk_widget_get_sensitive(gtk_grid_get_child_at(audio,0,0)) && g_get_monotonic_time()<deadline)
+            g_main_context_iteration(NULL,TRUE);
+        assert(gtk_widget_get_sensitive(gtk_grid_get_child_at(audio,0,0)));
         gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(gtk_grid_get_child_at(audio,0,0)),TRUE);
         gtk_combo_box_set_active(GTK_COMBO_BOX(gtk_grid_get_child_at(audio,1,2)),1);
         gtk_entry_set_text(GTK_ENTRY(gtk_grid_get_child_at(audio,1,1)),"testmix.monitor");
@@ -139,10 +149,16 @@ int main(int argc,char **argv) {
     g_timeout_add(100,apply_audio,NULL); output_udp(NULL,&audio);
     assert(audio.udp.video.audio.bitrate==96000 && audio.udp_dvb.symbol_rate==5);
     assert(!strcmp(audio.udp.video.audio.source,"testmix.monitor"));
+    for (int bw=333;bw<=500;bw+=167) {
+        g_timeout_add(100,apply_audio,GINT_TO_POINTER(bw)); output_udp(NULL,&audio);
+        assert(audio.udp_dvb.system==DVB_T && audio.udp_dvb.bandwidth_khz==bw && audio.udp_dvb.fec==2);
+        assert(audio.udp.video.audio.bitrate==96000);
+    }
     save_config(NULL,&audio); close_app(&audio);
     App audio_reopened={0}; audio_reopened.directory=directory; create_ui(&audio_reopened); load_config(&audio_reopened);
     actual=capture_config(&audio_reopened);
     assert(actual.genius==3 && actual.udp.video.audio.bitrate==96000);
+    assert(actual.udp_dvb.system==DVB_T && actual.udp_dvb.bandwidth_khz==500 && actual.udp_dvb.fec==2);
     gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(audio_reopened.level2),TRUE);
     assert(!audio_reopened.udp.video.audio.bitrate && gtk_widget_get_visible(audio_reopened.udp_menu));
     gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(audio_reopened.level4),TRUE);

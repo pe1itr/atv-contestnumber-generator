@@ -97,6 +97,13 @@ int wmain(void) {
     assert(config_save(path,&wanted));
     w=open_app(); actual=capture_config(w);
     assert(actual.genius==2 && !actual.udp.video.audio.bitrate);
+    DestroyWindow(w);
+    wanted.udp_dvb.system=DVB_T; wanted.udp_dvb.bandwidth_khz=333; wanted.udp_dvb.fec=2;
+    wanted.udp.video.bitrate=dvb_bitrate(wanted.udp_dvb);
+    assert(config_save(path,&wanted));
+    w=open_app(); actual=capture_config(w);
+    assert(actual.genius==2 && !actual.udp.video.audio.bitrate);
+    assert(actual.udp_dvb.system==DVB_T && actual.udp_dvb.bandwidth_khz==333 && actual.udp_dvb.fec==2);
     assert(GetMenuState(GetSubMenu(GetMenu(w),0),IDM_UDP,MF_BYCOMMAND)!=(UINT)-1);
     SendMessageW(w,WM_COMMAND,IDM_LEVEL4,0);
     assert(genius_level==4 && ts_settings.motion && udp_settings.video.motion);
