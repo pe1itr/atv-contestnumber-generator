@@ -174,15 +174,91 @@ Dit is programma-/EPG-informatie, geen ondertitel of tekstlaag in de video.
 VLC kan deze informatie in de programmagids tonen; de precieze weergave verschilt
 per speler.
 
-### Teletekstpagina 100
+### Teletekstpagina’s met tekst en mozaïeken
 
-Open **Config → Teletekst** om de tekst van pagina 100 te bewerken (maximaal 23
-regels van 40 tekens). **Opslaan** bewaart de pagina meteen in
-`atv-contestnummer.conf`. In zowel **TS-proefbestand** als **DATV UDP-uitvoer**
-staat **Teletekstpagina 100 meesturen** direct onder de EIT-keuze. De pagina
-wordt dan als DVB-teletekst in de MPEG-TS opgenomen en elke twee seconden
-herhaald. Hiervoor gaat ongeveer 7,5 kbit/s van de ingestelde TS-bitrate naar
-teletekst; de totale TS-bitrate blijft gelijk.
+Open **Config → Teletext**. De editor heeft een raster van **40 × 23 tekenvakken**.
+De kopregel (regel 0) staat daarboven los van: het paginanummer wordt automatisch
+gecodeerd; **Header** bevat maximaal 32 gewone tekens. Een leeg veld gebruikt
+`ATV TELETEXT` met het betreffende paginanummer. De ontvanger bepaalt de
+presentatie van de nummer-/statusruimte links in de kopregel; er wordt geen
+lopende klok toegevoegd.
+
+- Klik op een vak en typ. Pijltjestoetsen verplaatsen de cursor; Enter gaat naar
+  de volgende regel. Delete wist een vak. Ctrl+V plakt gewone tekst vanaf de
+  cursor; ongeldige of te grote invoer wordt geheel geweigerd. Ctrl+Z herstelt
+  de vorige bewerking van het raster.
+- Kies een kleur en klik **Text colour** of **Mosaic colour**. Dit plaatst een
+  besturingscode in het geselecteerde vak en schuift de cursor één vak op.
+  De kleur/modus geldt naar rechts tot een nieuwe code of het einde van de regel.
+  Gebruik hiervoor een leeg vak: de code vervangt de huidige inhoud.
+- In mozaïekmodus heeft ieder vak **2 × 3 blokjes**. Klik een blokje aan/uit;
+  rechts klikken wist het. Alle zes blokjes delen dezelfde voorgrondkleur.
+  **Text colour** schakelt terug naar gewone tekst. Iedere regel begint opnieuw
+  met witte tekst op zwart. Zeven voorgrondkleuren worden ondersteund.
+- **Colour background** gebruikt de kleur uit de keuzelijst en behoudt de
+  actieve tekstkleur/mozaïekmodus. Klik op het eerste van drie lege vakken op dezelfde regel:
+  de knop gebruikt het geselecteerde vak en de twee ernaast voor kleur,
+  achtergrond en herstel van de tekstkleur. De cursor gaat drie vakken verder;
+  typ daar bijvoorbeeld witte tekst op blauw. De achtergrond begint in het
+  tweede besturingsvak en geldt naar rechts tot een nieuwe achtergrondcode of
+  het einde van de regel. Er moet op die regel nog een vak overblijven om te typen.
+  Bestaande inhoud wordt niet overschreven. **Black background** herstelt zwart
+  met één besturingsvak. Dit is geen vrije achtergrondkleur per afzonderlijk vak.
+  De editor toont codes als T/M/B/C; de ontvanger toont op die plek een spatie.
+  **Grid / preview** verbergt raster, cursor en codemarkeringen. De tekstvorm
+  gebruikt het lokale lettertype; de ontvanger kan letters anders tekenen.
+- **Antenna example** vervangt het raster door een bewerkbaar voorbeeld;
+  **Clear page** wist het raster. Beide zijn met Ctrl+Z te herstellen.
+- **Add page** voegt pagina 101, 102 of 103 toe. De paginakeuze bewaart tussentijdse
+  wijzigingen binnen het dialoogvenster. **Delete page** verwijdert een extra
+  pagina en nummert de volgende pagina’s opnieuw; pagina 100 blijft bestaan.
+  **Save** bewaart alle pagina’s en het interval in `atv-contestnummer.conf`.
+  Cancel laat de opgeslagen pagina’s intact. Oude tekstpagina’s worden ingelezen.
+
+Vink in **TS-proefbestand** of **DATV UDP-uitvoer** **Include teletext pages** aan.
+Stop/start een lopende stream om wijzigingen uit te zenden. Het programma stuurt
+steeds één volledige pagina, vervolgens na **2, 5 of 10 seconden** de volgende.
+Bij twee pagina’s en een interval van 5 seconden komt iedere pagina dus iedere
+10 seconden terug. Er gaan tien TS-pakketten per pagina naar teletekst, ongeacht
+het aantal ingevulde vakken of de hoeveelheid kleur. Het gemiddelde verbruik is
+respectievelijk **7.520, 3.008 of 1.504 bit/s** (plus één startpakket). Meer pagina’s
+verlengen de carrousel zonder dit gemiddelde te verhogen. De totale TS-bitrate
+blijft gelijk; video krijgt minder ruimte. Een lange herhaling bespaart capaciteit,
+maar vergroot de wachttijd bij afstemmen of ontvangstverlies.
+
+De bestaande ondergrens van **60.000 bit/s** voor teletekst blijft gelden vanwege
+de verzending binnen een pagina. Een lager gemiddeld verbruik door een langer
+interval heft die timingvoorwaarde niet op. De 40k/QPSK/FEC1/2/GI1/32-instelling
+van 30.160 bit/s ondersteunt deze teletekstuitvoer dus niet.
+
+Dit is een beperkte Level 1-editor: gewone niet-geaccentueerde tekst, aaneengesloten
+G1-mozaïeken, kleur en achtergrond. Geen dubbele hoogte, knipperen, hold mosaics,
+Unicode-blokjes of afbeeldingsimport. De spacing attributes en G1-bitvolgorde volgen
+[ETSI EN 300 706 V1.2.1 §12.2, tabel 26](https://www.etsi.org/deliver/etsi_en/300700_300799/300706/01.02.01_60/en_300706v010201p.pdf).
+De single-service TS gebruikt één teletekst-PID met pagina 100 als initiële pagina;
+de ontvanger kan vervolgens 101–103 kiezen.
+
+Validatie van deze uitbreiding (30 oktober 2026): Linux- en Windows-builds,
+`make test-linux` (inclusief 1.118 JPGs), `make test-teletext`, de Linux- en
+Wine-configuratie/editor-tests, `make test-ts`, `make test-udp` en
+`python3 checks/check_udp.py --windows` geslaagd. De onafhankelijke
+`udp_ts_validator` heeft 9 Linux- en 9 Wine-teletekstbestanden en twee daadwerkelijke
+UDP-loopbackcaptures met vier pagina’s onderzocht. FFmpeg/libzvbi decodeert alle
+pagina’s afzonderlijk; bitmapcontroles bevestigen de zes mozaïekposities,
+voorgrondkleur en achtergrondwissels. Gemeten: PCR-interval maximaal 79,712 ms,
+paginapakketafstand maximaal 75,2 ms en erase-interval minimaal 21,056 ms.
+Onderbouwing: EN 300 706 tabel 26 en annexen A/B, [EN 300 472 V1.4.1 §§4–5](https://www.etsi.org/deliver/etsi_en/300400_300499/300472/01.04.01_60/en_300472v010401p.pdf)
+en [TR 101 290 V1.4.1 §5.2](https://www.etsi.org/deliver/etsi_tr/101200_101299/101290/01.04.01_60/tr_101290v010401p.pdf).
+Logs, captures en het volledige reviewrapport staan onder `build/teletext-grid-review-*`.
+
+De review vindt geen blokkerende regressie binnen dit gemeten projectprofiel.
+**Bestaande DVB-SI-afwijkingen:** NIT ontbreekt; met EIT uit ontbreken ook TDT en
+EIT present/following. Dit blijft een vereenvoudigd DATV-profiel, geen volledig
+DVB-SI-profiel. **Niet geverifieerd:** volledige actuele H.222.0/T-STD- en
+DVB-AVC-conformiteit, fysieke/RF-PCR-jitter, echte tv-ontvangers, native Windows,
+langdurige wraparound, alle parametercombinaties en audio tegelijk met de nieuwe
+carrousel. Echte ICMP-foutlevering onder Wine is niet bewezen; geïnjecteerde
+foutafhandeling wel. Geslaagde regressies bewijzen geen volledige ETSI-conformiteit.
 
 De muxer verstuurt EIT present/following actual op PID `0x12` en TDT op PID `0x14`.
 Er is één huidig stationinformatievenster van UTC-middernacht tot de volgende

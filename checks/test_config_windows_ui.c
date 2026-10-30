@@ -1,10 +1,54 @@
 #include "../src/main.c"
 #include <assert.h>
+static void screenshot_teletext(HWND window) {
+    RECT r; GetClientRect(window,&r); HDC dc=GetDC(window),mem=CreateCompatibleDC(dc);
+    BITMAPINFO info={0}; info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth=r.right; info.bmiHeader.biHeight=-r.bottom;
+    info.bmiHeader.biPlanes=1; info.bmiHeader.biBitCount=32;
+    void *pixels; HBITMAP bitmap=CreateDIBSection(dc,&info,DIB_RGB_COLORS,&pixels,NULL,0); assert(bitmap);
+    HGDIOBJ old=SelectObject(mem,bitmap);
+    RedrawWindow(window,NULL,NULL,RDW_INVALIDATE|RDW_UPDATENOW|RDW_ALLCHILDREN);
+    assert(BitBlt(mem,0,0,r.right,r.bottom,dc,0,0,SRCCOPY));
+    BITMAPFILEHEADER header={0}; header.bfType=0x4d42;
+    header.bfOffBits=sizeof(header)+sizeof(BITMAPINFOHEADER); header.bfSize=header.bfOffBits+r.right*r.bottom*4;
+    FILE *file=fopen("build/teletext-windows-editor.bmp","wb"); assert(file);
+    assert(fwrite(&header,sizeof(header),1,file)==1);
+    assert(fwrite(&info.bmiHeader,sizeof(BITMAPINFOHEADER),1,file)==1);
+    assert(fwrite(pixels,(size_t)r.right*r.bottom*4,1,file)==1); assert(!fclose(file));
+    SelectObject(mem,old); DeleteObject(bitmap); DeleteDC(mem); ReleaseDC(window,dc);
+}
 static BOOL CALLBACK apply_teletext(HWND window,LPARAM unused) {
     (void)unused; wchar_t title[80]; GetWindowTextW(window,title,80);
-    if (wcscmp(title,L"Teletext - page 100")) return TRUE;
-    SetDlgItemTextW(window,IDC_TELETEXT_TEXT,L"ATV CONTEST\r\nPagina 100");
-    PostMessageW(window,WM_COMMAND,IDOK,0); return TRUE;
+    if (wcscmp(title,L"Teletext pages")) return TRUE;
+    if (GetPropW(window,L"teletext-tested")) {
+        screenshot_teletext(window); PostMessageW(window,WM_COMMAND,IDOK,0); return TRUE;
+    }
+    SetPropW(window,L"teletext-tested",(HANDLE)1);
+    TeletextDialog *d=(TeletextDialog *)GetWindowLongPtrW(window,DWLP_USER); assert(d);
+    const wchar_t *text=L"ATV CONTEST";
+    for (const wchar_t *c=text;*c;++c) SendMessageW(d->area,WM_CHAR,*c,0);
+    SendMessageW(window,WM_COMMAND,TT_ADD,0); assert(d->selected==1);
+    SetDlgItemTextW(window,TT_HEADER,L"ANTENNA PAGE");
+    SendMessageW(window,WM_COMMAND,TT_EXAMPLE,0); assert(d->editor.raw[120]==22);
+    SendDlgItemMessageW(window,TT_COLOR,CB_SETCURSEL,3,0); /* Blue, while active text is white. */
+    d->editor.cursor=14*40; SendMessageW(window,WM_COMMAND,TT_BACKGROUND,0);
+    assert(d->editor.cursor==14*40+3);
+    assert(teletext_editor_cell(&d->editor,14*40+5).background==4);
+    assert(teletext_editor_cell(&d->editor,14*40+5).foreground==7);
+    assert(d->editor.raw[14*40+5]=='W');
+    RECT r; GetClientRect(d->area,&r);
+    SendMessageW(d->area,WM_LBUTTONDOWN,0,MAKELPARAM(20*r.right/40+3,3*r.bottom/23+3));
+    assert(!tt_win_store(d));
+    SendDlgItemMessageW(window,TT_PAGE,CB_SETCURSEL,0,0);
+    SendMessageW(window,WM_COMMAND,MAKEWPARAM(TT_PAGE,CBN_SELCHANGE),0);
+    assert(d->selected==0 && d->editor.raw[0]=='A');
+    SendDlgItemMessageW(window,TT_PAGE,CB_SETCURSEL,1,0);
+    SendMessageW(window,WM_COMMAND,MAKEWPARAM(TT_PAGE,CBN_SELCHANGE),0);
+    assert(d->selected==1);
+    SendDlgItemMessageW(window,TT_INTERVAL,CB_SETCURSEL,1,0);
+    SendMessageW(window,WM_COMMAND,MAKEWPARAM(TT_INTERVAL,CBN_SELCHANGE),0);
+    assert(d->book.interval==5);
+    return TRUE;
 }
 static void CALLBACK teletext_timer(HWND w,UINT m,UINT_PTR id,DWORD t) {
     (void)w; (void)m; (void)id; (void)t; EnumThreadWindows(GetCurrentThreadId(),apply_teletext,0);
@@ -66,7 +110,7 @@ int wmain(void) {
     assert(udp_settings.port==12345 && udp_settings.video.fps==12 && udp_settings.video.gop==3);
     timer=SetTimer(NULL,0,100,teletext_timer); assert(timer);
     SendMessageW(w,WM_COMMAND,IDM_TELETEXT,0); KillTimer(NULL,timer);
-    assert(teletext_settings.enabled && !strncmp(teletext_settings.text,"ATV CONTEST",11));
+    assert(teletext_settings.enabled && teletext_byte(&teletext_settings,0)=='A' && teletext_settings.extra_count==1);
     wanted.teletext=teletext_settings;
     wanted.udp=udp_settings; wanted.udp_dvb=udp_dvb;
     assert(wanted.udp_dvb.system==DVB_T && wanted.udp_dvb.bandwidth_khz==333 && wanted.udp_dvb.guard==1);

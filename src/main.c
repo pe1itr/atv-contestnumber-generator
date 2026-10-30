@@ -757,43 +757,8 @@ static void apply_config(HWND window,const AppConfig *s) {
     restoring_config=0;
     InvalidateRect(GetDlgItem(window,IDC_PREVIEW),NULL,FALSE);
 }
-static INT_PTR CALLBACK teletext_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp) {
-    (void)lp;
-    if (message==WM_INITDIALOG) {
-        char text[TELETEXT_INPUT_SIZE]; wchar_t wide[TELETEXT_INPUT_SIZE];
-        teletext_to_text(&teletext_settings,text,1);
-        MultiByteToWideChar(CP_UTF8,0,text,-1,wide,TELETEXT_INPUT_SIZE);
-        SetDlgItemTextW(window,IDC_TELETEXT_TEXT,wide);
-        SendDlgItemMessageW(window,IDC_TELETEXT_TEXT,WM_SETFONT,(WPARAM)GetStockObject(ANSI_FIXED_FONT),TRUE);
-        SendDlgItemMessageW(window,IDC_TELETEXT_TEXT,EM_SETLIMITTEXT,TELETEXT_INPUT_SIZE-1,0);
-        return TRUE;
-    }
-    if (message==WM_COMMAND && LOWORD(wp)==IDOK) {
-        wchar_t wide[TELETEXT_INPUT_SIZE]; char text[TELETEXT_INPUT_SIZE*4];
-        GetDlgItemTextW(window,IDC_TELETEXT_TEXT,wide,TELETEXT_INPUT_SIZE);
-        WideCharToMultiByte(CP_UTF8,0,wide,-1,text,sizeof(text),NULL,NULL);
-        TeletextSettings page=teletext_settings;
-        const char *invalid=teletext_from_text(&page,text);
-        if (invalid) {
-            MultiByteToWideChar(CP_UTF8,0,invalid,-1,wide,TELETEXT_INPUT_SIZE);
-            SetDlgItemTextW(window,IDC_TELETEXT_STATUS,wide); return TRUE;
-        }
-        TeletextSettings previous=teletext_settings; teletext_settings=page;
-        AppConfig settings=capture_config(GetParent(window)); char *path=config_path();
-        int saved=path && config_save(path,&settings); free(path);
-        if (!saved) {
-            teletext_settings=previous;
-            SetDlgItemTextW(window,IDC_TELETEXT_STATUS,L"Save failed. Check write permissions in the application directory.");
-            return TRUE;
-        }
-        SetDlgItemTextW(GetParent(window),IDC_STATUS,L"Teletext page saved to atv-contestnummer.conf.");
-        EndDialog(window,IDOK); return TRUE;
-    }
-    if (message==WM_CLOSE || (message==WM_COMMAND && LOWORD(wp)==IDCANCEL)) {
-        EndDialog(window,IDCANCEL); return TRUE;
-    }
-    return FALSE;
-}
+#include "teletext_windows.h"
+
 static INT_PTR CALLBACK eit_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp) {
     (void)lp;
     if (message==WM_INITDIALOG) {

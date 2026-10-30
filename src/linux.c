@@ -490,7 +490,7 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     d.eit=gtk_check_button_new_with_label("Include EIT programme information (Config → EIT)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(d.eit),app->udp.video.eit_enabled);
     gtk_grid_attach(GTK_GRID(grid),d.eit,0,8,3,1);
-    d.teletext=gtk_check_button_new_with_label("Include teletext page 100 (edit via Config → Teletext)");
+    d.teletext=gtk_check_button_new_with_label("Include teletext pages (edit via Config → Teletext)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(d.teletext),app->teletext.enabled);
     gtk_grid_attach(GTK_GRID(grid),d.teletext,0,9,3,1);
     d.audio_box=gtk_grid_new();
@@ -613,7 +613,7 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     GtkWidget *eit=gtk_check_button_new_with_label("Include EIT programme information (Config → EIT)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(eit),app->datv.eit_enabled);
     gtk_grid_attach(GTK_GRID(grid),eit,0,6,3,1);
-    GtkWidget *teletext=gtk_check_button_new_with_label("Include teletext page 100 (edit via Config → Teletext)");
+    GtkWidget *teletext=gtk_check_button_new_with_label("Include teletext pages (edit via Config → Teletext)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(teletext),app->teletext.enabled);
     gtk_grid_attach(GTK_GRID(grid),teletext,0,7,3,1);
     gtk_widget_show_all(dialog);
@@ -890,46 +890,8 @@ static void apply_config(App *app, const AppConfig *s) {
     app->datv.motion=app->udp.video.motion=s->genius==4;
     app->restoring=FALSE; toggled(NULL,app);
 }
-static void edit_teletext(GtkWidget *widget, gpointer data) {
-    (void)widget; App *app=data;
-    GtkWidget *dialog=gtk_dialog_new_with_buttons("Teletext - page 100",GTK_WINDOW(app->window),
-        GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,"_Cancel",GTK_RESPONSE_CANCEL,"_Save",GTK_RESPONSE_ACCEPT,NULL);
-    GtkWidget *box=gtk_dialog_get_content_area(GTK_DIALOG(dialog));
-    gtk_container_set_border_width(GTK_CONTAINER(box),12);
-    GtkWidget *note=gtk_label_new("23 lines of 40 characters. Press Enter for a new line.\nUnaccented letters, digits and basic punctuation.");
-    gtk_box_pack_start(GTK_BOX(box),note,FALSE,FALSE,4);
-    GtkWidget *scroll=gtk_scrolled_window_new(NULL,NULL), *view=gtk_text_view_new();
-    gtk_text_view_set_monospace(GTK_TEXT_VIEW(view),TRUE);
-    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(view),GTK_WRAP_NONE);
-    gtk_container_add(GTK_CONTAINER(scroll),view);
-    gtk_widget_set_size_request(scroll,500,400);
-    gtk_box_pack_start(GTK_BOX(box),scroll,TRUE,TRUE,4);
-    char text[TELETEXT_INPUT_SIZE]; teletext_to_text(&app->teletext,text,0);
-    GtkTextBuffer *buffer=gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
-    gtk_text_buffer_set_text(buffer,text,-1);
-    GtkWidget *status=gtk_label_new(""); gtk_label_set_line_wrap(GTK_LABEL(status),TRUE);
-    gtk_box_pack_start(GTK_BOX(box),status,FALSE,FALSE,4);
-    gtk_widget_show_all(dialog);
-    while (gtk_dialog_run(GTK_DIALOG(dialog))==GTK_RESPONSE_ACCEPT) {
-        GtkTextIter start,end; gtk_text_buffer_get_bounds(buffer,&start,&end);
-        char *input=gtk_text_buffer_get_text(buffer,&start,&end,FALSE);
-        TeletextSettings page=app->teletext;
-        const char *error=teletext_from_text(&page,input); g_free(input);
-        if (error) { gtk_label_set_text(GTK_LABEL(status),error); continue; }
-        TeletextSettings previous=app->teletext; app->teletext=page;
-        AppConfig settings=capture_config(app);
-        char *path=g_build_filename(app->directory,CONFIG_FILENAME,NULL);
-        gboolean saved=config_save(path,&settings); g_free(path);
-        if (!saved) {
-            app->teletext=previous;
-            gtk_label_set_text(GTK_LABEL(status),"Save failed. Check write permissions in the application directory.");
-            continue;
-        }
-        gtk_label_set_text(GTK_LABEL(app->status),"Teletext page saved to atv-contestnummer.conf.");
-        break;
-    }
-    gtk_widget_destroy(dialog);
-}
+#include "teletext_linux.h"
+
 static void edit_eit(GtkWidget *widget, gpointer data) {
     (void)widget; App *app=data;
     GtkWidget *dialog=gtk_dialog_new_with_buttons("EIT programme information",GTK_WINDOW(app->window),

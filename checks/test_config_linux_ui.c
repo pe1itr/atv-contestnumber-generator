@@ -2,17 +2,51 @@
 #include "../src/linux.c"
 #undef main
 #include <assert.h>
+static gboolean finish_teletext(gpointer data) {
+    GtkWidget *w=data;
+    cairo_surface_t *surface=cairo_image_surface_create(CAIRO_FORMAT_RGB24,
+        gtk_widget_get_allocated_width(w),gtk_widget_get_allocated_height(w));
+    cairo_t *cr=cairo_create(surface); gtk_widget_draw(w,cr); cairo_destroy(cr);
+    assert(cairo_surface_write_to_png(surface,"build/teletext-linux-editor.png")==CAIRO_STATUS_SUCCESS);
+    cairo_surface_destroy(surface); gtk_dialog_response(GTK_DIALOG(w),GTK_RESPONSE_ACCEPT);
+    return G_SOURCE_REMOVE;
+}
 static gboolean apply_teletext(gpointer unused) {
     (void)unused;
     GList *windows=gtk_window_list_toplevels();
     for (GList *p=windows;p;p=p->next) {
         GtkWidget *w=p->data;
-        if (g_strcmp0(gtk_window_get_title(GTK_WINDOW(w)),"Teletext - page 100")) continue;
-        GList *children=gtk_container_get_children(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(w))));
-        GtkWidget *scroll=g_list_nth_data(children,1);
-        GtkWidget *view=gtk_bin_get_child(GTK_BIN(scroll));
-        gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(view)),"ATV CONTEST\nPagina 100",-1);
-        g_list_free(children); gtk_dialog_response(GTK_DIALOG(w),GTK_RESPONSE_ACCEPT);
+        if (g_strcmp0(gtk_window_get_title(GTK_WINDOW(w)),"Teletext pages")) continue;
+        TeletextDialog *d=g_object_get_data(G_OBJECT(w),"teletext-editor"); assert(d);
+        const char *text="ATV CONTEST";
+        for (const char *c=text;*c;++c) {
+            GdkEventKey key={0}; key.keyval=(guint)*c; assert(tt_linux_key(d->area,&key,d));
+        }
+        assert(!tt_linux_store(d));
+        GtkWidget *button=gtk_button_new(); g_object_ref_sink(button);
+        g_object_set_data(G_OBJECT(button),"action",GINT_TO_POINTER(100)); tt_linux_action(button,d);
+        assert(d->selected==1);
+        gtk_entry_set_text(GTK_ENTRY(d->header),"ANTENNA PAGE");
+        g_object_set_data(G_OBJECT(button),"action",GINT_TO_POINTER(102)); tt_linux_action(button,d);
+        assert(d->editor.raw[120]==22);
+        gtk_combo_box_set_active(GTK_COMBO_BOX(d->color),3); /* Blue, while active text is white. */
+        d->editor.cursor=14*40;
+        g_object_set_data(G_OBJECT(button),"action",GINT_TO_POINTER(29)); tt_linux_action(button,d);
+        assert(d->editor.cursor==14*40+3);
+        assert(teletext_editor_cell(&d->editor,14*40+5).background==4);
+        assert(teletext_editor_cell(&d->editor,14*40+5).foreground==7);
+        assert(d->editor.raw[14*40+5]=='W');
+        d->editor.cursor=140;
+        GdkEventButton click={0}; click.button=1; click.x=20*gtk_widget_get_allocated_width(d->area)/40+3;
+        click.y=3*gtk_widget_get_allocated_height(d->area)/23+3;
+        assert(tt_linux_click(d->area,&click,d));
+        assert(!tt_linux_store(d));
+        gtk_combo_box_set_active(GTK_COMBO_BOX(d->pages),0);
+        assert(d->selected==0 && d->editor.raw[0]=='A');
+        gtk_combo_box_set_active(GTK_COMBO_BOX(d->pages),1);
+        assert(!strcmp(gtk_entry_get_text(GTK_ENTRY(d->header)),"ANTENNA PAGE"));
+        gtk_widget_destroy(button); g_object_unref(button);
+        g_timeout_add(100,finish_teletext,w);
         g_list_free(windows); return G_SOURCE_REMOVE;
     }
     g_list_free(windows); return G_SOURCE_CONTINUE;
@@ -109,7 +143,7 @@ int main(int argc,char **argv) {
     g_timeout_add(100,apply_udp,NULL); output_udp(NULL,&app);
     assert(app.udp.port==12345 && app.udp.video.fps==12 && app.udp.video.gop==3);
     g_timeout_add(50,apply_teletext,NULL); edit_teletext(NULL,&app);
-    assert(app.teletext.enabled && !strncmp(app.teletext.text,"ATV CONTEST",11));
+    assert(app.teletext.enabled && teletext_byte(&app.teletext,0)=='A' && app.teletext.extra_count==1);
     wanted.teletext=app.teletext;
     wanted.udp=app.udp; wanted.udp_dvb=app.udp_dvb;
     assert(wanted.udp_dvb.system==DVB_T && wanted.udp_dvb.bandwidth_khz==333 && wanted.udp_dvb.guard==1);

@@ -66,6 +66,27 @@ extern const Resolution resolutions43[RESOLUTION_COUNT], resolutions169[RESOLUTI
 extern const wchar_t *const bands[12];
 extern const wchar_t *const band_files[12];
 typedef struct { unsigned char red, green, blue; } ContestColor;
+/* Level 1 editor. Colour/mode controls occupy a cell; rows reset to white text. */
+typedef struct { unsigned char raw[TELETEXT_CELLS]; int cursor, grid; } TeletextEditor;
+typedef struct { int foreground, background, mosaic; unsigned char code, blocks; } TeletextCell;
+extern const char *const teletext_color_names[7];
+extern const unsigned teletext_colors[8];
+void teletext_editor_load(TeletextEditor *e, const TeletextSettings *s);
+void teletext_editor_save(const TeletextEditor *e, TeletextSettings *s);
+void teletext_editor_example(TeletextEditor *e);
+TeletextCell teletext_editor_cell(const TeletextEditor *e, int index);
+const char *teletext_editor_type(TeletextEditor *e, unsigned c);
+const char *teletext_editor_paste(TeletextEditor *e, const char *text);
+/* Insert selected colour, new background and restored ink/mode in three blank cells. */
+const char *teletext_editor_background(TeletextEditor *e, int color);
+void teletext_editor_control(TeletextEditor *e, unsigned c);
+void teletext_editor_click(TeletextEditor *e, int x, int y, int width, int height, int erase);
+enum { TT_LEFT, TT_RIGHT, TT_UP, TT_DOWN, TT_HOME, TT_END, TT_ENTER, TT_BACKSPACE, TT_DELETE };
+void teletext_editor_key(TeletextEditor *e, int key);
+typedef void (*TeletextRect)(void *, int, int, int, int, unsigned);
+typedef void (*TeletextGlyph)(void *, int, int, int, int, char, unsigned);
+void teletext_editor_plot(const TeletextEditor *e, int width, int height,
+                          TeletextRect rect, TeletextGlyph glyph, void *context);
 typedef struct { ContestColor background, foreground; } ContestPalette;
 #define EBU_BAR_COUNT 8
 #define EBU_STRIP_PERCENT 9

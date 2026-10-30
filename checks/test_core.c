@@ -3,7 +3,9 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include "teletext_editor_cases.h"
 int main(void) {
+    test_teletext_editor();
     assert(!valid_fubk_locator(L"JO21"));
     assert(valid_fubk_locator(L"JO21QK"));
     assert(valid_fubk_locator(L"JO21QK86DV12"));

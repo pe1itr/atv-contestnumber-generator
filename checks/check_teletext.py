@@ -15,6 +15,9 @@ def pts(p):
     return ((p[0] >> 1 & 7) << 30) | (p[1] << 22) | ((p[2] >> 1) << 15) | (p[3] << 7) | (p[4] >> 1)
 def check(path):
     rate = int(path.stem.split('-')[-2])
+    grid = '-grid-' in path.name
+    interval = int(path.stem.split('-')[-1]) if grid else 2
+    starts = []
     raw = path.read_bytes()
     assert len(raw) % 1316 == 0
     previous = None
@@ -45,7 +48,7 @@ def check(path):
         stamp = pts(pes[9:14]) / 90000
         start, end = i * 8 / rate, (i + 188) * 8 / rate
         assert end <= stamp <= start + .040
-        if page == 100:
+        if page is not None:
             assert end - last <= .10001
         for pos in (46, 92, 138):
             unit = pes[pos:pos+46]
@@ -59,34 +62,52 @@ def check(path):
             if row == 0:
                 number = unham(unit[6]) | unham(unit[7]) << 4
                 if number == 255:
-                    assert page == 100 and set(rows) == set(range(1, 24))
-                    assert rows[1].rstrip() == 'ATV CONTEST'
-                    assert rows[2].rstrip() == 'Pagina 100'
-                    assert rows[4].rstrip() == '73 de PE1ITR'
+                    assert page is not None and set(rows) == set(range(1, 24))
+                    if grid:
+                        assert page == 100 + pages % 4
+                        assert rows[1].rstrip() == f'CAROUSEL PAGE {page}'
+                        assert rows[3][:13] == ''.join(map(chr, [1,82,17,63,127,7,84,3,29,2,71,28,75]))
+                        assert rows[4][:8] == ''.join(map(chr, [22,33,34,36,40,48,96,127]))
+                        assert rows[5].rstrip() == ''.join(map(chr, [4,29,7])) + 'WHITE ON BLUE'
+                        assert rows[6][:5] == ''.join(map(chr, [22,20,29,22,127]))
+                    else:
+                        assert rows[1].rstrip() == 'ATV CONTEST'
+                        assert rows[2].rstrip() == 'Pagina 100'
+                        assert rows[4].rstrip() == '73 de PE1ITR'
                     page = None
                     pages += 1
                 else:
-                    assert number == 0
-                    page, rows, header_time = 100, {}, stamp
+                    assert number == (pages % 4 if grid else 0)
+                    page, rows, header_time = 100 + number, {}, stamp
+                    starts.append(stamp)
+                    if grid:
+                        header = ''.join(chr(reverse(v) & 127) for v in unit[14:])
+                        assert header.rstrip() == f'CAROUSEL PAGE {page}'
                     assert [unham(v) for v in unit[8:14]] == [0, 8, 0, 0, 0, 1]
             else:
-                assert page == 100 and 1 <= row <= 23
+                assert page is not None and 1 <= row <= 23
                 assert stamp - header_time >= .020
                 decoded = [reverse(v) for v in unit[6:]]
                 assert all(v.bit_count() % 2 for v in decoded)
                 rows[row] = ''.join(chr(v & 127) for v in decoded)
         last = end
-    assert pages >= 3
+    assert pages >= (5 if grid else 3)
+    assert all(abs(b-a-interval) < .04 for a,b in zip(starts,starts[1:]))
     probe = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-show_streams', '-of', 'json', str(path)]))
     stream = next(s for s in probe['streams'] if s['codec_name'] == 'dvb_teletext')
     assert stream['tags']['language'] == 'nld'
-    result = subprocess.run(['ffmpeg', '-v', 'error', '-txt_format', 'text', '-txt_page', '100',
-                             '-i', str(path), '-map', '0:s:0', '-c:s', 'srt', '-f', 'srt', '-'],
-                            check=True, capture_output=True, text=True)
-    assert 'ATV CONTEST' in result.stdout and '73 de PE1ITR' in result.stdout
+    for selected in (range(100,104) if grid else [100]):
+        result = subprocess.run(['ffmpeg', '-v', 'error', '-txt_format', 'text', '-txt_page', str(selected),
+                                 '-i', str(path), '-map', '0:s:0', '-c:s', 'srt', '-f', 'srt', '-'],
+                                check=True, capture_output=True, text=True)
+        if grid:
+            assert f'CAROUSEL PAGE {selected}' in result.stdout
+            assert all(f'CAROUSEL PAGE {other}' not in result.stdout for other in range(100,104) if other != selected)
+        else:
+            assert 'ATV CONTEST' in result.stdout and '73 de PE1ITR' in result.stdout
     subprocess.run(['ffmpeg', '-v', 'error', '-i', str(path), '-map', '0:v:0', '-f', 'null', '-'], check=True)
     print(f'{path}: {pages} complete pages; transport, timing, text and H.264 decoding OK')
 paths = sorted(Path(p) for p in glob.glob(sys.argv[1] + '-*.ts'))
-assert len(paths) == 6
+assert len(paths) == 9
 for path in paths:
     check(path)

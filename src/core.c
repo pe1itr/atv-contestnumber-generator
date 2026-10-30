@@ -255,7 +255,67 @@ int datv_test_options(int count, const char *const *values, DatvSettings *s, int
 static int teletext_character(unsigned char c) {
     return c>=32 && c<=126 && !strchr("#@[\\]^_`{|}~",c);
 }
+static int teletext_hex(unsigned char c) {
+    if (c>='0' && c<='9') return c-'0';
+    if (c>='a' && c<='f') return c-'a'+10;
+    if (c>='A' && c<='F') return c-'A'+10;
+    return -1;
+}
+unsigned char teletext_byte(const TeletextSettings *s, int index) {
+    if (index<0 || index>=TELETEXT_CELLS) return ' ';
+    if (s->cells[0]) {
+        int hi=teletext_hex(s->cells[index*2]),lo=teletext_hex(s->cells[index*2+1]);
+        return hi<0 || lo<0?' ':(unsigned char)(hi*16+lo);
+    }
+    return s->text[0]?(unsigned char)s->text[index]:' ';
+}
+int teletext_interval(const TeletextSettings *s) { return s->interval?s->interval:2; }
+int teletext_page_count(const TeletextSettings *s) { return 1+s->extra_count; }
+void teletext_page_get(const TeletextSettings *s,int index,TeletextSettings *page) {
+    memset(page,0,sizeof(*page)); page->enabled=s->enabled;
+    if (!index) {
+        memcpy(page->text,s->text,sizeof(page->text));
+        memcpy(page->cells,s->cells,sizeof(page->cells));
+        memcpy(page->header,s->header,sizeof(page->header));
+    } else if (index>0 && index<=s->extra_count && index<TELETEXT_MAX_PAGES) {
+        const char *p=s->extra+(index-1)*TELETEXT_EXTRA_SIZE;
+        for (int i=0;i<32;++i) page->header[i]=(char)(teletext_hex(p[i*2])*16+teletext_hex(p[i*2+1]));
+        memcpy(page->cells,p+64,TELETEXT_CELLS*2);
+    }
+}
+void teletext_page_set(TeletextSettings *s,int index,const TeletextSettings *page) {
+    if (!index) {
+        memcpy(s->text,page->text,sizeof(s->text));
+        memcpy(s->cells,page->cells,sizeof(s->cells));
+        memcpy(s->header,page->header,sizeof(s->header));
+    } else if (index>0 && index<=s->extra_count && index<TELETEXT_MAX_PAGES) {
+        const char hex[]="0123456789ABCDEF";
+        char *p=s->extra+(index-1)*TELETEXT_EXTRA_SIZE;
+        size_t len=strlen(page->header);
+        for (int i=0;i<32+TELETEXT_CELLS;++i) {
+            unsigned c=i<32?(i<(int)len?(unsigned char)page->header[i]:0):teletext_byte(page,i-32);
+            p[i*2]=hex[c>>4]; p[i*2+1]=hex[c&15];
+        }
+    }
+}
+int teletext_page_add(TeletextSettings *s) {
+    if (s->extra_count>=TELETEXT_MAX_PAGES-1) return 0;
+    TeletextSettings blank={0}; ++s->extra_count;
+    teletext_page_set(s,s->extra_count,&blank);
+    s->extra[s->extra_count*TELETEXT_EXTRA_SIZE]=0; return 1;
+}
+void teletext_page_delete(TeletextSettings *s,int index) {
+    if (index<=0 || index>s->extra_count) return;
+    memmove(s->extra+(index-1)*TELETEXT_EXTRA_SIZE,s->extra+index*TELETEXT_EXTRA_SIZE,
+            (size_t)(s->extra_count-index)*TELETEXT_EXTRA_SIZE);
+    --s->extra_count;
+    memset(s->extra+s->extra_count*TELETEXT_EXTRA_SIZE,0,sizeof(s->extra)-(size_t)s->extra_count*TELETEXT_EXTRA_SIZE);
+}
+static int teletext_control(unsigned c) {
+    return (c>=1 && c<=7) || (c>=17 && c<=23) || c==28 || c==29;
+}
 const char *teletext_validate(const TeletextSettings *s) {
+    if (s->interval && s->interval!=2 && s->interval!=5 && s->interval!=10) return "Invalid teletext repeat interval.";
     if (s->enabled!=0 && s->enabled!=1) return "Invalid teletext option.";
     size_t n=0;
     while (n<sizeof(s->text) && s->text[n]) {
@@ -263,10 +323,202 @@ const char *teletext_validate(const TeletextSettings *s) {
             return "Use unaccented letters, digits and basic punctuation for teletext.";
     }
     if (n!=0 && n!=TELETEXT_CELLS) return "Invalid teletext page.";
+    n=0;
+    while (n<sizeof(s->header) && s->header[n]) {
+        if (!teletext_character((unsigned char)s->header[n++])) return "Use basic unaccented text in the header.";
+    }
+    if (n==sizeof(s->header)) return "Use up to 32 header characters.";
+    if (s->cells[0]) {
+        for (n=0;n<TELETEXT_CELLS*2;++n)
+            if (teletext_hex((unsigned char)s->cells[n])<0) return "Invalid teletext grid encoding.";
+        if (s->cells[n]) return "Invalid teletext grid length.";
+        int mosaic=0;
+        for (int i=0;i<TELETEXT_CELLS;++i) {
+            if (i%40==0) mosaic=0;
+            unsigned c=teletext_byte(s,i);
+            if (teletext_control(c)) {
+                if (c<8) mosaic=0;
+                else if (c<24) mosaic=1;
+            } else if (!(mosaic && ((c>=32 && c<=63) || (c>=96 && c<=127))) && !teletext_character(c))
+                return "Unsupported character in text mode. Restore Mosaic colour or erase that cell.";
+        }
+    }
+    if (s->extra_count<0 || s->extra_count>=TELETEXT_MAX_PAGES) return "Invalid teletext page count.";
+    size_t extra_length=(size_t)s->extra_count*TELETEXT_EXTRA_SIZE;
+    for (n=0;n<extra_length;++n) if (teletext_hex((unsigned char)s->extra[n])<0)
+        return "Invalid teletext carousel encoding.";
+    if (s->extra[extra_length]) return "Invalid teletext carousel length.";
+    for (int i=1;i<=s->extra_count;++i) {
+        TeletextSettings page;
+        teletext_page_get(s,i,&page);
+        const char *error=teletext_validate(&page); if (error) return error;
+    }
     return NULL;
 }
+
+const char *const teletext_color_names[7]={"Red","Green","Yellow","Blue","Magenta","Cyan","White"};
+const unsigned teletext_colors[8]={0x000000,0xff0000,0x00ff00,0xffff00,0x0000ff,0xff00ff,0x00ffff,0xffffff};
+void teletext_editor_load(TeletextEditor *e, const TeletextSettings *s) {
+    memset(e,0,sizeof(*e)); e->grid=1;
+    for (int i=0;i<TELETEXT_CELLS;++i) e->raw[i]=teletext_byte(s,i);
+}
+void teletext_editor_save(const TeletextEditor *e, TeletextSettings *s) {
+    const char hex[]="0123456789ABCDEF";
+    memset(s->text,0,sizeof(s->text));
+    for (int i=0;i<TELETEXT_CELLS;++i) {
+        s->cells[i*2]=hex[e->raw[i]>>4]; s->cells[i*2+1]=hex[e->raw[i]&15];
+    }
+    s->cells[TELETEXT_CELLS*2]=0;
+}
+TeletextCell teletext_editor_cell(const TeletextEditor *e, int index) {
+    TeletextCell c={.foreground=7};
+    if (index<0 || index>=TELETEXT_CELLS) return c;
+    for (int i=index/40*40;i<=index;++i) {
+        unsigned v=e->raw[i];
+        /* EN 300 706 table 26: backgrounds set-at, colours set-after. */
+        if (v==28) c.background=0;
+        if (v==29) c.background=c.foreground;
+        if (i==index) {
+            c.code=v;
+            if (c.mosaic && ((v>=32 && v<=63) || (v>=96 && v<=127)))
+                c.blocks=(v&31)|((v&64)>>1);
+            return c;
+        }
+        if (v>=1 && v<=7) { c.foreground=v; c.mosaic=0; }
+        if (v>=17 && v<=23) { c.foreground=v-16; c.mosaic=1; }
+    }
+    return c;
+}
+const char *teletext_editor_type(TeletextEditor *e, unsigned c) {
+    if (e->cursor<0 || e->cursor>=TELETEXT_CELLS) return "Select a cell inside the page.";
+    if (c>127 || !teletext_character(c)) return "Use unaccented letters, digits and basic punctuation.";
+    if (teletext_editor_cell(e,e->cursor).mosaic)
+        return "Insert Text colour before typing here (it uses one blank cell).";
+    e->raw[e->cursor]=(unsigned char)c;
+    if (e->cursor<TELETEXT_CELLS-1) ++e->cursor;
+    return NULL;
+}
+const char *teletext_editor_paste(TeletextEditor *e,const char *text) {
+    TeletextEditor copy=*e; int row=e->cursor/40,col=e->cursor%40;
+    for (const unsigned char *p=(const unsigned char *)text;*p;++p) {
+        if (*p=='\r' && p[1]=='\n') continue;
+        if (*p=='\n') { ++row; col=0; continue; }
+        if (row>=23 || col>=40) return "Pasted text exceeds the page. Use up to 40 characters per line.";
+        copy.cursor=row*40+col;
+        const char *error=teletext_editor_type(&copy,*p); if (error) return error;
+        ++col;
+    }
+    if (row>=23 && !(row==23 && col==0)) return "Pasted text exceeds the page.";
+    *e=copy; return NULL;
+}
+const char *teletext_editor_background(TeletextEditor *e,int color) {
+    int p=e->cursor;
+    if (color<1 || color>7) return "Select a background colour first.";
+    if (p<0 || p>=TELETEXT_CELLS || p%40>36)
+        return "Background needs 3 empty cells and room to type after them on this row.";
+    for (int i=0;i<3;++i) if (e->raw[p+i]!=' ')
+        return "Background needs 3 empty cells. Existing text or graphics will not be overwritten.";
+    TeletextCell previous=teletext_editor_cell(e,p);
+    unsigned mode=previous.mosaic?16:0;
+    /* EN 300 706 table 26: set-after colour, set-at background, restore ink. */
+    e->raw[p]=(unsigned char)(mode+color);
+    e->raw[p+1]=29;
+    e->raw[p+2]=(unsigned char)(mode+previous.foreground);
+    e->cursor=p+3;
+    return NULL;
+}
+void teletext_editor_control(TeletextEditor *e, unsigned c) {
+    if (!teletext_control(c)) return;
+    e->raw[e->cursor]=(unsigned char)c;
+    if (e->cursor%40<39) ++e->cursor;
+}
+void teletext_editor_key(TeletextEditor *e, int key) {
+    int p=e->cursor;
+    switch (key) {
+    case TT_LEFT: if (p) --p; break;
+    case TT_RIGHT: if (p<TELETEXT_CELLS-1) ++p; break;
+    case TT_UP: if (p>=40) p-=40; break;
+    case TT_DOWN: if (p<TELETEXT_CELLS-40) p+=40; break;
+    case TT_HOME: p=p/40*40; break;
+    case TT_END: p=p/40*40+39; break;
+    case TT_ENTER: if (p<TELETEXT_CELLS-40) p=(p/40+1)*40; break;
+    case TT_BACKSPACE: if (p) --p; e->raw[p]=' '; break;
+    case TT_DELETE: e->raw[p]=' '; break;
+    }
+    e->cursor=p;
+}
+void teletext_editor_click(TeletextEditor *e, int x, int y, int width, int height, int erase) {
+    if (x<0 || y<0 || x>=width || y>=height || width<40 || height<23) return;
+    int col=((x+1)*40-1)/width,row=((y+1)*23-1)/height;
+    e->cursor=row*40+col;
+    TeletextCell c=teletext_editor_cell(e,e->cursor);
+    if (!c.mosaic || c.code<32) return;
+    int left=col*width/40,top=row*height/23;
+    int cw=(col+1)*width/40-left,ch=(row+1)*height/23-top;
+    int bit=(((y-top+1)*3-1)/ch)*2+((x-left+1)*2-1)/cw;
+    if (bit>5) bit=5;
+    unsigned blocks=erase?c.blocks&~(1u<<bit):c.blocks^(1u<<bit);
+    e->raw[e->cursor]=(unsigned char)(32|(blocks&31)|((blocks&32)<<1));
+}
+void teletext_editor_example(TeletextEditor *e) {
+    memset(e->raw,' ',sizeof(e->raw)); e->cursor=0;
+    e->raw[0]=3; memcpy(e->raw+5,"ATV STATION",sizeof("ATV STATION")-1);
+    /* Antenna painted on the same 2 x 3 mosaic lattice used by the editor. */
+    for (int row=3;row<12;++row) {
+        e->raw[row*40]=22;
+        for (int col=1;col<40;++col) {
+            unsigned bits=0;
+            for (int b=0;b<6;++b) {
+                int x=col*2+b%2,y=(row-3)*3+b/2;
+                if (x==39 || (y==3 && x>=23 && x<=55) ||
+                    (y==9 && x>=29 && x<=49) || (y==15 && x>=34 && x<=44) ||
+                    (y>=20 && (x==39-(y-20) || x==39+(y-20)))) bits|=1u<<b;
+            }
+            e->raw[row*40+col]=(unsigned char)(32|(bits&31)|((bits&32)<<1));
+        }
+    }
+    memcpy(e->raw+14*40+5,"Welcome to our ATV station",sizeof("Welcome to our ATV station")-1);
+    memcpy(e->raw+16*40+5,"Call    : YOUR CALL",sizeof("Call    : YOUR CALL")-1);
+    memcpy(e->raw+17*40+5,"Locator : YOUR LOCATOR",sizeof("Locator : YOUR LOCATOR")-1);
+    memcpy(e->raw+18*40+5,"Antenna : Yagi",sizeof("Antenna : Yagi")-1);
+    memcpy(e->raw+21*40+5,"Reception reports welcome!",sizeof("Reception reports welcome!")-1);
+}
+void teletext_editor_plot(const TeletextEditor *e,int width,int height,
+                          TeletextRect rect,TeletextGlyph glyph,void *ctx) {
+    for (int i=0;i<TELETEXT_CELLS;++i) {
+        int col=i%40,row=i/40,x=col*width/40,y=row*height/23;
+        int w=(col+1)*width/40-x,h=(row+1)*height/23-y;
+        TeletextCell c=teletext_editor_cell(e,i);
+        unsigned fg=teletext_colors[c.foreground];
+        rect(ctx,x,y,w,h,teletext_colors[c.background]);
+        if (c.code>=32) {
+            if (c.mosaic && ((c.code<=63) || c.code>=96)) {
+                for (int b=0;b<6;++b) if (c.blocks&(1<<b)) {
+                    int xx=(b%2)*w/2,yy=(b/2)*h/3;
+                    rect(ctx,x+xx,y+yy,(b%2+1)*w/2-xx,(b/2+1)*h/3-yy,fg);
+                }
+            } else glyph(ctx,x,y,w,h,(char)c.code,fg);
+        } else if (e->grid) {
+            char mark=c.code<8?'T':c.code<24?'M':c.code==28?'B':'C';
+            glyph(ctx,x,y,w,h,mark,c.code<24?teletext_colors[c.code&7]:0xaaaaaa);
+        }
+        if (e->grid) {
+            rect(ctx,x,y,w,1,0x353535); rect(ctx,x,y,1,h,0x353535);
+            if (c.mosaic) {
+                rect(ctx,x+w/2,y,1,h,0x353535);
+                rect(ctx,x,y+h/3,w,1,0x353535); rect(ctx,x,y+2*h/3,w,1,0x353535);
+            }
+            if (i==e->cursor) {
+                rect(ctx,x,y,w,2,0xffa000); rect(ctx,x,y+h-2,w,2,0xffa000);
+                rect(ctx,x,y,2,h,0xffa000); rect(ctx,x+w-2,y,2,h,0xffa000);
+            }
+        }
+    }
+}
+
 const char *teletext_from_text(TeletextSettings *s, const char *text) {
-    TeletextSettings page={0}; page.enabled=s->enabled;
+    TeletextSettings page=*s; memset(page.text,0,sizeof(page.text)); memset(page.cells,0,sizeof(page.cells));
+    memcpy(page.header,s->header,sizeof(page.header));
     memset(page.text,' ',TELETEXT_CELLS);
     int row=0,col=0;
     for (const unsigned char *p=(const unsigned char *)text;*p;++p) {
@@ -472,6 +724,8 @@ static const ConfigField config_fields[]={
     CONFIG_INT_FIELD(ts.fps,1,25), CONFIG_INT_FIELD(ts.gop,1,250),
     CONFIG_INT_FIELD(ts.eit_enabled,0,1), CONFIG_INT_FIELD(udp.video.eit_enabled,0,1),
     CONFIG_INT_FIELD(teletext.enabled,0,1), CONFIG_TEXT_FIELD(teletext.text),
+    CONFIG_TEXT_FIELD(teletext.cells), CONFIG_TEXT_FIELD(teletext.header),
+    CONFIG_INT_FIELD(teletext.interval,0,10), CONFIG_INT_FIELD(teletext.extra_count,0,TELETEXT_MAX_PAGES-1), CONFIG_TEXT_FIELD(teletext.extra),
     CONFIG_TEXT_FIELD(station.city), CONFIG_TEXT_FIELD(station.description), CONFIG_TEXT_FIELD(station.operator_name),
     CONFIG_TEXT_FIELD(udp.ip), CONFIG_INT_FIELD(udp.port,1,65535),
     CONFIG_INT_FIELD(udp.video.bitrate,DATV_MIN_BITRATE,2000000), CONFIG_INT_FIELD(udp.video.fps,1,25),
@@ -548,7 +802,7 @@ static int config_valid(const AppConfig *s) {
             size_t characters=0;
             for (const unsigned char *p=(const unsigned char *)value; *p; ++p)
                 if ((*p&0xc0)!=0x80) ++characters;
-            size_t limit=f->offset==offsetof(AppConfig,teletext.text)?TELETEXT_CELLS:f->offset==offsetof(AppConfig,udp.video.audio.source)?255:f->size==16?15:(f->size-1)/4;
+            size_t limit=f->offset==offsetof(AppConfig,teletext.extra)?sizeof(s->teletext.extra)-1:f->offset==offsetof(AppConfig,teletext.cells)?TELETEXT_CELLS*2:f->offset==offsetof(AppConfig,teletext.header)?32:f->offset==offsetof(AppConfig,teletext.text)?TELETEXT_CELLS:f->offset==offsetof(AppConfig,udp.video.audio.source)?255:f->size==16?15:(f->size-1)/4;
             if (characters>limit) return 0;
         }
         else if (*(const int *)value<f->min || *(const int *)value>f->max) return 0;
@@ -582,7 +836,7 @@ int config_load(const char *path, AppConfig *out) {
     FILE *f=config_open(path,0);
     if (!f) return errno==ENOENT?0:-1;
     AppConfig s=config_defaults(); uint64_t seen=0;
-    int version=0, ok=1, migrated_ts=0, migrated_udp=0; char line[1200];
+    int version=0, ok=1, migrated_ts=0, migrated_udp=0; char line[sizeof(s.teletext.extra)+100];
     while (fgets(line,sizeof(line),f)) {
         size_t n=strlen(line);
         if (!n || (line[n-1]!='\n' && !feof(f))) { ok=0; break; }
@@ -591,7 +845,7 @@ int config_load(const char *path, AppConfig *out) {
         char *value=strchr(line,'=');
         if (!value) { ok=0; break; } *value++=0;
         if (!strcmp(line,"version")) {
-            if (version || (strcmp(value,"1") && strcmp(value,"2") && strcmp(value,"3") && strcmp(value,"4") && strcmp(value,"5") && strcmp(value,"6") && strcmp(value,"7"))) { ok=0; break; }
+            if (version || (strcmp(value,"1") && strcmp(value,"2") && strcmp(value,"3") && strcmp(value,"4") && strcmp(value,"5") && strcmp(value,"6") && strcmp(value,"7") && strcmp(value,"8"))) { ok=0; break; }
             version=value[0]-'0'; continue;
         }
         size_t i;
@@ -625,6 +879,12 @@ int config_load(const char *path, AppConfig *out) {
             config_fields[i].offset==offsetof(AppConfig,ebu_bottom) ||
             config_fields[i].offset==offsetof(AppConfig,ts.buffer_ms) ||
             config_fields[i].offset==offsetof(AppConfig,udp.video.buffer_ms)) required &= ~(UINT64_C(1)<<i);
+    if (version<8) for (size_t i=0;i<CONFIG_FIELDS;++i)
+        if (config_fields[i].offset==offsetof(AppConfig,teletext.cells) ||
+            config_fields[i].offset==offsetof(AppConfig,teletext.header) ||
+            config_fields[i].offset==offsetof(AppConfig,teletext.interval) ||
+            config_fields[i].offset==offsetof(AppConfig,teletext.extra_count) ||
+            config_fields[i].offset==offsetof(AppConfig,teletext.extra)) required &= ~(UINT64_C(1)<<i);
     uint64_t audio_fields=0;
     for (size_t i=0;i<CONFIG_FIELDS;++i)
         if (!strncmp(config_fields[i].key,"udp.video.audio.",16)) audio_fields|=UINT64_C(1)<<i;
@@ -681,7 +941,7 @@ int config_save(const char *path, const AppConfig *s) {
     snprintf(temporary,n,"%s.tmp",path);
     FILE *f=config_open(temporary,1);
     if (!f) { free(temporary); return 0; }
-    int ok=fprintf(f,"# ATV contest number generator\nversion=7\n")>=0;
+    int ok=fprintf(f,"# ATV contest number generator\nversion=8\n")>=0;
     for (size_t i=0;i<CONFIG_FIELDS && ok;++i) {
         const ConfigField *field=&config_fields[i]; const char *value=(const char *)s+field->offset;
         ok=(field->size?fprintf(f,"%s=%s\n",field->key,value):

@@ -23,6 +23,37 @@ int main(int argc,char **argv) {
         }
         assert(!std::fclose(file));
     }
+    for (int interval:{2,5,10}) {
+        TeletextSettings book{}; book.enabled=1; book.interval=interval;
+        for (int index=0;index<4;++index) {
+            if (index) assert(teletext_page_add(&book));
+            TeletextSettings page{}; TeletextEditor editor;
+            teletext_editor_load(&editor,&page);
+            std::string label="CAROUSEL PAGE "+std::to_string(100+index);
+            std::memcpy(editor.raw,label.data(),label.size());
+            const unsigned char codes[]={1,'R',17,63,127,7,'T',3,29,2,'G',28,'K'};
+            std::memcpy(editor.raw+80,codes,sizeof(codes));
+            // Each G1 sextant bit separately, then all six together.
+            editor.raw[120]=22;
+            for (int bit=0;bit<6;++bit) editor.raw[121+bit]=(unsigned char)(32|(bit==5?64:1<<bit));
+            editor.raw[127]=127;
+            editor.cursor=160; assert(!teletext_editor_background(&editor,4));
+            assert(!teletext_editor_paste(&editor,"WHITE ON BLUE"));
+            editor.cursor=200; teletext_editor_control(&editor,22);
+            assert(!teletext_editor_background(&editor,4)); editor.raw[editor.cursor]=127;
+            std::strcpy(page.header,label.c_str()); teletext_editor_save(&editor,&page);
+            teletext_page_set(&book,index,&page);
+        }
+        assert(!teletext_validate(&book));
+        DatvSettings settings=datv_defaults(); settings.bitrate=60000; settings.seconds=interval*4+2;
+        settings.fps=2; settings.gop=2; settings.teletext=book; settings.eit_enabled=1;
+        std::string path=std::string(argv[1])+"-grid-60000-"+std::to_string(interval)+".ts";
+        FILE *file=std::fopen(path.c_str(),"wb"); assert(file); char error[256];
+        if (!datv_write(file,pixels.data(),160,120,640,"PE1ITR",settings,nullptr,error)) {
+            std::fprintf(stderr,"%s: %s\n",path.c_str(),error); assert(false);
+        }
+        assert(!std::fclose(file));
+    }
     DatvSettings s=datv_defaults(); s.bitrate=32000; s.teletext=t;
     assert(datv_validate(s,160,120));
     // Full page, including row 23, survives packing.

@@ -293,7 +293,7 @@ unsigned char odd_parity(unsigned char v) {
     unsigned char p=v; p^=p>>4; p^=p>>2; p^=p>>1;
     return reverse_bits(v|((!(p&1))<<7));
 }
-Bytes teletext_pes(const TeletextSettings &s, int part, uint64_t pts) {
+Bytes teletext_pes(const TeletextSettings &s, int part, uint64_t pts, int page_index=0) {
     Bytes b={0,0,1,0xbd,0,178,0x84,0x80,0x24}; timestamp(b,pts);
     b.resize(45,0xff); b.push_back(0x10);
     for (int unit=0;unit<3;++unit) {
@@ -304,13 +304,14 @@ Bytes teletext_pes(const TeletextSettings &s, int part, uint64_t pts) {
         b.push_back(hamming(address)); b.push_back(hamming(address>>4));
         if (!row) {
             // Page 100, subcode 0000, C4 erase, C11 serial, English G0.
-            for (int nibble:{part==9?15:0,part==9?15:0,0,part==9?0:8,0,0,0,1}) b.push_back(hamming(nibble));
-            const char title[]="ATV TELETEXT 100";
+            for (int nibble:{part==9?15:page_index,part==9?15:0,0,part==9?0:8,0,0,0,1}) b.push_back(hamming(nibble));
+            char fallback[33]; std::snprintf(fallback,sizeof(fallback),"ATV TELETEXT %d",100+page_index);
+            const char *title=s.header[0]?s.header:fallback;
             for (int col=0;col<32;++col)
-                b.push_back(odd_parity(col<int(sizeof(title)-1)?title[col]:' '));
+                b.push_back(odd_parity(col<int(std::strlen(title))?title[col]:' '));
         } else {
             for (int col=0;col<40;++col)
-                b.push_back(odd_parity(s.text[0]?s.text[(row-1)*40+col]:' '));
+                b.push_back(odd_parity(teletext_byte(&s,(row-1)*40+col)));
         }
     }
     return b;
@@ -365,7 +366,8 @@ class Mux {
     bool first_table[5]={true,true,true,true,true};
     size_t table_offset[5]={};
     int cc[5]={}, video_cc=0, eit_section=0;
-    int teletext_cc=0, teletext_part=0;
+    int teletext_cc=0, teletext_part=0, teletext_page=0;
+    TeletextSettings teletext_current{};
     bool teletext_first=true;
     uint64_t teletext_due=0, teletext_cycle=0, teletext_last_end=0;
     std::string call;
@@ -430,11 +432,15 @@ public:
             if (teletext_part && end-teletext_last_end>CLOCK/10)
                 throw std::runtime_error("Teletext does not fit the TS schedule. Increase the bitrate.");
             header(packet,0x101,true,teletext_cc); teletext_cc=(teletext_cc+1)&15;
-            Bytes data=teletext_pes(s.teletext,teletext_part,end+CLOCK/200);
+            if (!teletext_part) teletext_page_get(&s.teletext,teletext_page,&teletext_current);
+            Bytes data=teletext_pes(teletext_current,teletext_part,end+CLOCK/200,teletext_page);
             std::memcpy(packet+4,data.data(),184);
             if (!teletext_part) teletext_cycle=now;
             teletext_last_end=end;
-            if (++teletext_part==10) { teletext_part=0; teletext_due=teletext_cycle+CLOCK*2; }
+            if (++teletext_part==10) {
+                teletext_part=0; teletext_due=teletext_cycle+CLOCK*teletext_interval(&s.teletext);
+                teletext_page=(teletext_page+1)%teletext_page_count(&s.teletext);
+            }
             else teletext_due=end+CLOCK/50; // >=20 ms erase time; <=100 ms packet gap.
         } else if (!pcr && table<0 && audio_due) {
             ++audio_slot; audio_reserved=true;

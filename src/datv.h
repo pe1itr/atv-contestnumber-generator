@@ -9,12 +9,28 @@ extern "C" {
 #define TELETEXT_ROWS 23
 #define TELETEXT_COLUMNS 40
 #define TELETEXT_CELLS (TELETEXT_ROWS*TELETEXT_COLUMNS)
+#define TELETEXT_MAX_PAGES 4
+#define TELETEXT_EXTRA_SIZE ((32+TELETEXT_CELLS)*2)
 #define TELETEXT_INPUT_SIZE (TELETEXT_CELLS+TELETEXT_ROWS*2+1)
-typedef struct { int enabled; char text[TELETEXT_CELLS+1]; } TeletextSettings;
+typedef struct {
+    int enabled;
+    char text[TELETEXT_CELLS+1]; /* Legacy plain text. */
+    char cells[TELETEXT_CELLS*2+1]; /* Optional hex-encoded Level 1 page. */
+    int extra_count, interval; /* 0 = historical 2 seconds; otherwise 2, 5 or 10. */
+    char extra[(TELETEXT_MAX_PAGES-1)*TELETEXT_EXTRA_SIZE+1];
+    char header[33]; /* Empty selects the historical header. */
+} TeletextSettings;
 /* Flat, space-padded rows in settings; LF/CRLF in the editor. */
 const char *teletext_validate(const TeletextSettings *s);
 const char *teletext_from_text(TeletextSettings *s, const char *text);
 void teletext_to_text(const TeletextSettings *s, char out[TELETEXT_INPUT_SIZE], int crlf);
+int teletext_interval(const TeletextSettings *s);
+int teletext_page_count(const TeletextSettings *s);
+void teletext_page_get(const TeletextSettings *s, int index, TeletextSettings *page);
+void teletext_page_set(TeletextSettings *s, int index, const TeletextSettings *page);
+int teletext_page_add(TeletextSettings *s);
+void teletext_page_delete(TeletextSettings *s, int index);
+unsigned char teletext_byte(const TeletextSettings *s, int index);
 
 #define EIT_CITY_LENGTH 40
 #define EIT_DESCRIPTION_LENGTH 240

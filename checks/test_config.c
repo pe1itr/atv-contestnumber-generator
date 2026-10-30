@@ -181,6 +181,19 @@ int main(void) {
     assert(!fseek(f,(long)strlen("# ATV contest number generator\nversion="),SEEK_SET));
     assert(fputc('7',f)!=EOF); assert(!fclose(f));
     assert(config_load(TEST_PATH,&loaded)==-1);
+    /* Actual v7 pages have none of the grid/carousel/header fields. */
+    assert(config_save(TEST_PATH,&original)); old_config[0]=0;
+    f=fopen(TEST_PATH,"rb"); assert(f);
+    while (fgets(line,sizeof(line),f)) {
+        if (!strncmp(line,"version=",8)) strcpy(line,"version=7\n");
+        if (!strncmp(line,"teletext.cells=",15) || !strncmp(line,"teletext.header=",16) ||
+            !strncmp(line,"teletext.extra=",15) || !strncmp(line,"teletext.extra_count=",21) ||
+            !strncmp(line,"teletext.interval=",18)) continue;
+        strcat(old_config,line);
+    }
+    assert(!fclose(f)); f=fopen(TEST_PATH,"wb"); assert(f);
+    assert(fputs(old_config,f)>=0); assert(!fclose(f));
+    assert(config_load(TEST_PATH,&loaded)==1 && !memcmp(&loaded,&original,sizeof(original)));
     /* Blank inputs and an unused UDP address can be saved before setup. */
     original=config_defaults(); assert(config_save(TEST_PATH,&original));
     assert(config_load(TEST_PATH,&loaded)==1); assert(!memcmp(&original,&loaded,sizeof(original)));
