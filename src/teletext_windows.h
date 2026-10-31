@@ -1,6 +1,6 @@
 /* Native Win32 view over the same page model and renderer as GTK. */
 enum { TT_PAGE=380, TT_ADD, TT_REMOVE, TT_HEADER, TT_COLOR, TT_TEXT, TT_MOSAIC,
-       TT_BACKGROUND, TT_BLACK, TT_EXAMPLE, TT_CLEAR, TT_PREVIEW, TT_INTERVAL };
+       TT_BACKGROUND, TT_BLACK, TT_LOAD, TT_CLEAR, TT_PREVIEW, TT_INTERVAL, TT_ATTRIBUTE, TT_INSERT, TT_REVEAL };
 typedef struct {
     TeletextSettings book;
     TeletextEditor editor, undo;
@@ -10,11 +10,6 @@ typedef struct {
 static void tt_win_rect(void *ctx,int x,int y,int w,int h,unsigned rgb) {
     HDC dc=ctx; RECT r={x,y,x+w,y+h};
     SetDCBrushColor(dc,RGB(rgb>>16,(rgb>>8)&255,rgb&255)); FillRect(dc,&r,GetStockObject(DC_BRUSH));
-}
-static void tt_win_glyph(void *ctx,int x,int y,int w,int h,char c,unsigned rgb) {
-    HDC dc=ctx; RECT r={x,y,x+w,y+h}; wchar_t ch=(unsigned char)c;
-    SetTextColor(dc,RGB(rgb>>16,(rgb>>8)&255,rgb&255)); SetBkMode(dc,TRANSPARENT);
-    DrawTextW(dc,&ch,1,&r,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
 }
 static void tt_win_refresh(TeletextDialog *d,const char *error) {
     wchar_t text[256];
@@ -29,22 +24,22 @@ static LRESULT CALLBACK tt_win_grid(HWND window,UINT msg,WPARAM wp,LPARAM lp,UIN
     if (msg==WM_GETDLGCODE) return DLGC_WANTARROWS|DLGC_WANTCHARS|DLGC_WANTALLKEYS;
     if (msg==WM_PAINT) {
         PAINTSTRUCT ps; HDC dc=BeginPaint(window,&ps); RECT r; GetClientRect(window,&r);
-        HFONT font=CreateFontW(-(r.bottom/23*4/5),0,0,0,FW_BOLD,FALSE,FALSE,FALSE,ANSI_CHARSET,
-            OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,DEFAULT_QUALITY,FIXED_PITCH,L"Consolas");
-        HGDIOBJ old=SelectObject(dc,font);
-        teletext_editor_plot(&d->editor,r.right,r.bottom,tt_win_rect,tt_win_glyph,dc);
-        SelectObject(dc,old); DeleteObject(font); EndPaint(window,&ps); return 0;
+        wchar_t wide[33]; char header[140];
+        GetDlgItemTextW(d->window,TT_HEADER,wide,33);
+        WideCharToMultiByte(CP_UTF8,0,wide,-1,header,sizeof(header),NULL,NULL);
+        teletext_view_plot(&d->editor,header,100+d->selected,r.right,r.bottom,tt_win_rect,dc);
+        EndPaint(window,&ps); return 0;
     }
     if (msg==WM_LBUTTONDOWN || msg==WM_RBUTTONDOWN) {
         if (!d->editor.grid) return 0;
         RECT r; GetClientRect(window,&r); TeletextEditor before=d->editor;
-        teletext_editor_click(&d->editor,(short)LOWORD(lp),(short)HIWORD(lp),r.right,r.bottom,msg==WM_RBUTTONDOWN);
+        teletext_view_click(&d->editor,(short)LOWORD(lp),(short)HIWORD(lp),r.right,r.bottom,msg==WM_RBUTTONDOWN);
         if (memcmp(before.raw,d->editor.raw,sizeof(before.raw))) d->undo=before;
         SetFocus(window); tt_win_refresh(d,NULL); return 0;
     }
     if (msg==WM_KEYDOWN) {
         if (wp=='Z' && GetKeyState(VK_CONTROL)<0) {
-            TeletextEditor swap=d->editor; d->editor=d->undo; d->undo=swap; tt_win_refresh(d,NULL); return 0;
+            teletext_editor_undo(&d->editor,&d->undo); tt_win_refresh(d,NULL); return 0;
         }
         if (wp=='V' && GetKeyState(VK_CONTROL)<0 && d->editor.grid) {
             const char *error=NULL;
@@ -95,7 +90,8 @@ static const char *tt_win_store(TeletextDialog *d) {
 }
 static void tt_win_load(TeletextDialog *d) {
     TeletextSettings page; teletext_page_get(&d->book,d->selected,&page);
-    teletext_editor_load(&d->editor,&page); d->undo=d->editor;
+    int reveal=d->editor.reveal,off=d->editor.flash_off;
+    teletext_editor_load(&d->editor,&page); d->editor.reveal=reveal; d->editor.flash_off=off; d->undo=d->editor;
     wchar_t wide[33]; MultiByteToWideChar(CP_UTF8,0,page.header,-1,wide,33); SetDlgItemTextW(d->window,TT_HEADER,wide);
     wchar_t fallback[33]; swprintf(fallback,33,L"ATV TELETEXT %d",100+d->selected);
     SendDlgItemMessageW(d->window,TT_HEADER,EM_SETCUEBANNER,0,(LPARAM)fallback);
@@ -107,6 +103,31 @@ static void tt_win_pages(TeletextDialog *d) {
         wchar_t text[20]; swprintf(text,20,L"Page %d",100+i); SendDlgItemMessageW(d->window,TT_PAGE,CB_ADDSTRING,0,(LPARAM)text);
     }
     SendDlgItemMessageW(d->window,TT_PAGE,CB_SETCURSEL,d->selected,0); tt_win_load(d);
+}
+static int tt_win_import_path(TeletextDialog *d,const char *path) {
+    TeletextSettings page; teletext_page_get(&d->book,d->selected,&page);
+    char error[256];
+    if (!teletext_import_file(&page,path,error,sizeof(error))) { tt_win_refresh(d,error); return 0; }
+    TeletextEditor before=d->editor;
+    int grid=d->editor.grid,reveal=d->editor.reveal,off=d->editor.flash_off;
+    teletext_editor_load(&d->editor,&page);
+    d->editor.grid=grid; d->editor.reveal=reveal; d->editor.flash_off=off; d->undo=before;
+    tt_win_refresh(d,"Page loaded into the selected page. Header and interval kept. Ctrl+Z: undo. Save to keep it.");
+    return 1;
+}
+static void tt_win_import(TeletextDialog *d) {
+    wchar_t path[32768]=L"";
+    OPENFILENAMEW picker={0}; picker.lStructSize=sizeof(picker); picker.hwndOwner=d->window;
+    picker.lpstrFilter=L"Teletext pages (*.tti, *.txt)\0*.tti;*.txt\0\0";
+    picker.lpstrFile=path; picker.nMaxFile=32768; picker.lpstrTitle=L"Load teletext page";
+    picker.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR|OFN_EXPLORER;
+    if (GetOpenFileNameW(&picker)) {
+        int n=WideCharToMultiByte(CP_UTF8,0,path,-1,NULL,0,NULL,NULL);
+        char *utf8=n>0?malloc((size_t)n):NULL;
+        if (utf8) { WideCharToMultiByte(CP_UTF8,0,path,-1,utf8,n,NULL,NULL); tt_win_import_path(d,utf8); free(utf8); }
+        else tt_win_refresh(d,"Cannot allocate the page file path.");
+    } else if (CommDlgExtendedError()) tt_win_refresh(d,"Cannot open the page file chooser.");
+    SetFocus(d->area);
 }
 static INT_PTR CALLBACK teletext_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp) {
     (void)lp; TeletextDialog *d=(TeletextDialog *)GetWindowLongPtrW(window,DWLP_USER);
@@ -125,11 +146,35 @@ static INT_PTR CALLBACK teletext_dialog(HWND window,UINT message,WPARAM wp,LPARA
         const wchar_t *intervals[]={L"2 seconds",L"5 seconds",L"10 seconds"};
         for (int i=0;i<3;++i) SendDlgItemMessageW(window,TT_INTERVAL,CB_ADDSTRING,0,(LPARAM)intervals[i]);
         SendDlgItemMessageW(window,TT_INTERVAL,CB_SETCURSEL,teletext_interval(&d->book)==10?2:teletext_interval(&d->book)==5?1:0,0);
+        for (int i=0;i<TELETEXT_ATTRIBUTE_COUNT;++i) {
+            wchar_t name[40]; MultiByteToWideChar(CP_UTF8,0,teletext_attributes[i].name,-1,name,40);
+            SendDlgItemMessageW(window,TT_ATTRIBUTE,CB_ADDSTRING,0,(LPARAM)name);
+        }
+        SendDlgItemMessageW(window,TT_ATTRIBUTE,CB_SETCURSEL,0,0);
+        SetTimer(window,1001,50,NULL);
         tt_win_pages(d); return TRUE;
     }
     if (!d) return FALSE;
+    if (message==WM_TIMER && wp==1001) {
+        int off=GetTickCount64()%1000>=750;
+        if (off!=d->editor.flash_off) { d->editor.flash_off=off; InvalidateRect(d->area,NULL,FALSE); }
+        return TRUE;
+    }
     if (message==WM_COMMAND) {
         int id=LOWORD(wp); const char *error=NULL;
+        if (id==TT_HEADER && HIWORD(wp)==EN_CHANGE) { InvalidateRect(d->area,NULL,FALSE); return TRUE; }
+        if (id==TT_REVEAL) {
+            d->editor.reveal=IsDlgButtonChecked(window,TT_REVEAL)==BST_CHECKED;
+            tt_win_refresh(d,NULL); return TRUE;
+        }
+        if (id==TT_INSERT) {
+            int selected=(int)SendDlgItemMessageW(window,TT_ATTRIBUTE,CB_GETCURSEL,0,0);
+            TeletextEditor before=d->editor;
+            if (selected>=0 && selected<TELETEXT_ATTRIBUTE_COUNT)
+                error=teletext_editor_control(&d->editor,teletext_attributes[selected].code);
+            if (!error) d->undo=before;
+            tt_win_refresh(d,error); SetFocus(d->area); return TRUE;
+        }
         if (id==TT_INTERVAL && HIWORD(wp)==CBN_SELCHANGE) {
             const int values[]={2,5,10}; int selected=(int)SendDlgItemMessageW(window,TT_INTERVAL,CB_GETCURSEL,0,0);
             if (selected>=0 && selected<3) d->book.interval=values[selected];
@@ -150,13 +195,13 @@ static INT_PTR CALLBACK teletext_dialog(HWND window,UINT message,WPARAM wp,LPARA
             } else { teletext_page_delete(&d->book,d->selected); d->selected=0; }
             tt_win_pages(d); return TRUE;
         }
+        if (id==TT_LOAD) { tt_win_import(d); return TRUE; }
         if (id>=TT_TEXT && id<=TT_PREVIEW) {
             TeletextEditor before=d->editor;
             int color=(int)SendDlgItemMessageW(window,TT_COLOR,CB_GETCURSEL,0,0)+1;
-            if (id==TT_TEXT || id==TT_MOSAIC) teletext_editor_control(&d->editor,(unsigned)(color+(id==TT_MOSAIC?16:0)));
+            if (id==TT_TEXT || id==TT_MOSAIC) error=teletext_editor_control(&d->editor,(unsigned)(color+(id==TT_MOSAIC?16:0)));
             if (id==TT_BACKGROUND) error=teletext_editor_background(&d->editor,color);
-            if (id==TT_BLACK) teletext_editor_control(&d->editor,28);
-            if (id==TT_EXAMPLE) teletext_editor_example(&d->editor);
+            if (id==TT_BLACK) error=teletext_editor_control(&d->editor,28);
             if (id==TT_CLEAR) { memset(d->editor.raw,' ',sizeof(d->editor.raw)); d->editor.cursor=0; }
             if (id==TT_PREVIEW) d->editor.grid=!d->editor.grid;
             if (!error && id!=TT_PREVIEW) d->undo=before;
@@ -174,6 +219,6 @@ static INT_PTR CALLBACK teletext_dialog(HWND window,UINT message,WPARAM wp,LPARA
         }
     }
     if (message==WM_CLOSE || (message==WM_COMMAND && LOWORD(wp)==IDCANCEL)) { EndDialog(window,IDCANCEL); return TRUE; }
-    if (message==WM_DESTROY) { RemoveWindowSubclass(d->area,tt_win_grid,1); free(d); SetWindowLongPtrW(window,DWLP_USER,0); }
+    if (message==WM_DESTROY) { KillTimer(window,1001); RemoveWindowSubclass(d->area,tt_win_grid,1); free(d); SetWindowLongPtrW(window,DWLP_USER,0); }
     return FALSE;
 }

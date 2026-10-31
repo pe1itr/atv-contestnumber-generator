@@ -77,7 +77,9 @@ static void test_teletext_editor(void) {
     s.extra[0]='X'; assert(teletext_validate(&s));
     s=config.teletext; s.cells[2]='0'; s.cells[3]='0'; assert(teletext_validate(&s));
     s=config.teletext; s.interval=3; assert(teletext_validate(&s));
-    teletext_editor_example(&e); s=(TeletextSettings){0}; teletext_editor_save(&e,&s); assert(!teletext_validate(&s));
+    s=(TeletextSettings){0}; char import_error[256];
+    assert(teletext_import_file(&s,"examples/teletext/atv-station.tti",import_error,sizeof(import_error)));
+    teletext_editor_load(&e,&s); assert(!teletext_validate(&s));
     assert(!memcmp(e.raw+14*40+5,"Welcome to our ATV station",26));
     assert(!remove("build/teletext-editor.conf"));
     puts("Teletext editor: mosaic bits, colour boundaries, paste, carousel and config round-trip OK.");

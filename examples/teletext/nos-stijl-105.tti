@@ -1,0 +1,30 @@
+PN,10000
+DE,ATV voorbeeld - stijl NOS 105
+PS,C040
+SC,0000
+CT,2,T
+RE,0
+PF,0,0
+OL,1,S,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+OL,2,D]CATV-station klaar voor uitzending    
+OL,3,S,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+OL,4,S/FDit is een voorbeeldpagina voor een  
+OL,5,FATV-station. De tekst en kleuren zijn  
+OL,6,Fopgebouwd met gewone teletekstcodes.   
+OL,7,FJe kunt zo nieuws, aankondigingen en   
+OL,8,Fstationsinformatie als bestand laden   
+OL,9,Fen daarna in de editor aanpassen.      
+OL,10,                                        
+OL,11,FDe gele lijnen verdelen de pagina.     
+OL,12,FDe kop staat op een blauwe achtergrond.
+OL,13,FDe tekst is cyaan op zwart, zoals bij  
+OL,14,Feen klassieke teletekstnieuwspagina.   
+OL,15,FAlle regels passen in het vaste raster 
+OL,16,Fvan veertig tekens per regel.          
+OL,17,                                        
+OL,18,FLaat een AI je eigen tekst invullen.   
+OL,19,FLaad het TTI-bestand met Load page en  
+OL,20,Fbewaar de pagina daarna met Save.      
+OL,21,                                        
+OL,22,S,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+OL,23,Anieuws Bstation Ctechniek Fcontact     

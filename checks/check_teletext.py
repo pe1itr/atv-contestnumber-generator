@@ -13,6 +13,24 @@ def unham(v):
 def pts(p):
     assert p[0] & 0xf1 == 0x21 and p[2] & 1 and p[4] & 1
     return ((p[0] >> 1 & 7) << 30) | (p[1] << 22) | ((p[2] >> 1) << 15) | (p[3] << 7) | (p[4] >> 1)
+def check_bitmap(path):
+    # Independent decoder: inspect output from real PES, not the editor model.
+    rgb = subprocess.check_output([
+        'ffmpeg', '-v', 'error', '-txt_format', 'bitmap', '-txt_page', '100',
+        '-txt_chop_top', '0', '-canvas_size', '492x250', '-i', str(path),
+        '-filter_complex', '[0:s:0]null[out]', '-map', '[out]', '-ss', '1',
+        '-frames:v', '1', '-pix_fmt', 'rgb24', '-threads', '1', '-f', 'rawvideo', '-'])
+    assert len(rgb) == 492 * 250 * 3
+    def count(row, col, color):
+        return sum(rgb[(y*492+x)*3:(y*492+x)*3+3] == bytes(color)
+                   for y in range((row+1)*10, (row+2)*10)
+                   for x in range(col*12, (col+1)*12))
+    for row, col, expected in [(6,2,120),(6,3,120),(6,4,120),(6,5,70),(6,7,120),
+                               (7,3,70),(7,4,70),(7,5,70),(7,6,120),(9,7,120),(10,7,120)]:
+        assert count(row, col, (0,255,255)) == expected, (path, row, col)
+    assert count(10,3,(0,0,255)) == 120 and count(10,9,(0,0,255)) == 120
+    # Glyph designs are decoder-specific. Flash/conceal and normative held-mosaic
+    # resets are tested in test_teletext_render, not inferred from FFmpeg defaults.
 def check(path):
     rate = int(path.stem.split('-')[-2])
     grid = '-grid-' in path.name
@@ -70,6 +88,13 @@ def check(path):
                         assert rows[4][:8] == ''.join(map(chr, [22,33,34,36,40,48,96,127]))
                         assert rows[5].rstrip() == ''.join(map(chr, [4,29,7])) + 'WHITE ON BLUE'
                         assert rows[6][:5] == ''.join(map(chr, [22,20,29,22,127]))
+                        assert rows[7][:8] == ''.join(map(chr, [22,127,30,26,31,127,25,127]))
+                        assert rows[8][:7] == ''.join(map(chr, [22,26,127,30,25,31,127]))
+                        assert rows[9][:10] == ''.join(map(chr, [7,24,72,73,1,82,8,70,9,83]))
+                        assert rows[10][:10] == ''.join(map(chr, [4,29,7,78,13,65,22,127,12,90]))
+                        assert rows[11].rstrip() == 'THIS LOWER ROW MUST BE IGNORED'
+                        assert rows[12][:13] == ''.join(map(chr, [22,127,30,7,22,29,127,12,29,13,29,12,29]))
+                        assert rows[14][:7] == ''.join(map(chr, [22,127,8,30,9,31,127]))
                     else:
                         assert rows[1].rstrip() == 'ATV CONTEST'
                         assert rows[2].rstrip() == 'Pagina 100'
@@ -106,7 +131,9 @@ def check(path):
         else:
             assert 'ATV CONTEST' in result.stdout and '73 de PE1ITR' in result.stdout
     subprocess.run(['ffmpeg', '-v', 'error', '-i', str(path), '-map', '0:v:0', '-f', 'null', '-'], check=True)
-    print(f'{path}: {pages} complete pages; transport, timing, text and H.264 decoding OK')
+    if grid:
+        check_bitmap(path)
+    print(f'{path}: {pages} complete pages; transport, timing, text, bitmap attributes and H.264 decoding OK')
 paths = sorted(Path(p) for p in glob.glob(sys.argv[1] + '-*.ts'))
 assert len(paths) == 9
 for path in paths:

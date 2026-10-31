@@ -182,7 +182,7 @@ BEGIN
     PUSHBUTTON "Cancel", IDCANCEL, 365, 183, 70, 16
 END
 
-IDD_TELETEXT DIALOGEX 0, 0, 500, 438
+IDD_TELETEXT DIALOGEX 0, 0, 500, 462
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Teletext pages"
 FONT 9, "Segoe UI"
@@ -190,23 +190,26 @@ BEGIN
     COMBOBOX 380, 10, 8, 70, 65, CBS_DROPDOWNLIST | WS_TABSTOP
     PUSHBUTTON "Add page", 381, 86, 8, 58, 16
     PUSHBUTTON "Delete page", 382, 150, 8, 58, 16
-    PUSHBUTTON "Antenna example", 389, 214, 8, 86, 16
+    PUSHBUTTON "Load page", 389, 214, 8, 86, 16
     PUSHBUTTON "Clear page", 390, 306, 8, 65, 16
     LTEXT "Header (32 characters):", -1, 10, 32, 105, 12
     EDITTEXT 383, 118, 30, 372, 16, ES_AUTOHSCROLL | WS_TABSTOP
-    LTEXT "40 x 23 cells; each mosaic cell has 2 x 3 blocks. Click a cell and type, or toggle its blocks.\nInsert Text/Mosaic colour in a blank cell: it applies to the RIGHT, until another colour or end of row.\nBackground: selected colour, 3 empty cells; text colour stays.\nArrows: move. Delete: erase cell. Right-click: erase block. Ctrl+Z: undo. Ctrl+V: paste. T/M/B/C marks are not transmitted.", -1, 10, 50, 480, 38
+    LTEXT "40 x 23 cells; each mosaic cell has 2 x 3 blocks. Click a cell and type, or toggle its blocks.\nInsert Text/Mosaic colour in a blank cell: it applies to the RIGHT, until another colour or end of row.\nBackground: selected colour, 3 empty cells; text colour stays.\nArrows: move. Delete: erase cell. Right-click: erase block. Ctrl+Z: undo. Ctrl+V: paste. Attribute marks are editor guides; Reveal shows concealed text.", -1, 10, 50, 480, 38
     COMBOBOX 384, 10, 90, 66, 110, CBS_DROPDOWNLIST | WS_TABSTOP
     PUSHBUTTON "Text colour", 385, 80, 90, 65, 16
     PUSHBUTTON "Mosaic colour", 386, 149, 90, 72, 16
     PUSHBUTTON "Colour background", 387, 225, 90, 92, 16
     PUSHBUTTON "Black background", 388, 321, 90, 88, 16
     PUSHBUTTON "Grid / preview", 391, 413, 90, 77, 16
-    CONTROL "", IDC_TELETEXT_TEXT, "Static", SS_NOTIFY | WS_TABSTOP, 10, 112, 480, 276
-    LTEXT "", IDC_TELETEXT_STATUS, 10, 392, 480, 14
-    LTEXT "Next page every:", -1, 10, 416, 79, 12
-    COMBOBOX 392, 92, 413, 90, 70, CBS_DROPDOWNLIST | WS_TABSTOP
-    DEFPUSHBUTTON "Save", IDOK, 366, 413, 58, 16
-    PUSHBUTTON "Cancel", IDCANCEL, 432, 413, 58, 16
+    COMBOBOX 393, 10, 112, 130, 130, CBS_DROPDOWNLIST | WS_TABSTOP
+    PUSHBUTTON "Insert attribute", 394, 146, 112, 85, 16
+    CONTROL "Reveal", 395, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 240, 112, 70, 16
+    CONTROL "", IDC_TELETEXT_TEXT, "Static", SS_NOTIFY | WS_TABSTOP, 10, 136, 480, 276
+    LTEXT "", IDC_TELETEXT_STATUS, 10, 416, 480, 14
+    LTEXT "Next page every:", -1, 10, 440, 79, 12
+    COMBOBOX 392, 92, 437, 90, 70, CBS_DROPDOWNLIST | WS_TABSTOP
+    DEFPUSHBUTTON "Save", IDOK, 366, 437, 58, 16
+    PUSHBUTTON "Cancel", IDCANCEL, 432, 437, 58, 16
 END
 
 IDD_ABBREVIATIONS DIALOGEX 0, 0, 460, 350

@@ -204,16 +204,66 @@ lopende klok toegevoegd.
   het einde van de regel. Er moet op die regel nog een vak overblijven om te typen.
   Bestaande inhoud wordt niet overschreven. **Black background** herstelt zwart
   met één besturingsvak. Dit is geen vrije achtergrondkleur per afzonderlijk vak.
-  De editor toont codes als T/M/B/C; de ontvanger toont op die plek een spatie.
-  **Grid / preview** verbergt raster, cursor en codemarkeringen. De tekstvorm
-  gebruikt het lokale lettertype; de ontvanger kan letters anders tekenen.
-- **Antenna example** vervangt het raster door een bewerkbaar voorbeeld;
-  **Clear page** wist het raster. Beide zijn met Ctrl+Z te herstellen.
+  De editor markeert besturingscodes met letters. In de schone preview worden
+  dat spaties of, bij Hold mosaics, het vastgehouden mozaïek.
+  **Grid / preview** verbergt raster, cursor en codemarkeringen. Beide platforms
+  gebruiken hetzelfde ingebouwde bitmaplettertype en tonen de header boven het
+  40 × 23-raster. De eerste acht headerposities zijn voor de ontvanger; het
+  getoonde `P100` is een preview-aanduiding, geen uitgezonden headertekst.
+- Kies onder **Insert attribute** een klassieke opmaakcode. Die gebruikt één
+  vak en werkt tot een volgende relevante code of het einde van de regel.
+  **Double height** vergroot de volgende tekens naar de onderliggende regel;
+  die hele regel is dan voor de onderhelften gereserveerd. De editor vereist
+  daar een lege regel en weigert dubbele hoogte op de laatste bodyregel.
+  **Normal height** herstelt normale hoogte vanaf het besturingsvak zelf.
+- **Flash / Steady** schakelt knipperen aan/uit. De preview knippert met een
+  periode van één seconde (driekwart zichtbaar). **Conceal** verbergt tekst;
+  **Reveal** toont die tijdelijk in de editor en wordt niet uitgezonden.
+  Een tekst- of mozaïekkleurcode beëindigt Conceal.
+- **Contiguous / Separated mosaics** kiest aansluitende blokjes of blokjes
+  gescheiden door achtergrondkleur. **Hold mosaics** vult besturingsvakken met
+  het laatst gebruikte mozaïek, met behoud van zijn oorspronkelijke scheiding.
+  **Release mosaics** beëindigt dit na het eigen vak. Een echte wisseling van
+  tekst/mozaïekmodus of hoogte wist het vastgehouden patroon; dezelfde modus of
+  hoogte opnieuw kiezen doet dat niet. In dubbele hoogte kun je beide helften
+  van een mozaïek aanklikken; beide bewerken hetzelfde oorspronkelijke vak.
+- **Load page** opent een `.tti`- of `.txt`-bestand en vervangt de body van de
+  geselecteerde pagina. **Clear page** wist het raster. Beide zijn met Ctrl+Z
+  te herstellen. De huidige header, andere pagina's en het wisselinterval
+  blijven behouden. Pas **Save** bewaart de wijziging; Cancel verwerpt die.
+  Stop/start UDP om de opgeslagen pagina uit te zenden.
 - **Add page** voegt pagina 101, 102 of 103 toe. De paginakeuze bewaart tussentijdse
   wijzigingen binnen het dialoogvenster. **Delete page** verwijdert een extra
   pagina en nummert de volgende pagina’s opnieuw; pagina 100 blijft bestaan.
   **Save** bewaart alle pagina’s en het interval in `atv-contestnummer.conf`.
   Cancel laat de opgeslagen pagina’s intact. Oude tekstpagina’s worden ingelezen.
+
+Een pagina met AI maken en laden:
+
+1. Geef de AI de opdracht uit [`examples/teletext/ai-opdracht.txt`](../examples/teletext/ai-opdracht.txt)
+   en vul daarin je gewenste inhoud, callsign en locator in. Vraag om een
+   downloadbaar `.tti`-bestand, zodat je niet zelf besturingscodes hoeft te typen.
+2. Open **Config → Teletext**, kies de doelpagina en klik **Load page**.
+   [`examples/teletext/atv-station.tti`](../examples/teletext/atv-station.tti) is
+   een direct laadbaar voorbeeld met kleur, mozaïeken, dubbele hoogte en flash.
+3. Bekijk **Grid / preview**, pas desgewenst de header aan en klik **Save**.
+
+`.txt` ondersteunt gewone ongeaccentueerde tekst: maximaal 23 regels van 40
+tekens, LF/CRLF en optioneel een UTF-8-BOM. `.tti` is het MRG-uitwisselingsformaat,
+**geen ETSI-norm op zichzelf**. De import ondersteunt één body met `OL,1` tot
+`OL,23`, maximaal 40 gedecodeerde cellen per regel. TTI-besturingscodes mogen
+als ESC gevolgd door code + 0x40 of als 8-bit code + 0x80 worden opgeslagen;
+letterlijke tekst `\x1b` is geen ESC-byte. Zie de [VBIT2-formaatbeschrijving](https://github.com/peterkvt80/vbit2/wiki/page-files).
+
+`PN,mpp00`, `DE` en een geldige `CT` mogen aanwezig zijn, maar de geselecteerde
+app-pagina, header en het interval blijven leidend. `PS` mag geen newsflash,
+ondertiteling, verborgen header, update/interrupted/inhibit of andere nationale
+tekenset vereisen; de app bepaalt zelf erase, serial en het verzenden.
+`SC,0000`, `RE,0` en `PF,0,0` worden geaccepteerd. Meerdere pagina's/subpagina's,
+Fastext, headerregels, rijen 24–29, onbekende records en niet-ondersteunde
+opmaakcodes worden geweigerd. Bestanden zijn maximaal 16 KiB. Fouten veranderen
+niets aan de huidige pagina. Dit is dus een expliciete TTI-subset, geen algemene
+importer voor alle bestaande teletekstbestanden.
 
 Vink in **TS-proefbestand** of **DATV UDP-uitvoer** **Include teletext pages** aan.
 Stop/start een lopende stream om wijzigingen uit te zenden. Het programma stuurt
@@ -231,14 +281,63 @@ de verzending binnen een pagina. Een lager gemiddeld verbruik door een langer
 interval heft die timingvoorwaarde niet op. De 40k/QPSK/FEC1/2/GI1/32-instelling
 van 30.160 bit/s ondersteunt deze teletekstuitvoer dus niet.
 
-Dit is een beperkte Level 1-editor: gewone niet-geaccentueerde tekst, aaneengesloten
-G1-mozaïeken, kleur en achtergrond. Geen dubbele hoogte, knipperen, hold mosaics,
-Unicode-blokjes of afbeeldingsimport. De spacing attributes en G1-bitvolgorde volgen
+Het teletekstprofiel volgt **ETSI EN 300 706 V1.2.1 (2003-04), Level 1**:
+40 kolommen, header plus 23 bodyregels, Latin G0 met expliciet English national
+option, zeven voorgrondkleuren, acht achtergrondkleuren en G1-mozaïeken.
+De editor biedt gewone niet-geaccentueerde tekst, kleur, achtergrond, dubbele
+hoogte, knipperen, conceal/reveal, contiguous/separated en hold/release mosaics.
+Dubbele breedte en dubbele grootte horen niet bij dit Level 1-profiel. Boxing,
+ESC/alternatieve tekensets, nationale speciale tekens, Unicode-import en
+Level 2.5/3.5-uitbreidingen worden niet aangeboden; niet-ondersteunde codes
+worden bij invoer/configuratieladen geweigerd. Dit is geen volledige algemene
+teletekstdecoder. Het weglaten van optionele editorfuncties maakt de aangeboden
+pagina's niet ongeldig.
+
+De gedeelde preview gebruikt eigen ingebouwde bitmapletters met een 12 × 10
+referentieraster (horizontaal verdubbelde 6 × 10 letters). §15.6 laat de precieze
+lettervorm aan de decoder; er bestaat dus geen verplicht universeel ETSI-font.
+De editor houdt de pagina op 4:3, met marges als het venster andere verhoudingen
+heeft, zodat letters en mozaïeken niet uitrekken. Dat is onze presentatiekeuze,
+geen verplichte ETSI-pixelverhouding. De [NOS-webweergave](https://teletekst-data.nos.nl/webplus?p=100-1)
+is gebruikt als visuele referentie, niet als norm of bron voor lettertype/code.
+G1 gebruikt in deze rasterisatie twee kolommen en drie banden van 3/4/3 pixels;
+bij gescheiden mozaïeken blijft de rechterkolom en onderste rij van ieder blok
+achtergrondkleur. Een televisie kan anders schalen. Plaatsing en attribuutregels
+moeten wel overeenkomen. De spacing attributes en G1-bitvolgorde volgen
 [ETSI EN 300 706 V1.2.1 §12.2, tabel 26](https://www.etsi.org/deliver/etsi_en/300700_300799/300706/01.02.01_60/en_300706v010201p.pdf).
-De single-service TS gebruikt één teletekst-PID met pagina 100 als initiële pagina;
+DVB-verpakking volgt **EN 300 472 V1.4.1 (2017-04)**. De PMT-taalcode `nld`
+beschrijft de inhoudstaal; de English national option in de paginaheader bepaalt
+de tekenset. De beperkte tekstinvoer voorkomt verwarring tussen ASCII en
+nationale teletekstsymbolen. De single-service TS gebruikt één teletekst-PID
+met pagina 100 als initiële pagina;
 de ontvanger kan vervolgens 101–103 kiezen.
 
-Validatie van deze uitbreiding (30 oktober 2026): Linux- en Windows-builds,
+Validatie van de Level 1-uitbreiding en import (30 oktober 2026): beide builds,
+`make all test-linux` (1.118 JPGs), gerichte import/render-tests op Linux en Wine,
+beide configuratie/editor-tests en byte-/tekst-/bitmapdecode van 9 Linux- en
+9 Wine-TS-bestanden slagen. Importfouten laten de vorige pagina intact;
+UTF-8-bestandsnamen, beide TTI-controlcoderingen, Undo en opslaan/heropenen
+zijn getest. De render-testbeelden zijn byte-identiek tussen beide platforms.
+Windows importeert uitsluitend systeem-DLLs.
+
+De onafhankelijke `udp_ts_validator` controleert daarnaast zes carrouselbestanden
+en twee daadwerkelijke loopbackcaptures via **TTI-import → encoder → UDP**:
+vier pagina's, 60.000 bit/s, 2 fps/GOP 2. Per input zijn 68 G1/achtergrondcellen
+pixelgelijk aan libzvbi; nog tien conceal/flash-cellen zijn met expliciete
+decoder-weergaveopties gecontroleerd. Maximale PCR- en paginapakketafstand:
+75,2 ms; minimale erase-afstand: 50,133 ms; maximale PTS-lead: 30,067 ms.
+De TS- en UDP-regressies slagen op Linux en Wine. Logs en het eindrapport staan
+onder `build/teletext-etsi-validator-*`; build-, import- en platformtests onder
+`build/teletext-import-*`.
+
+**Decoderbeperking:** libzvbi behoudt het vastgehouden mozaïek bij sommige
+modus-/hoogtewissels. Onze code wist dat patroon zoals EN 300 706 tabel 26
+voorschrijft; die gevallen zijn met afzonderlijke normgerichte assertions
+getest. Decoderacceptatie alleen bewijst dus niet alle opmaakregels.
+De onderstaande bestaande DVB-SI-afwijkingen en niet-geverifieerde onderdelen
+blijven van toepassing; dit is geen volledige DVB/ETSI-conformiteitsclaim.
+
+Eerdere validatie van kleur/carrousel (30 oktober 2026): Linux- en Windows-builds,
 `make test-linux` (inclusief 1.118 JPGs), `make test-teletext`, de Linux- en
 Wine-configuratie/editor-tests, `make test-ts`, `make test-udp` en
 `python3 checks/check_udp.py --windows` geslaagd. De onafhankelijke

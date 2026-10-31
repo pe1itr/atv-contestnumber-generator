@@ -341,8 +341,26 @@ TS-bestand onbehandeld herhalen geeft tijdsprongen: gebruik de ingebouwde
 UDP-uitvoer voor een doorlopende uitzending. Zie [transportprofiel en
 validatie](docs/datv.md#bewegende-contestkaart-genius-level-4).
 
+## Zelfstandige SRT/RTSP-converter (Linux)
+
+[DATV Streambridge](streambridge/README.md) staat naast dit programma, met een eigen
+executable en configuratie. Het ontvangt beeld en geluid via SRT of RTSP-publicatie en codeert die opnieuw
+naar een CBR MPEG-TS/UDP-stream op basis van het ingestelde DVB-uitvoerbudget.
+Bouwen: `make -C streambridge`; starten: `streambridge/bin/datv-streambridge`.
+Het hoort niet bij de contestnummerdistributie in `dist/`.
+
 
 Linux ondersteunt optionele AAC-audio via **Config → Genius level 3**, bij DVB-S/S2
 op 333 of 500 ksym/s en DVB-T op 333 of 500 kHz, mits het transportbudget past.
 Kies een PulseAudio/PipeWire-bron zoals `ffmix.monitor` en
 48 kbit/s mono of 96 kbit/s stereo. Zie [audio-invoer en transportbudget](docs/datv.md#optionele-live-audio-op-linux-genius-level-3).
+
+## Apart cameraprogramma voor lage bitrates
+
+[DATV Camera](camera/README.md) is een afzonderlijk Linux-experimenteerprogramma
+voor webcam/interne camera → H.264 met roepnaam → MPEG-TS/UDP. Het biedt
+startprofielen voor detail, balans en beweging, een gedecodeerde lokale preview
+en TS-proefopnamen. Onder meer DVB-S/S2 33/35 ksym/s en DVB-T BW 35/40 kHz
+gebruiken dezelfde DVB-bitratecalculator als de contestnummergenerator.
+
+Bouwen: `make -C camera`. Starten: `./dist/datv-camera`.

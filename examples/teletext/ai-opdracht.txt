@@ -1,0 +1,16 @@
+Maak voor mij een downloadbaar .tti-bestand met een klassieke teletekstpagina voor ATV. Onderwerp en inhoud: [VUL HIER JE WENS, CALLSIGN, LOCATOR EN GEGEVENS IN].
+
+De ontvanger en editor gebruiken ETSI EN 300 706 Level 1. Lever het werkelijke bestand, niet alleen een afbeelding of beschrijving. Gebruik bijvoorbeeld Python om de bytes te schrijven.
+
+Importprofiel van ATV Contestnummer:
+- Een enkele pagina: PN,10000. Gebruik PS,C040 en SC,0000. DE mag een beschrijving bevatten.
+- OL,1, tot en met OL,23, met maximaal 40 gedecodeerde cellen per regel. Ook elke opmaakcode kost een cel. Niet gebruikte regels zijn leeg. Gebruik CRLF of LF. Geen Markdown-codehekken in het bestand.
+- De app laadt de inhoud in de geselecteerde pagina 100-103. De header en het wisselinterval stel ik in de app in. Geen OL,0, navigatieregel 24, Fastext FL, andere subpagina's of enhancement packets.
+- Gebruik de English Latin G0-subset: gewone ongeaccentueerde letters, cijfers, spaties en leestekens. Gebruik in tekst NIET de tekens # @ [ \ ] ^ _ ` { | } ~, geen accenten, emoji of Unicode-blokken.
+- Schrijf opmaakcodes als twee echte bytes: ESC (0x1B) gevolgd door 0x40 + de code. Dus rood is bytes([0x1B,0x41]), wit bytes([0x1B,0x47]). De zichtbare tekst "\x1b" is GEEN ESC-byte. Je kunt ook 8-bit TTI-codes 0x80 + de code gebruiken, maar schrijf die dan als bytes, niet als UTF-8 tekens.
+- Ondersteunde codes (hex): 01-07 tekst rood/groen/geel/blauw/magenta/cyaan/wit; 11-17 dezelfde mozaiekkleuren; 08 knipperen; 09 vast; 0C normale hoogte; 0D dubbele hoogte; 18 verborgen; 19 aaneengesloten mozaieken; 1A gescheiden mozaieken; 1C zwarte achtergrond; 1D huidige voorgrond als achtergrond; 1E hold mosaics; 1F release mosaics.
+- Iedere regel start met witte tekst op zwart, normale hoogte, vast en aaneengesloten. Kleuren, flash, dubbele hoogte en release werken NA het codevak. Normal height, steady, conceal, contiguous/separated, background en hold gelden VANAF het codevak.
+- Laat de volledige regel onder dubbele hoogte leeg. Geen dubbele hoogte op bodyregel 23. Geen zwarte voorgrond, dubbele breedte, boxing of ESC-tekensetwisseling.
+- Iedere G1-mozaiekcel bestaat uit zes blokjes: linksboven/rechtsboven/linksmidden/rechtsmidden/linksonder/rechtsonder. De bits daarvan zijn respectievelijk 1,2,4,8,16,64; tel 32 erbij op. Bijvoorbeeld 127 vult alle zes. Gebruik hiervoor de echte G1-byte in mozaiekmodus, geen Unicode-blokjes. Gebruik een tekstkleurcode om terug te keren naar tekst.
+
+Controleer zelf de celbreedtes, dubbele-hoogteregels en toegestane tekens. Lever de .tti als bestand dat ik via Config > Teletext > Load page kan laden. Als tekst zonder opmaak genoeg is, mag je in plaats daarvan een ASCII .txt van maximaal 23 regels van 40 tekens leveren.

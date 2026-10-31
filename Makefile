@@ -15,7 +15,7 @@ all: linux windows
 windows: dist/atv-contestnummer.exe
 linux: dist/atv-contestnummer
 
-dist/atv-contestnummer: src/linux.c src/teletext_linux.h src/quality_linux.h src/dvb_linux.h src/core.c src/core.h src/app_info.c src/app_info.h third_party/openh264/license_text.inc src/pm5544.h src/datv.h build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
+dist/atv-contestnummer: src/linux.c src/teletext_linux.h src/quality_linux.h src/dvb_linux.h src/core.c src/teletext_font.h src/core.h src/app_info.c src/app_info.h third_party/openh264/license_text.inc src/pm5544.h src/datv.h build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
 	mkdir -p dist
 	$(HOSTCC) $(CFLAGS) src/linux.c src/core.c src/app_info.c build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -o $@ $(shell pkg-config --cflags --libs gtk+-3.0 pangocairo) -lstdc++ -lpthread $(AUDIO_LIBS) -lm
 
@@ -34,7 +34,7 @@ build/app.o: src/app.rc src/resource.h src/app.manifest
 	mkdir -p build
 	$(WINDRES) -Isrc src/app.rc $@
 
-dist/atv-contestnummer.exe: src/main.c src/teletext_windows.h src/quality_windows.h src/dvb_windows.h src/core.c src/core.h src/resource.h src/app_info.c src/app_info.h third_party/openh264/license_text.inc src/pm5544.h src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
+dist/atv-contestnummer.exe: src/main.c src/teletext_windows.h src/quality_windows.h src/dvb_windows.h src/core.c src/teletext_font.h src/core.h src/resource.h src/app_info.c src/app_info.h third_party/openh264/license_text.inc src/pm5544.h src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
 	mkdir -p dist
 	$(CC) $(CFLAGS) -municode -mwindows -static -s src/main.c src/core.c src/app_info.c build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a -o $@ $(LDLIBS) -lstdc++ -lwinpthread -lssp -lshell32
 
@@ -56,29 +56,30 @@ build/datv-windows.o: src/datv.cpp src/datv.h src/core.h build/openh264-windows/
 	$(WINCXX) $(CXXFLAGS) -Ibuild/openh264-windows/codec/api -c $< -o $@
 
 .PHONY: test-linux test-ts
-build/test-core: checks/test_core.c checks/teletext_editor_cases.h src/core.c src/core.h src/datv.h
+build/test-core: checks/test_core.c checks/teletext_editor_cases.h src/core.c src/teletext_font.h src/core.h src/datv.h
 	mkdir -p build
 	$(HOSTCC) $(CFLAGS) -Isrc checks/test_core.c src/core.c -o $@
 
-test-linux: linux build/test-core build/test-config build/test-pm5644 build/test-dvb
+test-linux: linux build/test-core build/test-config build/test-pm5644 build/test-dvb build/test-teletext-render
 	build/test-core
 	build/test-config
 	build/test-pm5644
 	build/test-dvb
+	build/test-teletext-render build/teletext-etsi-linux.ppm
 	$(PYTHON) tools/test_linux_images.py
 
 test-ts: linux
 	$(PYTHON) checks/check_ts.py
 
-build/test-datv-linux-ui: checks/test_datv_linux_ui.c src/linux.c src/teletext_linux.h src/quality_linux.h src/dvb_linux.h src/core.c src/app_info.c src/datv.h build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
+build/test-datv-linux-ui: checks/test_datv_linux_ui.c src/linux.c src/teletext_linux.h src/quality_linux.h src/dvb_linux.h src/core.c src/teletext_font.h src/app_info.c src/datv.h build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
 	$(HOSTCC) $(CFLAGS) -Isrc checks/test_datv_linux_ui.c src/core.c src/app_info.c build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -o $@ $(shell pkg-config --cflags --libs gtk+-3.0 pangocairo) -lstdc++ -lpthread $(AUDIO_LIBS) -lm
 
-build/test-datv-windows-ui.exe: checks/test_datv_windows_ui.c src/main.c src/teletext_windows.h src/quality_windows.h src/dvb_windows.h src/core.c src/app_info.c src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
+build/test-datv-windows-ui.exe: checks/test_datv_windows_ui.c src/main.c src/teletext_windows.h src/quality_windows.h src/dvb_windows.h src/core.c src/teletext_font.h src/app_info.c src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
 	$(CC) $(CFLAGS) -municode -static -Isrc checks/test_datv_windows_ui.c src/core.c src/app_info.c build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a -o $@ $(LDLIBS) -lstdc++ -lwinpthread -lssp -lshell32
 
-build/core-linux.o: src/core.c src/core.h src/datv.h
+build/core-linux.o: src/core.c src/teletext_font.h src/core.h src/datv.h
 	$(HOSTCC) $(CFLAGS) -c $< -o $@
-build/core-windows.o: src/core.c src/core.h src/datv.h
+build/core-windows.o: src/core.c src/teletext_font.h src/core.h src/datv.h
 	$(CC) $(CFLAGS) -c $< -o $@
 build/udp-sender: checks/udp_sender.cpp src/datv.h build/core-linux.o build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
 	$(CXX) $(CXXFLAGS) -Isrc checks/udp_sender.cpp build/core-linux.o build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -lpthread $(AUDIO_LIBS) -o $@
@@ -94,33 +95,33 @@ build/test-udp-errors: checks/test_udp_errors.cpp src/datv.cpp src/audio_linux.h
 build/test-udp-errors.exe: checks/test_udp_errors.cpp src/datv.cpp src/datv.h src/core.h build/core-windows.o build/openh264-windows/libopenh264.a
 	$(WINCXX) $(CXXFLAGS) -static -Isrc -Ibuild/openh264-windows/codec/api $< build/core-windows.o build/openh264-windows/libopenh264.a -lws2_32 -lwinmm -lwinpthread -lssp -o $@
 
-build/test-config: checks/test_config.c src/core.c src/core.h src/datv.h
+build/test-config: checks/test_config.c src/core.c src/teletext_font.h src/core.h src/datv.h
 	$(HOSTCC) $(CFLAGS) -Isrc checks/test_config.c src/core.c -o $@
-build/test-config.exe: checks/test_config.c src/core.c src/core.h src/datv.h
+build/test-config.exe: checks/test_config.c src/core.c src/teletext_font.h src/core.h src/datv.h
 	$(CC) $(CFLAGS) -static -Isrc checks/test_config.c src/core.c -o $@
 
-build/test-config-linux-ui: checks/test_config_linux_ui.c src/linux.c src/teletext_linux.h src/quality_linux.h src/dvb_linux.h src/core.c src/app_info.c src/datv.h build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
+build/test-config-linux-ui: checks/test_config_linux_ui.c src/linux.c src/teletext_linux.h src/quality_linux.h src/dvb_linux.h src/core.c src/teletext_font.h src/app_info.c src/datv.h build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
 	$(HOSTCC) $(CFLAGS) -Isrc checks/test_config_linux_ui.c src/core.c src/app_info.c build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -o $@ $(shell pkg-config --cflags --libs gtk+-3.0 pangocairo) -lstdc++ -lpthread $(AUDIO_LIBS) -lm
-build/test-config-windows-ui.exe: checks/test_config_windows_ui.c src/main.c src/teletext_windows.h src/quality_windows.h src/dvb_windows.h src/core.c src/app_info.c src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
+build/test-config-windows-ui.exe: checks/test_config_windows_ui.c src/main.c src/teletext_windows.h src/quality_windows.h src/dvb_windows.h src/core.c src/teletext_font.h src/app_info.c src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
 	$(CC) $(CFLAGS) -municode -static -Isrc checks/test_config_windows_ui.c src/core.c src/app_info.c build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a -o $@ $(LDLIBS) -lstdc++ -lwinpthread -lssp -lshell32
 
-build/test-quality-linux-ui: checks/test_quality_linux_ui.c src/linux.c src/teletext_linux.h src/quality_linux.h src/dvb_linux.h src/core.c src/app_info.c src/datv.h build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
+build/test-quality-linux-ui: checks/test_quality_linux_ui.c src/linux.c src/teletext_linux.h src/quality_linux.h src/dvb_linux.h src/core.c src/teletext_font.h src/app_info.c src/datv.h build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
 	$(HOSTCC) $(CFLAGS) -Isrc checks/test_quality_linux_ui.c src/core.c src/app_info.c build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -o $@ $(shell pkg-config --cflags --libs gtk+-3.0 pangocairo) -lstdc++ -lpthread $(AUDIO_LIBS) -lm
 
-build/test-quality-windows-ui.exe: checks/test_quality_windows_ui.c src/main.c src/teletext_windows.h src/quality_windows.h src/dvb_windows.h src/core.c src/app_info.c src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
+build/test-quality-windows-ui.exe: checks/test_quality_windows_ui.c src/main.c src/teletext_windows.h src/quality_windows.h src/dvb_windows.h src/core.c src/teletext_font.h src/app_info.c src/datv.h build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
 	$(CC) $(CFLAGS) -municode -static -Isrc checks/test_quality_windows_ui.c src/core.c src/app_info.c build/app.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a -o $@ $(LDLIBS) -lstdc++ -lwinpthread -lssp -lshell32
 
 
-build/test-pm5644: checks/test_pm5644.c src/core.c src/core.h src/pm5544.h build/pm5544-linux.o
+build/test-pm5644: checks/test_pm5644.c src/core.c src/teletext_font.h src/core.h src/pm5544.h build/pm5544-linux.o
 	$(HOSTCC) $(CFLAGS) -Isrc checks/test_pm5644.c src/core.c build/pm5544-linux.o -o $@
 
-build/test-pm5644.exe: checks/test_pm5644.c src/core.c src/core.h src/pm5544.h build/pm5544-windows.o
+build/test-pm5644.exe: checks/test_pm5644.c src/core.c src/teletext_font.h src/core.h src/pm5544.h build/pm5544-windows.o
 	$(CC) $(CFLAGS) -static -Isrc checks/test_pm5644.c src/core.c build/pm5544-windows.o -o $@
 
 
-build/test-dvb: checks/test_dvb.c src/core.c src/core.h src/datv.h
+build/test-dvb: checks/test_dvb.c src/core.c src/teletext_font.h src/core.h src/datv.h
 	$(HOSTCC) $(CFLAGS) -Isrc checks/test_dvb.c src/core.c -o $@
-build/test-dvb.exe: checks/test_dvb.c src/core.c src/core.h src/datv.h
+build/test-dvb.exe: checks/test_dvb.c src/core.c src/teletext_font.h src/core.h src/datv.h
 	$(CC) $(CFLAGS) -static -Isrc checks/test_dvb.c src/core.c -o $@
 
 build/test-eit: checks/test_eit.cpp src/datv.cpp src/audio_linux.h src/datv.h src/core.h build/core-linux.o build/openh264-linux/libopenh264.a
@@ -133,14 +134,19 @@ test-eit: build/test-eit
 	build/test-eit build/eit-linux
 	$(PYTHON) checks/check_eit.py build/eit-linux
 
-build/test-teletext: checks/test_teletext.cpp src/datv.cpp src/audio_linux.h src/datv.h src/core.h build/core-linux.o build/openh264-linux/libopenh264.a
+build/test-teletext: checks/test_teletext.cpp checks/teletext_level1_fixture.h src/datv.cpp src/audio_linux.h src/datv.h src/core.h build/core-linux.o build/openh264-linux/libopenh264.a
 	$(CXX) $(CXXFLAGS) $(AUDIO_CFLAGS) -Isrc -Ibuild/openh264-linux/codec/api $< build/core-linux.o build/openh264-linux/libopenh264.a -lpthread $(AUDIO_LIBS) -o $@
-build/test-teletext.exe: checks/test_teletext.cpp src/datv.cpp src/datv.h src/core.h build/core-windows.o build/openh264-windows/libopenh264.a
+build/test-teletext.exe: checks/test_teletext.cpp checks/teletext_level1_fixture.h src/datv.cpp src/datv.h src/core.h build/core-windows.o build/openh264-windows/libopenh264.a
 	$(WINCXX) $(CXXFLAGS) -static -Isrc -Ibuild/openh264-windows/codec/api $< build/core-windows.o build/openh264-windows/libopenh264.a -lws2_32 -lwinmm -lwinpthread -lssp -o $@
 .PHONY: test-teletext
 test-teletext: build/test-teletext
 	build/test-teletext build/teletext-linux
 	$(PYTHON) checks/check_teletext.py build/teletext-linux
+
+build/test-teletext-render: checks/test_teletext_render.c checks/teletext_level1_fixture.h checks/teletext_import_cases.h src/core.c src/teletext_font.h src/core.h src/datv.h
+	$(HOSTCC) $(CFLAGS) -Isrc $< src/core.c -o $@
+build/test-teletext-render.exe: checks/test_teletext_render.c checks/teletext_level1_fixture.h checks/teletext_import_cases.h src/core.c src/teletext_font.h src/core.h src/datv.h
+	$(CC) $(CFLAGS) -static -Isrc $< src/core.c -o $@
 
 build/test-timeline: checks/test_timeline.cpp src/datv.cpp src/audio_linux.h src/datv.h src/core.h build/core-linux.o build/openh264-linux/libopenh264.a
 	$(CXX) $(CXXFLAGS) $(AUDIO_CFLAGS) -Isrc -Ibuild/openh264-linux/codec/api $< build/core-linux.o build/openh264-linux/libopenh264.a -lpthread $(AUDIO_LIBS) -o $@
@@ -164,3 +170,9 @@ build/motion-profiles: checks/motion_profiles.cpp src/core.h src/datv.h src/pm55
 	$(CXX) $(CXXFLAGS) -Isrc $< build/core-linux.o build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -lpthread $(AUDIO_LIBS) -o $@
 build/motion-profiles.exe: checks/motion_profiles.cpp src/core.h src/datv.h src/pm5544.h build/core-windows.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
 	$(WINCXX) $(CXXFLAGS) -static -Isrc $< build/core-windows.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a -lws2_32 -lwinmm -lwinpthread -lssp -o $@
+
+.PHONY: camera test-camera
+camera:
+	$(MAKE) -C camera
+test-camera:
+	$(MAKE) -C camera test

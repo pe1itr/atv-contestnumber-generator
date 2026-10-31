@@ -1,5 +1,6 @@
 #include "../src/datv.cpp"
 #include <cassert>
+#include "teletext_level1_fixture.h"
 int main(int argc,char **argv) {
     assert(argc==2);
     TeletextSettings t{}; t.enabled=1;
@@ -41,6 +42,7 @@ int main(int argc,char **argv) {
             assert(!teletext_editor_paste(&editor,"WHITE ON BLUE"));
             editor.cursor=200; teletext_editor_control(&editor,22);
             assert(!teletext_editor_background(&editor,4)); editor.raw[editor.cursor]=127;
+            teletext_level1_fixture(&editor);
             std::strcpy(page.header,label.c_str()); teletext_editor_save(&editor,&page);
             teletext_page_set(&book,index,&page);
         }

@@ -250,8 +250,8 @@ int datv_test_options(int count, const char *const *values, DatvSettings *s, int
     }
     return datv_validate(*s,*w,*h)==NULL;
 }
-/* Level 1 Latin G0 invariant characters. National-option positions are
- * rejected rather than silently displaying another glyph on receivers. */
+/* Supported Latin G0 characters with English national option (C12-C14=000).
+ * Ambiguous ASCII/national-option positions are not accepted as typed text. */
 static int teletext_character(unsigned char c) {
     return c>=32 && c<=126 && !strchr("#@[\\]^_`{|}~",c);
 }
@@ -312,7 +312,7 @@ void teletext_page_delete(TeletextSettings *s,int index) {
     memset(s->extra+s->extra_count*TELETEXT_EXTRA_SIZE,0,sizeof(s->extra)-(size_t)s->extra_count*TELETEXT_EXTRA_SIZE);
 }
 static int teletext_control(unsigned c) {
-    return (c>=1 && c<=7) || (c>=17 && c<=23) || c==28 || c==29;
+    return (c>=1 && c<=9) || c==12 || c==13 || (c>=17 && c<=26) || (c>=28 && c<=31);
 }
 const char *teletext_validate(const TeletextSettings *s) {
     if (s->interval && s->interval!=2 && s->interval!=5 && s->interval!=10) return "Invalid teletext repeat interval.";
@@ -336,9 +336,10 @@ const char *teletext_validate(const TeletextSettings *s) {
         for (int i=0;i<TELETEXT_CELLS;++i) {
             if (i%40==0) mosaic=0;
             unsigned c=teletext_byte(s,i);
+            if (c==13 && i/40==22) return "Double height is not allowed on the last body row.";
             if (teletext_control(c)) {
                 if (c<8) mosaic=0;
-                else if (c<24) mosaic=1;
+                else if (c>=17 && c<=23) mosaic=1;
             } else if (!(mosaic && ((c>=32 && c<=63) || (c>=96 && c<=127))) && !teletext_character(c))
                 return "Unsupported character in text mode. Restore Mosaic colour or erase that cell.";
         }
@@ -358,6 +359,11 @@ const char *teletext_validate(const TeletextSettings *s) {
 
 const char *const teletext_color_names[7]={"Red","Green","Yellow","Blue","Magenta","Cyan","White"};
 const unsigned teletext_colors[8]={0x000000,0xff0000,0x00ff00,0xffff00,0x0000ff,0xff00ff,0x00ffff,0xffffff};
+const TeletextAttribute teletext_attributes[TELETEXT_ATTRIBUTE_COUNT]={
+    {"Normal height",12},{"Double height",13},{"Flash",8},{"Steady",9},
+    {"Conceal",24},{"Contiguous mosaics",25},{"Separated mosaics",26},
+    {"Hold mosaics",30},{"Release mosaics",31}
+};
 void teletext_editor_load(TeletextEditor *e, const TeletextSettings *s) {
     memset(e,0,sizeof(*e)); e->grid=1;
     for (int i=0;i<TELETEXT_CELLS;++i) e->raw[i]=teletext_byte(s,i);
@@ -370,26 +376,60 @@ void teletext_editor_save(const TeletextEditor *e, TeletextSettings *s) {
     }
     s->cells[TELETEXT_CELLS*2]=0;
 }
-TeletextCell teletext_editor_cell(const TeletextEditor *e, int index) {
-    TeletextCell c={.foreground=7};
-    if (index<0 || index>=TELETEXT_CELLS) return c;
-    for (int i=index/40*40;i<=index;++i) {
-        unsigned v=e->raw[i];
-        /* EN 300 706 table 26: backgrounds set-at, colours set-after. */
-        if (v==28) c.background=0;
-        if (v==29) c.background=c.foreground;
-        if (i==index) {
-            c.code=v;
-            if (c.mosaic && ((v>=32 && v<=63) || (v>=96 && v<=127)))
-                c.blocks=(v&31)|((v&64)>>1);
-            return c;
+void teletext_editor_undo(TeletextEditor *e,TeletextEditor *undo) {
+    TeletextEditor previous=*e;
+    memcpy(e->raw,undo->raw,sizeof(e->raw)); e->cursor=undo->cursor;
+    *undo=previous;
+}
+/* EN 300 706 table 26: apply set-at attributes before producing the cell,
+ * and set-after attributes afterwards. Held mosaics retain their own shape. */
+static int teletext_decode_row(const TeletextEditor *e,int row,TeletextCell cells[40]) {
+    TeletextCell state={.foreground=7};
+    unsigned held=32; int hold=0,held_separated=0,has_double=0;
+    for (int col=0;col<40;++col) {
+        unsigned v=e->raw[row*40+col];
+        if (v==9) state.flash=0;
+        if (v==12) { if (state.double_height) held=32; state.double_height=0; }
+        if (v==24) state.conceal=1;
+        if (v==25 || v==26) state.separated=v==26;
+        if (v==28) state.background=0;
+        if (v==29) state.background=state.foreground;
+        if (v==30) hold=1;
+        TeletextCell c=state; c.code=(unsigned char)v; c.display=(unsigned char)(v<32?32:v);
+        if (v<32 && hold && state.mosaic) { c.display=(unsigned char)held; c.separated=held_separated; }
+        if (c.mosaic && (c.display&32)) c.blocks=(c.display&31)|((c.display&64)>>1);
+        cells[col]=c;
+        if (v>=32 && state.mosaic && (v&32)) { held=v; held_separated=state.separated; }
+        if ((v>=1 && v<=7) || (v>=17 && v<=23)) {
+            int mosaic=v>=17;
+            if (state.mosaic!=mosaic) held=32;
+            state.foreground=v&7; state.mosaic=mosaic; state.conceal=0;
         }
-        if (v>=1 && v<=7) { c.foreground=v; c.mosaic=0; }
-        if (v>=17 && v<=23) { c.foreground=v-16; c.mosaic=1; }
+        if (v==8) state.flash=1;
+        if (v==13) { if (!state.double_height) held=32; state.double_height=1; has_double=1; }
+        if (v==31) hold=0;
     }
+    return has_double;
+}
+static int teletext_lower_row(const TeletextEditor *e,int row) {
+    int lower=0;
+    for (int r=0;r<row;++r) {
+        if (lower) { lower=0; continue; }
+        lower=memchr(e->raw+r*40,13,40)!=NULL;
+    }
+    return lower;
+}
+TeletextCell teletext_editor_cell(const TeletextEditor *e, int index) {
+    TeletextCell cells[40],empty={.foreground=7};
+    if (index<0 || index>=TELETEXT_CELLS) return empty;
+    int lower=teletext_lower_row(e,index/40);
+    teletext_decode_row(e,index/40-lower,cells);
+    TeletextCell c=cells[index%40]; c.lower=lower;
+    if (lower && !c.double_height) { c.display=32; c.blocks=0; }
     return c;
 }
 const char *teletext_editor_type(TeletextEditor *e, unsigned c) {
+    if (teletext_lower_row(e,e->cursor/40)) return "This row is occupied by double height text from the row above.";
     if (e->cursor<0 || e->cursor>=TELETEXT_CELLS) return "Select a cell inside the page.";
     if (c>127 || !teletext_character(c)) return "Use unaccented letters, digits and basic punctuation.";
     if (teletext_editor_cell(e,e->cursor).mosaic)
@@ -419,6 +459,8 @@ const char *teletext_editor_background(TeletextEditor *e,int color) {
     for (int i=0;i<3;++i) if (e->raw[p+i]!=' ')
         return "Background needs 3 empty cells. Existing text or graphics will not be overwritten.";
     TeletextCell previous=teletext_editor_cell(e,p);
+    if (previous.lower) return "This row is occupied by double height text from the row above.";
+    if (previous.conceal) return "Background colour codes cancel Conceal. Set the background before Conceal.";
     unsigned mode=previous.mosaic?16:0;
     /* EN 300 706 table 26: set-after colour, set-at background, restore ink. */
     e->raw[p]=(unsigned char)(mode+color);
@@ -427,10 +469,17 @@ const char *teletext_editor_background(TeletextEditor *e,int color) {
     e->cursor=p+3;
     return NULL;
 }
-void teletext_editor_control(TeletextEditor *e, unsigned c) {
-    if (!teletext_control(c)) return;
+const char *teletext_editor_control(TeletextEditor *e, unsigned c) {
+    if (!teletext_control(c)) return "Unsupported Level 1 attribute.";
+    if (teletext_lower_row(e,e->cursor/40)) return "This row is occupied by double height text from the row above.";
+    if (c==13) {
+        if (e->cursor/40==22) return "Double height is not allowed on the last body row.";
+        for (int i=(e->cursor/40+1)*40;i<(e->cursor/40+2)*40;++i)
+            if (e->raw[i]!=' ') return "Double height needs an empty following row.";
+    }
     e->raw[e->cursor]=(unsigned char)c;
     if (e->cursor%40<39) ++e->cursor;
+    return NULL;
 }
 void teletext_editor_key(TeletextEditor *e, int key) {
     int p=e->cursor;
@@ -442,8 +491,8 @@ void teletext_editor_key(TeletextEditor *e, int key) {
     case TT_HOME: p=p/40*40; break;
     case TT_END: p=p/40*40+39; break;
     case TT_ENTER: if (p<TELETEXT_CELLS-40) p=(p/40+1)*40; break;
-    case TT_BACKSPACE: if (p) --p; e->raw[p]=' '; break;
-    case TT_DELETE: e->raw[p]=' '; break;
+    case TT_BACKSPACE: if (p) --p; if (!teletext_lower_row(e,p/40)) e->raw[p]=' '; break;
+    case TT_DELETE: if (!teletext_lower_row(e,p/40)) e->raw[p]=' '; break;
     }
     e->cursor=p;
 }
@@ -452,68 +501,125 @@ void teletext_editor_click(TeletextEditor *e, int x, int y, int width, int heigh
     int col=((x+1)*40-1)/width,row=((y+1)*23-1)/height;
     e->cursor=row*40+col;
     TeletextCell c=teletext_editor_cell(e,e->cursor);
-    if (!c.mosaic || c.code<32) return;
+    if (!c.mosaic || c.code<32 || (c.lower && !c.double_height)) return;
+    if (c.lower) e->cursor-=40;
     int left=col*width/40,top=row*height/23;
     int cw=(col+1)*width/40-left,ch=(row+1)*height/23-top;
-    int bit=(((y-top+1)*3-1)/ch)*2+((x-left+1)*2-1)/cw;
+    int sy=((y-top+1)*(c.double_height?5:10)-1)/ch+(c.lower?5:0);
+    int bit=(sy<3?0:sy<7?1:2)*2+((x-left+1)*2-1)/cw;
     if (bit>5) bit=5;
     unsigned blocks=erase?c.blocks&~(1u<<bit):c.blocks^(1u<<bit);
     e->raw[e->cursor]=(unsigned char)(32|(blocks&31)|((blocks&32)<<1));
 }
-void teletext_editor_example(TeletextEditor *e) {
-    memset(e->raw,' ',sizeof(e->raw)); e->cursor=0;
-    e->raw[0]=3; memcpy(e->raw+5,"ATV STATION",sizeof("ATV STATION")-1);
-    /* Antenna painted on the same 2 x 3 mosaic lattice used by the editor. */
-    for (int row=3;row<12;++row) {
-        e->raw[row*40]=22;
-        for (int col=1;col<40;++col) {
-            unsigned bits=0;
-            for (int b=0;b<6;++b) {
-                int x=col*2+b%2,y=(row-3)*3+b/2;
-                if (x==39 || (y==3 && x>=23 && x<=55) ||
-                    (y==9 && x>=29 && x<=49) || (y==15 && x>=34 && x<=44) ||
-                    (y>=20 && (x==39-(y-20) || x==39+(y-20)))) bits|=1u<<b;
+#include "teletext_font.h"
+static void teletext_plot_cell(TeletextCell c,int x,int y,int w,int h,
+                               TeletextRect rect,void *ctx) {
+    unsigned fg=teletext_colors[c.foreground];
+    int scans=c.double_height?5:10,start=c.lower&&c.double_height?5:0;
+    for (int sy=0;sy<scans;++sy) {
+        int py=sy+start;
+        for (int sx=0;sx<12;) {
+            int first=sx;
+            for (;sx<12;++sx) {
+                int on=0;
+                if (c.mosaic && (c.display&32)) {
+                    int band=py<3?0:py<7?1:2;
+                    on=(c.blocks>>(band*2+sx/6))&1;
+                    if (c.separated && (sx%6==5 || py==2 || py==6 || py==9)) on=0;
+                } else if (c.display>=32 && c.display<=126 && sx<10) {
+                    on=(teletext_font[c.display-32][py]>>(4-sx/2))&1;
+                }
+                if (!on) break;
             }
-            e->raw[row*40+col]=(unsigned char)(32|(bits&31)|((bits&32)<<1));
+            if (sx>first) rect(ctx,x+first*w/12,y+sy*h/scans,
+                sx*w/12-first*w/12,(sy+1)*h/scans-sy*h/scans,fg);
+            ++sx;
         }
     }
-    memcpy(e->raw+14*40+5,"Welcome to our ATV station",sizeof("Welcome to our ATV station")-1);
-    memcpy(e->raw+16*40+5,"Call    : YOUR CALL",sizeof("Call    : YOUR CALL")-1);
-    memcpy(e->raw+17*40+5,"Locator : YOUR LOCATOR",sizeof("Locator : YOUR LOCATOR")-1);
-    memcpy(e->raw+18*40+5,"Antenna : Yagi",sizeof("Antenna : Yagi")-1);
-    memcpy(e->raw+21*40+5,"Reception reports welcome!",sizeof("Reception reports welcome!")-1);
 }
 void teletext_editor_plot(const TeletextEditor *e,int width,int height,
-                          TeletextRect rect,TeletextGlyph glyph,void *ctx) {
-    for (int i=0;i<TELETEXT_CELLS;++i) {
-        int col=i%40,row=i/40,x=col*width/40,y=row*height/23;
-        int w=(col+1)*width/40-x,h=(row+1)*height/23-y;
-        TeletextCell c=teletext_editor_cell(e,i);
-        unsigned fg=teletext_colors[c.foreground];
-        rect(ctx,x,y,w,h,teletext_colors[c.background]);
-        if (c.code>=32) {
-            if (c.mosaic && ((c.code<=63) || c.code>=96)) {
-                for (int b=0;b<6;++b) if (c.blocks&(1<<b)) {
-                    int xx=(b%2)*w/2,yy=(b/2)*h/3;
-                    rect(ctx,x+xx,y+yy,(b%2+1)*w/2-xx,(b/2+1)*h/3-yy,fg);
+                          TeletextRect rect,void *ctx) {
+    if (width<40 || height<23) return;
+    TeletextCell cells[40]; int lower=0;
+    for (int row=0;row<23;++row) {
+        int next_lower=0;
+        if (!lower) next_lower=teletext_decode_row(e,row,cells);
+        for (int col=0;col<40;++col) {
+            int i=row*40+col,x=col*width/40,y=row*height/23;
+            int w=(col+1)*width/40-x,h=(row+1)*height/23-y;
+            TeletextCell c=cells[col]; c.lower=lower;
+            rect(ctx,x,y,w,h,teletext_colors[c.background]);
+            if ((!lower || c.double_height) && !(c.conceal && !e->reveal) && !(c.flash && e->flash_off))
+                teletext_plot_cell(c,x,y,w,h,rect,ctx);
+            if (e->grid && !lower && c.code<32) {
+                /* Editing annotations only; the clean preview shows spacing/held mosaics. */
+                const char *marks=" TTTTTTTFS  ND   MMMMMMMCHS BCKR";
+                TeletextCell mark={.foreground=7,.display=(unsigned char)marks[c.code]};
+                teletext_plot_cell(mark,x,y,w,h,rect,ctx);
+            }
+            if (e->grid) {
+                rect(ctx,x,y,w,1,0x353535); rect(ctx,x,y,1,h,0x353535);
+                if (c.mosaic && (!lower || c.double_height)) {
+                    rect(ctx,x+w/2,y,1,h,0x353535);
+                    if (c.double_height) rect(ctx,x,y+(lower?2:3)*h/5,w,1,0x353535);
+                    else {
+                        rect(ctx,x,y+3*h/10,w,1,0x353535);
+                        rect(ctx,x,y+7*h/10,w,1,0x353535);
+                    }
                 }
-            } else glyph(ctx,x,y,w,h,(char)c.code,fg);
-        } else if (e->grid) {
-            char mark=c.code<8?'T':c.code<24?'M':c.code==28?'B':'C';
-            glyph(ctx,x,y,w,h,mark,c.code<24?teletext_colors[c.code&7]:0xaaaaaa);
-        }
-        if (e->grid) {
-            rect(ctx,x,y,w,1,0x353535); rect(ctx,x,y,1,h,0x353535);
-            if (c.mosaic) {
-                rect(ctx,x+w/2,y,1,h,0x353535);
-                rect(ctx,x,y+h/3,w,1,0x353535); rect(ctx,x,y+2*h/3,w,1,0x353535);
-            }
-            if (i==e->cursor) {
-                rect(ctx,x,y,w,2,0xffa000); rect(ctx,x,y+h-2,w,2,0xffa000);
-                rect(ctx,x,y,2,h,0xffa000); rect(ctx,x+w-2,y,2,h,0xffa000);
+                if (i==e->cursor) {
+                    rect(ctx,x,y,w,2,0xffa000); rect(ctx,x,y+h-2,w,2,0xffa000);
+                    rect(ctx,x,y,2,h,0xffa000); rect(ctx,x+w-2,y,2,h,0xffa000);
+                }
             }
         }
+        lower=next_lower;
     }
+}
+typedef struct { TeletextRect rect; void *ctx; int top, left; } TeletextOffset;
+static void teletext_offset_rect(void *ctx,int x,int y,int w,int h,unsigned rgb) {
+    TeletextOffset *offset=ctx; offset->rect(offset->ctx,x+offset->left,y+offset->top,w,h,rgb);
+}
+void teletext_page_plot(const TeletextEditor *e,const char *header,int page,
+                        int width,int height,TeletextRect rect,void *ctx) {
+    if (width<40 || height<24) return;
+    int top=height/24;
+    char title[33],number[9];
+    if (header && *header) snprintf(title,sizeof(title),"%.32s",header);
+    else snprintf(title,sizeof(title),"ATV TELETEXT %d",page);
+    /* Columns 0-7 are receiver UI, not transmitted header text. */
+    snprintf(number,sizeof(number),"P%03d",page);
+    rect(ctx,0,0,width,top,0);
+    for (int col=0;col<40;++col) {
+        unsigned char ch=' ';
+        if (col<(int)strlen(number)) ch=(unsigned char)number[col];
+        if (col>=8 && col-8<(int)strlen(title)) ch=(unsigned char)title[col-8];
+        TeletextCell c={.foreground=7,.display=ch};
+        int x=col*width/40;
+        teletext_plot_cell(c,x,0,(col+1)*width/40-x,top,rect,ctx);
+    }
+    TeletextOffset offset={rect,ctx,top,0};
+    teletext_editor_plot(e,width,height-top,teletext_offset_rect,&offset);
+}
+void teletext_page_click(TeletextEditor *e,int x,int y,int width,int height,int erase) {
+    if (height<24 || y<height/24) return;
+    teletext_editor_click(e,x,y-height/24,width,height-height/24,erase);
+}
+void teletext_viewport(int width,int height,int *left,int *top,int *pw,int *ph) {
+    *pw=width; *ph=width*3/4;
+    if (*ph>height) { *ph=height; *pw=height*4/3; }
+    *left=(width-*pw)/2; *top=(height-*ph)/2;
+}
+void teletext_view_plot(const TeletextEditor *e,const char *header,int page,
+                        int width,int height,TeletextRect rect,void *ctx) {
+    int x,y,w,h; teletext_viewport(width,height,&x,&y,&w,&h);
+    rect(ctx,0,0,width,height,0x181818);
+    TeletextOffset offset={rect,ctx,y,x};
+    teletext_page_plot(e,header,page,w,h,teletext_offset_rect,&offset);
+}
+void teletext_view_click(TeletextEditor *e,int x,int y,int width,int height,int erase) {
+    int left,top,w,h; teletext_viewport(width,height,&left,&top,&w,&h);
+    teletext_page_click(e,x-left,y-top,w,h,erase);
 }
 
 const char *teletext_from_text(TeletextSettings *s, const char *text) {
@@ -550,6 +656,91 @@ void teletext_to_text(const TeletextSettings *s, char out[TELETEXT_INPUT_SIZE], 
         if (row<last) { if (crlf) out[pos++]='\r'; out[pos++]='\n'; }
     }
     out[pos]=0;
+}
+static const char *teletext_tti_line(TeletextEditor *e,char *line,unsigned *seen,int *page_seen) {
+    if (strlen(line)<3 || line[2]!=',') return "Expected a TTI record such as PN,10000 or OL,1,text.";
+    char *value=line+3;
+    if (!strncmp(line,"OL,",3)) {
+        char *end; long row=strtol(value,&end,10);
+        if (end==value || *end!=',' || row<1 || row>23)
+            return "Only body rows OL,1 through OL,23 are supported. Edit the header in the editor.";
+        if (*seen&(1u<<row)) return "Duplicate output row.";
+        *seen|=1u<<row; int col=0;
+        for (const unsigned char *p=(const unsigned char *)end+1;*p;++p) {
+            unsigned c=*p;
+            if (c==27) {
+                if (p[1]<64 || p[1]>95) return "Incomplete or invalid TTI ESC sequence.";
+                c=*++p-64;
+            } else if (c>=128 && c<=159) c-=128;
+            else if (c<32 || c>127) return "TTI needs 7-bit text and ESC or 8-bit translated control codes.";
+            if (c<32 && !teletext_control(c)) return "This TTI attribute is not supported by our Level 1 profile.";
+            if (col==40) return "An output row exceeds 40 cells, including attribute cells.";
+            e->raw[(row-1)*40+col++]=(unsigned char)c;
+        }
+        return NULL;
+    }
+    if (!strncmp(line,"PN,",3)) {
+        if ((*page_seen)++) return "Load one page at a time; multiple PN records are not supported.";
+        if (strlen(value)!=5 || value[0]<'1' || value[0]>'8' ||
+            teletext_hex(value[1])<0 || teletext_hex(value[2])<0 || value[3]!='0' || value[4]!='0')
+            return "Use one PN,mpp00 page without subpages. The selected editor page is the destination.";
+        return NULL;
+    }
+    if (!strncmp(line,"DE,",3)) return NULL; /* Description, not displayed header. */
+    if (!strncmp(line,"CT,",3)) {
+        char *end; long n=strtol(value,&end,10);
+        if (end==value || n<1 || n>86400 || (*end!=',') ||
+            (strcmp(end,",T") && strcmp(end,",C"))) return "Invalid TTI cycle time.";
+        return NULL; /* Editor's existing carousel interval is authoritative. */
+    }
+    if (!strncmp(line,"PS,",3)) {
+        unsigned flags=0;
+        if (strlen(value)!=4) return "Invalid TTI page status.";
+        for (int i=0;i<4;++i) { int v=teletext_hex(value[i]); if (v<0) return "Invalid TTI page status."; flags=flags*16+(unsigned)v; }
+        if (flags&0x03bf) return "TTI page flags or national character set do not match this Level 1 profile.";
+        return NULL;
+    }
+    if (!strncmp(line,"SC,",3)) return strcmp(value,"0000")?"TTI subpages are not supported.":NULL;
+    if (!strncmp(line,"RE,",3)) return strcmp(value,"0")?"Only the Latin region is supported.":NULL;
+    if (!strncmp(line,"PF,",3)) return strcmp(value,"0,0")?"Only basic Level 1, 7-bit page coding is supported.":NULL;
+    return "Unsupported TTI record (for example Fastext or enhancement packets).";
+}
+int teletext_import_data(TeletextSettings *page,const unsigned char *data,size_t length,
+                         int tti,char *error,size_t error_size) {
+    const char *problem=NULL; unsigned line_number=0;
+    if (length>TELETEXT_IMPORT_LIMIT) problem="Page files must be at most 16 KiB.";
+    else if (memchr(data,0,length)) problem="The file contains a NUL byte; use a TXT or TTI page file.";
+    if (problem) { snprintf(error,error_size,"%s",problem); return 0; }
+    if (length>=3 && !memcmp(data,"\xef\xbb\xbf",3)) { data+=3; length-=3; }
+    char buffer[TELETEXT_IMPORT_LIMIT+1]; memcpy(buffer,data,length); buffer[length]=0;
+    TeletextSettings candidate={0}; candidate.enabled=page->enabled;
+    memcpy(candidate.header,page->header,sizeof(candidate.header));
+    if (!tti) problem=teletext_from_text(&candidate,buffer);
+    else {
+        TeletextEditor e; teletext_editor_load(&e,&candidate);
+        unsigned seen=0; int page_seen=0; char *line=buffer;
+        while (line && !problem) {
+            ++line_number;
+            char *end=strchr(line,'\n'); if (end) *end=0;
+            size_t n=strlen(line); if (n && line[n-1]=='\r') line[n-1]=0;
+            if (*line) problem=teletext_tti_line(&e,line,&seen,&page_seen);
+            if (!end) break;
+            line=end+1;
+        }
+        if (!problem && !seen) problem="No output rows found in this TTI file.";
+        if (!problem) teletext_editor_save(&e,&candidate);
+    }
+    if (!problem) { line_number=0; problem=teletext_validate(&candidate); }
+    if (problem) {
+        if (tti && line_number) snprintf(error,error_size,"TTI line %u: %s",line_number,problem);
+        else snprintf(error,error_size,"%s",problem);
+        return 0;
+    }
+    /* Import only the body; settings and the other carousel pages are untouched. */
+    memcpy(page->text,candidate.text,sizeof(page->text));
+    memcpy(page->cells,candidate.cells,sizeof(page->cells));
+    if (error_size) error[0]=0;
+    return 1;
 }
 const char *datv_validate(DatvSettings s, int width, int height) {
     if (s.motion && (s.motion!=1 || width!=160 || height!=120 || s.fps!=10 ||
@@ -831,6 +1022,19 @@ static FILE *config_open(const char *path, int writing) {
 #else
     return fopen(path,writing?"wb":"rb");
 #endif
+}
+int teletext_import_file(TeletextSettings *page,const char *path,char *error,size_t error_size) {
+    const char *ext=strrchr(path,'.'); int tti=0;
+    if (ext && strlen(ext)==4 && (ext[1]|32)=='t' && (ext[2]|32)=='t' && (ext[3]|32)=='i') tti=1;
+    else if (!ext || strlen(ext)!=4 || (ext[1]|32)!='t' || (ext[2]|32)!='x' || (ext[3]|32)!='t') {
+        snprintf(error,error_size,"Choose a .tti or .txt page file."); return 0;
+    }
+    FILE *f=config_open(path,0);
+    if (!f) { snprintf(error,error_size,"Cannot open the page file: %s",strerror(errno)); return 0; }
+    unsigned char data[TELETEXT_IMPORT_LIMIT+1]; size_t n=fread(data,1,sizeof(data),f);
+    int failed=ferror(f); if (fclose(f)) failed=1;
+    if (failed) { snprintf(error,error_size,"Cannot read the page file."); return 0; }
+    return teletext_import_data(page,data,n,tti,error,error_size);
 }
 int config_load(const char *path, AppConfig *out) {
     FILE *f=config_open(path,0);

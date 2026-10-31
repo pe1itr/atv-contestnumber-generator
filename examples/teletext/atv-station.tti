@@ -1,0 +1,16 @@
+PN,10000
+DE,ATV station example
+PS,C040
+SC,0000
+CT,2,T
+RE,0
+PF,0,0
+OL,1,C    ATV STATION                        
+OL,4,V
+OL,7,CM LIVE ATV                             
+OL,10,GH ON AIRI                              
+OL,15,     Welcome to our ATV station         
+OL,17,     Call    : YOUR CALL                
+OL,18,     Locator : YOUR LOCATOR             
+OL,19,     Band    : 70 cm                    
+OL,22,     Reception reports welcome!         
