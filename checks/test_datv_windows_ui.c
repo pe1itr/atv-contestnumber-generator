@@ -7,6 +7,68 @@ static wchar_t target[MAX_PATH];
 static SOCKET receiver;
 static int port, received;
 static ULONGLONG udp_deadline;
+static void assert_control_visible(HWND window,int id) {
+    HWND child=GetDlgItem(window,id);
+    RECT r,client; GetWindowRect(child,&r); GetClientRect(window,&client);
+    MapWindowPoints(NULL,window,(POINT *)&r,2);
+    if (!(r.left>=0 && r.top>=0 && r.bottom<=client.bottom &&
+        (r.right<=client.right || (r.left==0 && r.right-r.left>client.right))))
+        fprintf(stderr,"Control %d: (%ld,%ld)-(%ld,%ld), viewport %ldx%ld\n",
+            id,r.left,r.top,r.right,r.bottom,client.right,client.bottom);
+    assert(r.left>=0 && r.top>=0 && r.bottom<=client.bottom);
+    assert(r.right<=client.right || (r.left==0 && r.right-r.left>client.right));
+    POINT middle={(r.left+min(r.right,client.right))/2,(r.top+r.bottom)/2};
+    assert(ChildWindowFromPoint(window,middle)==child);
+}
+static void check_udp_viewport(HWND window) {
+    RECT original; GetWindowRect(window,&original);
+    MONITORINFO monitor={.cbSize=sizeof(monitor)};
+    assert(GetMonitorInfoW(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&monitor));
+    HDC dc=GetDC(window);
+    printf("Windows UDP viewport: work area %ldx%ld, DPI %d, window %ldx%ld\n",
+        monitor.rcWork.right-monitor.rcWork.left,monitor.rcWork.bottom-monitor.rcWork.top,
+        GetDeviceCaps(dc,LOGPIXELSX),original.right-original.left,original.bottom-original.top);
+    ReleaseDC(window,dc);
+    assert(original.left>=monitor.rcWork.left && original.top>=monitor.rcWork.top);
+    assert(original.right<=monitor.rcWork.right && original.bottom<=monitor.rcWork.bottom);
+    /* Force overflow in both directions, independent of the test desktop/DPI. */
+    SetWindowPos(window,NULL,0,0,(original.right-original.left)*2/3,
+        (original.bottom-original.top)/2,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
+    const int fields[]={IDC_UDP_IP,IDC_UDP_LOCALHOST,IDC_UDP_PORT,IDC_DVB_SYSTEM,
+        IDC_DVB_GUARD,IDC_INCLUDE_EIT,IDC_INCLUDE_TELETEXT,IDC_TRANSPORT_BUFFER,
+        IDC_UDP_START,IDC_UDP_APPLY,IDC_UDP_PREVIEW,IDCANCEL};
+    for (size_t i=0;i<sizeof(fields)/sizeof(fields[0]);++i) {
+        if (!IsWindowEnabled(GetDlgItem(window,fields[i]))) continue;
+        SendMessageW(window,WM_NEXTDLGCTL,(WPARAM)GetDlgItem(window,fields[i]),TRUE);
+        assert(GetFocus()==GetDlgItem(window,fields[i]));
+        assert_control_visible(window,fields[i]);
+    }
+    SendMessageW(window,WM_VSCROLL,SB_TOP,0);
+    assert(GetScrollPos(window,SB_VERT)==0);
+    SendMessageW(window,WM_MOUSEWHEEL,MAKEWPARAM(0,(WORD)-WHEEL_DELTA),0);
+    assert(GetScrollPos(window,SB_VERT)>0);
+    SendMessageW(window,WM_HSCROLL,SB_LEFT,0);
+    SendMessageW(window,WM_VSCROLL,SB_BOTTOM,0);
+    assert_control_visible(window,IDC_UDP_START);
+    SendMessageW(window,WM_HSCROLL,SB_RIGHT,0);
+    assert_control_visible(window,IDCANCEL);
+    SetWindowPos(window,NULL,0,0,original.right-original.left,original.bottom-original.top,
+        SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
+    SendMessageW(window,WM_NEXTDLGCTL,(WPARAM)GetDlgItem(window,IDC_UDP_IP),TRUE);
+    assert_control_visible(window,IDC_UDP_IP);
+    /* Real tab traversal must also reveal every focusable control. */
+    HWND first=GetFocus(); int count=0;
+    do {
+        SendMessageW(window,WM_NEXTDLGCTL,FALSE,FALSE);
+        assert_control_visible(window,GetDlgCtrlID(GetFocus()));
+        assert(++count<40);
+    } while (GetFocus()!=first);
+    assert(count>=12);
+    SendMessageW(window,WM_VSCROLL,SB_BOTTOM,0);
+    const int buttons[]={IDC_UDP_START,IDC_UDP_STOP,IDC_UDP_APPLY,IDC_UDP_PREVIEW,IDCANCEL};
+    for (size_t i=0;i<sizeof(buttons)/sizeof(buttons[0]);++i) assert_control_visible(window,buttons[i]);
+    puts("Windows UDP UI: schermbegrenzing, scrollbalken, muiswiel en Tab-bereikbaarheid OK.");
+}
 static void select_dvb(HWND window,int id,int index) {
     SendDlgItemMessageW(window,id,CB_SETCURSEL,index,0);
     SendMessageW(window,WM_COMMAND,MAKEWPARAM(id,CBN_SELCHANGE),0);
@@ -90,6 +152,7 @@ static BOOL CALLBACK drive_window(HWND window,LPARAM unused) {
         wchar_t status[512]; GetDlgItemTextW(window,IDC_UDP_STATUS,status,512);
         if (stage==10) {
             stage=-10; /* Synchronous control changes may dispatch the timer again. */
+            check_udp_viewport(window);
             check_dvb(window,IDC_UDP_BITRATE);
             CheckDlgButton(window,IDC_INCLUDE_EIT,BST_CHECKED);
             assert(GetDlgItemInt(window,IDC_UDP_PORT,NULL,FALSE)==10000);

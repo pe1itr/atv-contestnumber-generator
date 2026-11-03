@@ -272,9 +272,98 @@ typedef struct {
     Resolution size;
     char call[25], locator[49];
     DatvStream *stream;
+    int content_width, content_height, scroll_x, scroll_y, scroll_step, laying_out;
 } UdpDialog;
 #include "quality_windows.h"
 
+/* Keep the resource's DPI-scaled font and control sizes. Only the viewport is
+   reduced on small desktops; scrolling also reveals controls reached by Tab. */
+static void udp_scroll_to(HWND window,UdpDialog *d,int x,int y) {
+    SCROLLINFO si={.cbSize=sizeof(si),.fMask=SIF_RANGE|SIF_PAGE};
+    GetScrollInfo(window,SB_HORZ,&si);
+    int max_x=si.nMax-(int)si.nPage+1;
+    GetScrollInfo(window,SB_VERT,&si);
+    int max_y=si.nMax-(int)si.nPage+1;
+    x=max(0,min(x,max_x)); y=max(0,min(y,max_y));
+    int dx=d->scroll_x-x,dy=d->scroll_y-y;
+    if (!dx && !dy) return;
+    d->scroll_x=x; d->scroll_y=y;
+    for (HWND child=GetWindow(window,GW_CHILD);child;child=GetWindow(child,GW_HWNDNEXT)) {
+        RECT r; GetWindowRect(child,&r); MapWindowPoints(NULL,window,(POINT *)&r,2);
+        SetWindowPos(child,NULL,r.left+dx,r.top+dy,0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE);
+    }
+    SetScrollPos(window,SB_HORZ,x,TRUE); SetScrollPos(window,SB_VERT,y,TRUE);
+    InvalidateRect(window,NULL,TRUE);
+}
+static void udp_reveal_control(HWND window,HWND child,UdpDialog *d);
+static void udp_scroll_layout(HWND window,UdpDialog *d) {
+    if (!d || !d->content_height || d->laying_out) return;
+    d->laying_out=1;
+    /* Adding either scrollbar can make the other necessary. */
+    for (int pass=0;pass<3;++pass) {
+        RECT r; GetClientRect(window,&r);
+        SCROLLINFO si={.cbSize=sizeof(si),.fMask=SIF_RANGE|SIF_PAGE,
+            .nMin=0,.nMax=d->content_width-1,.nPage=(UINT)r.right};
+        SetScrollInfo(window,SB_HORZ,&si,TRUE);
+        si.nMax=d->content_height-1; si.nPage=(UINT)r.bottom;
+        SetScrollInfo(window,SB_VERT,&si,TRUE);
+    }
+    udp_scroll_to(window,d,d->scroll_x,d->scroll_y);
+    d->laying_out=0;
+    HWND focused=GetFocus();
+    if (focused && GetParent(focused)==window) udp_reveal_control(window,focused,d);
+}
+static void udp_reveal_control(HWND window,HWND child,UdpDialog *d) {
+    RECT r,client; GetWindowRect(child,&r); MapWindowPoints(NULL,window,(POINT *)&r,2);
+    GetClientRect(window,&client);
+    int x=d->scroll_x,y=d->scroll_y;
+    if (r.bottom-r.top>client.bottom || r.top<0) y+=r.top;
+    else if (r.bottom>client.bottom) y+=r.bottom-client.bottom;
+    if (r.right-r.left>client.right || r.left<0) x+=r.left;
+    else if (r.right>client.right) x+=r.right-client.right;
+    udp_scroll_to(window,d,x,y);
+}
+static LRESULT CALLBACK udp_control_scroll(HWND child,UINT message,WPARAM wp,LPARAM lp,UINT_PTR id,DWORD_PTR data) {
+    if (message==WM_SETFOCUS) udp_reveal_control(GetParent(child),child,(UdpDialog *)data);
+    if (message==WM_NCDESTROY) RemoveWindowSubclass(child,udp_control_scroll,id);
+    return DefSubclassProc(child,message,wp,lp);
+}
+static void udp_fit_window(HWND window,UdpDialog *d) {
+    RECT client,outer,unit={0,0,0,12}; GetClientRect(window,&client); GetWindowRect(window,&outer);
+    d->content_width=client.right; d->content_height=client.bottom;
+    MapDialogRect(window,&unit); d->scroll_step=unit.bottom;
+    for (HWND child=GetWindow(window,GW_CHILD);child;child=GetWindow(child,GW_HWNDNEXT))
+        SetWindowSubclass(child,udp_control_scroll,1,(DWORD_PTR)d);
+    MONITORINFO monitor={.cbSize=sizeof(monitor)};
+    if (GetMonitorInfoW(MonitorFromWindow(GetParent(window),MONITOR_DEFAULTTONEAREST),&monitor)) {
+        RECT work=monitor.rcWork;
+        int width=outer.right-outer.left,height=outer.bottom-outer.top;
+        /* Leave room for the vertical bar instead of needlessly introducing
+           horizontal scrolling on a short but otherwise wide enough screen. */
+        if (height>work.bottom-work.top) width+=GetSystemMetrics(SM_CXVSCROLL);
+        if (width>work.right-work.left) height+=GetSystemMetrics(SM_CYHSCROLL);
+        width=min(width,work.right-work.left); height=min(height,work.bottom-work.top);
+        int x=max(work.left,min(outer.left,work.right-width));
+        int y=max(work.top,min(outer.top,work.bottom-height));
+        SetWindowPos(window,NULL,x,y,width,height,SWP_NOZORDER|SWP_NOACTIVATE);
+    }
+    udp_scroll_layout(window,d);
+}
+static void udp_scroll_bar(HWND window,UdpDialog *d,int bar,int action) {
+    SCROLLINFO si={.cbSize=sizeof(si),.fMask=SIF_ALL}; GetScrollInfo(window,bar,&si);
+    int pos=si.nPos;
+    switch (action) {
+    case SB_TOP: pos=0; break;
+    case SB_BOTTOM: pos=si.nMax; break;
+    case SB_LINEUP: pos-=d->scroll_step; break;
+    case SB_LINEDOWN: pos+=d->scroll_step; break;
+    case SB_PAGEUP: pos-=(int)si.nPage; break;
+    case SB_PAGEDOWN: pos+=(int)si.nPage; break;
+    case SB_THUMBTRACK: case SB_THUMBPOSITION: pos=si.nTrackPos; break;
+    default: return;
+    }
+    udp_scroll_to(window,d,bar==SB_HORZ?pos:d->scroll_x,bar==SB_VERT?pos:d->scroll_y);
+}
 static void udp_status_message(HWND window,const char *message) {
     wchar_t text[512]; MultiByteToWideChar(CP_UTF8,0,message,-1,text,512);
     SetDlgItemTextW(window,IDC_UDP_STATUS,text);
@@ -315,7 +404,19 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
             EnableWindow(GetDlgItem(window,IDC_INCLUDE_EIT),FALSE); EnableWindow(GetDlgItem(window,IDC_INCLUDE_TELETEXT),FALSE);
         }
         EnableWindow(GetDlgItem(window,IDC_UDP_STOP),FALSE);
+        udp_fit_window(window,d);
         if (!SetTimer(window,1,200,NULL)) { EndDialog(window,0); return TRUE; }
+        return TRUE;
+    }
+    if (message==WM_SIZE) { udp_scroll_layout(window,d); return TRUE; }
+    if (d && (message==WM_VSCROLL || message==WM_HSCROLL)) {
+        udp_scroll_bar(window,d,message==WM_VSCROLL?SB_VERT:SB_HORZ,LOWORD(wp)); return TRUE;
+    }
+    if (d && message==WM_MOUSEWHEEL) {
+        UINT lines=3; SystemParametersInfoW(SPI_GETWHEELSCROLLLINES,0,&lines,0);
+        RECT r; GetClientRect(window,&r);
+        int step=lines==WHEEL_PAGESCROLL?r.bottom:(int)lines*d->scroll_step;
+        udp_scroll_to(window,d,d->scroll_x,d->scroll_y-MulDiv((short)HIWORD(wp),step,WHEEL_DELTA));
         return TRUE;
     }
     if (message==WM_TIMER) { udp_poll(window,d); return TRUE; }
