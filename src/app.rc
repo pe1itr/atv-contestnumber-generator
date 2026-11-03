@@ -97,7 +97,7 @@ BEGIN
     LTEXT "Guard interval (DVB-T, 2K)", -1, 12, 233, 192, 12
     COMBOBOX IDC_DVB_GUARD, 210, 230, 113, 105, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT "DVB-S2: normal frames. DVB-T: SR/BW is bandwidth in kHz.", -1, 12, 252, 410, 12
-    LTEXT "Contest tip: use 4 fps and GOP 2.", IDC_UDP_NOTE, 12, 270, 423, 12
+    LTEXT "Contest tip: use 4 fps and GOP 4.", IDC_UDP_NOTE, 12, 270, 423, 12
     LTEXT "Start transmits the current image without audio.\nStop and close this window to change the image. Closing also stops the stream.", -1, 12, 288, 423, 28
     CONTROL "Include EIT programme information (Config > EIT)", IDC_INCLUDE_EIT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 320, 423, 16
     CONTROL "Include teletext pages", IDC_INCLUDE_TELETEXT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 12, 340, 423, 16

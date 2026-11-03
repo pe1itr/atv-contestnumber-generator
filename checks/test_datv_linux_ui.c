@@ -107,6 +107,7 @@ static gboolean drive_dialogs(gpointer unused) {
             GtkWidget *ip=gtk_grid_get_child_at(grid,1,0), *port_field=gtk_grid_get_child_at(grid,1,1);
             const char *status=gtk_label_get_text(GTK_LABEL(gtk_grid_get_child_at(grid,0,7)));
             if (stage==10) {
+                assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(gtk_grid_get_child_at(grid,1,4)))==4);
                 check_dvb(grid,2);
                 gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(gtk_grid_get_child_at(grid,0,8)),TRUE);
                 assert(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(port_field))==10000);

@@ -217,6 +217,9 @@ if __name__=="__main__":
     reference_hashes = capture(windows,13,120000,10,2)
     for bitrate in (30160,30080,30718,36862,30411,30654,30890,34800,31586):
         capture(windows,6,bitrate,1,1)
+    # DVB-T 40 kHz at its lowest selectable TS bitrate, contest tip / new GOP.
+    for height in (120,90):
+        capture(windows,6,30160,4,4,160,height)
     capture(windows,5,60000,2,1)
     capture(windows,5,240000,10,1)
     capture(windows,5,115196,10,2)

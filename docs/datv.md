@@ -438,7 +438,9 @@ Schakel **Config → Genius level 2** in en kies **File → DATV UDP-uitvoer...*
 IPv4-adres van Portsdown en de poort in (standaard **10000**). Alleen unicast IPv4
 wordt ondersteund; geen hostnamen, IPv6, multicast of globale broadcast.
 De TS-bitrate is opnieuw de volledige bitrate in bit/s die Portsdown opgeeft.
-De UDP-instellingen beginnen met **120000 bit/s, 10 beelden/s en GOP 2**.
+De UDP-instellingen beginnen met **120000 bit/s, 10 beelden/s en GOP 4**.
+Bij lage bitrates, zoals DVB-T 40 kHz, probeer je de laagste resolutie met
+4 beelden/s en GOP 4. Opgeslagen instellingen blijven behouden.
 Deze waarden zijn een uitgangspunt; lagere bitrates kunnen een kleiner beeld,
 lagere beeldfrequentie of langere GOP nodig hebben.
 

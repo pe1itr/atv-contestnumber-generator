@@ -485,7 +485,7 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     gtk_grid_attach(GTK_GRID(grid),d.localhost,2,0,1,1);
     dvb_controls_init(&d.dvb,d.fields[2],app->udp_dvb);
     gtk_grid_attach(GTK_GRID(grid),d.dvb.box,0,5,3,1);
-    GtkWidget *note=gtk_label_new(motion_mode(app)?"Motion challenge: 160 x 120, 10 fps, 4-second loop with a surprise.\nDVB-T 40 kHz: GOP 20. DVB-S/S2 125 ksym/s: try GOP 5.\nSelect the system, rate, FEC and pilots to match your transmitter.":"Contest tip: use 4 fps and GOP 2.\n\nStart transmits the current image. Audio is optional at genius level 3.\nStop and close this window to change the image. Closing also stops the stream.");
+    GtkWidget *note=gtk_label_new(motion_mode(app)?"Motion challenge: 160 x 120, 10 fps, 4-second loop with a surprise.\nDVB-T 40 kHz: GOP 20. DVB-S/S2 125 ksym/s: try GOP 5.\nSelect the system, rate, FEC and pilots to match your transmitter.":"Contest tip: use 4 fps and GOP 4.\n\nStart transmits the current image. Audio is optional at genius level 3.\nStop and close this window to change the image. Closing also stops the stream.");
     gtk_grid_attach(GTK_GRID(grid),note,0,6,3,1);
     d.eit=gtk_check_button_new_with_label("Include EIT programme information (Config → EIT)");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(d.eit),app->udp.video.eit_enabled);

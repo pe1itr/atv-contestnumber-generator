@@ -11,7 +11,7 @@ int main(void) {
     assert(valid_fubk_locator(L"JO21QK86DV12"));
     assert(!valid_fubk_locator(L"JO21ZZ"));
     DatvUdpSettings udp=datv_udp_defaults();
-    assert(udp.port==10000 && udp.video.fps==10 && udp.video.gop==2);
+    assert(udp.port==10000 && udp.video.fps==10 && udp.video.gop==4);
     DatvUdpStatus status={0}; char message[512];
     status.state=DATV_RUNNING; status.refusals=3;
     status.last_refusal_seconds=10; status.seconds=12;

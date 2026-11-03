@@ -203,7 +203,7 @@ int datv_audio_reservation(int bitrate) { return bitrate==48000?141000:bitrate==
 int datv_buffer_ms(DatvSettings s) { return s.buffer_ms?s.buffer_ms:1000; }
 DatvSettings datv_defaults(void) { return (DatvSettings){.bitrate=120000, .seconds=10, .fps=5, .gop=5}; }
 DatvUdpSettings datv_udp_defaults(void) {
-    DatvUdpSettings s={.port=10000,.video={.bitrate=120000,.seconds=10,.fps=10,.gop=2}};
+    DatvUdpSettings s={.port=10000,.video={.bitrate=120000,.seconds=10,.fps=10,.gop=4}};
     return s;
 }
 void datv_udp_status_text(DatvUdpSettings s, DatvUdpStatus status, char *text, size_t size) {

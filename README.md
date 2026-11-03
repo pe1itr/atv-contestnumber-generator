@@ -126,7 +126,9 @@ codec-DLL. Via **Info → OpenH264-licentie** is de bibliotheeklicentie beschikb
 **File → DATV UDP-uitvoer...** opent IP-adres, poort (standaard 10000), TS-bitrate,
 beelden/s en GOP met **Start/Stop**. Start zendt het huidige beeld doorlopend;
 sluiten stopt ook. Gebruik een numeriek unicast IPv4-adres. De UDP-instellingen
-starten met 10 beelden/s en GOP 2. Voor een ander beeld: Stop, venster sluiten,
+starten met 10 beelden/s en GOP 4. Bij lage bitrates: probeer 4 beelden/s en GOP 4
+op de laagste resolutie. Opgeslagen instellingen blijven behouden.
+Voor een ander beeld: Stop, venster sluiten,
 beeld aanpassen en opnieuw Start. Permanente nummeropslag per band volgt later.
 Zie [DATV-testinstructies en technische grenzen](docs/datv.md).
 

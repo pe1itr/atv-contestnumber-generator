@@ -153,6 +153,7 @@ static BOOL CALLBACK drive_window(HWND window,LPARAM unused) {
         if (stage==10) {
             stage=-10; /* Synchronous control changes may dispatch the timer again. */
             check_udp_viewport(window);
+            assert(GetDlgItemInt(window,IDC_UDP_GOP,NULL,FALSE)==4);
             check_dvb(window,IDC_UDP_BITRATE);
             CheckDlgButton(window,IDC_INCLUDE_EIT,BST_CHECKED);
             assert(GetDlgItemInt(window,IDC_UDP_PORT,NULL,FALSE)==10000);
