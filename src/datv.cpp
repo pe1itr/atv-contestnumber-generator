@@ -70,6 +70,11 @@ void timestamp(Bytes &b, uint64_t t) {
     b.push_back(0x21|((t>>29)&14)); b.push_back(t>>22);
     b.push_back(((t>>14)&254)|1); b.push_back(t>>7); b.push_back(((t<<1)&254)|1);
 }
+int activity_probe_seconds(DatvSettings s) {
+    // Exercise two complete animation loops even at GOP 250 / 2 fps,
+    // plus decoder lead-in and changing PSI phases.
+    return std::max(60,(4*s.gop+s.fps-1)/s.fps)+4*((datv_buffer_ms(s)+999)/1000);
+}
 bool encode(Bytes &yuv, int w, int h, DatvSettings s, int qp,
             std::vector<Frame> &frames, int &largest, const std::atomic_bool *stop=nullptr, int limit=0) {
     ISVCEncoder *raw=nullptr;
@@ -106,6 +111,7 @@ bool encode(Bytes &yuv, int w, int h, DatvSettings s, int qp,
     frames.clear(); largest=0;
     for (int i=0; i<(limit?limit:s.seconds*s.fps); ++i) {
         if (stop && stop->load()) return false;
+        if (s.activity_motion) activity_luma(yuv.data(),w,h,static_cast<unsigned>(i),2*s.gop);
         if (s.motion) motion_luma(yuv.data(),static_cast<unsigned>(i));
         pic.uiTimeStamp=static_cast<long long>(i)*1000/s.fps;
         if (i%s.gop==0 && encoder->ForceIntraFrame(true) != 0) return false;
@@ -554,19 +560,23 @@ int datv_write(FILE *output, const uint32_t *rgb, int width, int height,
         std::vector<Frame> frames;
         for (int qp=24; qp<=48; qp+=4) {
             int largest=0;
-            if (!encode(yuv,width,height,s,qp,frames,largest)) {
+            if (!encode(yuv,width,height,s,qp,frames,largest,nullptr,
+                        s.activity_motion?std::max(s.seconds*s.fps,2*s.gop):0)) {
                 std::snprintf(error,256,"OpenH264 could not encode the image."); return 0;
             }
-            if (s.motion) {
-                std::vector<Frame> cycle(frames.begin(),frames.begin()+40);
+            if (s.motion || s.activity_motion) {
+                int count=s.motion?40:2*s.gop;
+                std::vector<Frame> cycle(frames.begin(),frames.begin()+count);
                 Mux probe(cycle,s,call,true);
                 bool fits=true; unsigned char packet[188];
                 // Do not let the finite file's decoder lead-out hide a
                 // cumulative deficit in a continuously repeated animation.
-                for (uint64_t n=0;n<60*uint64_t(s.bitrate)/1504;++n)
+                int seconds=s.activity_motion?activity_probe_seconds(s):60;
+                for (uint64_t n=0;n<uint64_t(seconds)*s.bitrate/1504;++n)
                     if (!probe.next(packet)) { fits=false; break; }
                 if (!fits) continue;
             }
+            if (s.activity_motion) frames.resize(s.seconds*s.fps);
             if (!multiplex(frames,s,call,ts)) continue;
             if (std::fwrite(ts.data(),1,ts.size(),output)!=ts.size() || std::fflush(output)!=0) {
                 std::snprintf(error,256,"Failed to write TS. Check free space and write permissions."); return 0;
@@ -676,7 +686,7 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
             // Consecutive IDR access units must have different idr_pic_id
             // (H.264 7.4.3). Keep two encoder-produced IDRs for GOP=1 so
             // the IDs alternate across template boundaries as well.
-            if (!encode(yuv,w,h,s,qp,frames,largest,&stream->stop,s.motion?40:std::max(2,s.gop))) {
+            if (!encode(yuv,w,h,s,qp,frames,largest,&stream->stop,s.motion?40:s.activity_motion?2*s.gop:std::max(2,s.gop))) {
                 if (stream->stop) break;
                 throw std::runtime_error("OpenH264 could not encode the image.");
             }
@@ -684,6 +694,7 @@ void stream_worker(DatvStream *stream, std::vector<uint32_t> rgb, int w, int h,
             // A finite file's trailing second must never hide a bitrate deficit.
             Mux probe(frames,s,call.c_str(),true);
             uint64_t duration=std::max(30,(3*s.gop+s.fps-1)/s.fps)+4*((datv_buffer_ms(s)+999)/1000);
+            if (s.activity_motion) duration=activity_probe_seconds(s);
             uint64_t count=duration*s.bitrate/1504;
             bool fits=true; unsigned char packet[188];
             first_image_packets=0;

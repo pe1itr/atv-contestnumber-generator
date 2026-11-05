@@ -14,7 +14,7 @@ import tempfile
 import time
 
 
-def verify(data, bitrate, fps, gop, path, width=160, height=120):
+def verify(data, bitrate, fps, gop, path, width=160, height=120, activity=False):
     hashes = None
     cc, pcrs, pts, starts = {}, [], [], []
     for i in range(len(data)//188):
@@ -60,7 +60,9 @@ def verify(data, bitrate, fps, gop, path, width=160, height=120):
         assert result.returncode==0, result.stderr
         hashes = [line.rsplit(",",1)[-1] for line in result.stdout.splitlines() if line and not line.startswith("#")]
         assert len(hashes)==len(pts)-1
-        period=max(2,gop)
+        period=2*gop if activity else max(2,gop)
+        if activity:
+            assert len(set(hashes))>1, "Activity marker did not move"
         assert all(h==hashes[n%period] for n,h in enumerate(hashes))
         if gop==1:
             headers = subprocess.run(["ffmpeg","-v","info","-i",str(path),"-c:v","copy","-bsf:v","trace_headers","-f","null","-"],capture_output=True,text=True,check=True)

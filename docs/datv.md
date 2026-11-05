@@ -695,3 +695,76 @@ of de timing aan een fysieke RF-uitgang.
 moet vooraf ontbreken. De test laat de toepassing de sink aanmaken, speelt een
 lokale toon af en controleert Stop/Start met dezelfde sink en ongewijzigde
 standaardapparaten. Hij laat `ffmix` daarna bestaan, net als de toepassing.
+
+## Activity-kaart en validatie (5 november 2026)
+
+**Image type → Activity** toont alleen roepnaam, locator en frequentieband.
+De gedeelde renderer gebruikt ingebouwde witte DejaVu Sans Bold-letters, met zwart,
+optionele EBU-stroken of een volledige EBU-achtergrond. Bij die achtergrond
+staan zwarte vlakken achter de tekst. De optionele bewegende marker laat de
+tekst vrij; JPG, hoofdpreview en Check image tonen het eerste beeld.
+
+`activity_motion` is onafhankelijk van de bestaande Genius-4-kaart. De encoder
+gebruikt twee gesloten GOPs per lus, minimaal 2 fps en de bestaande bitrate,
+resolutie- en bufferkeuzes. Zowel export als UDP toetst vooraf minstens twee
+volledige lussen plus buffermarge. Ook een korte export doorloopt die controle
+voordat het bestand tot de gevraagde duur wordt beperkt. Configuratieversie 9
+bewaart de twee nieuwe opties; oudere bestanden laden met beide uit.
+
+De verplichte onafhankelijke `udp_ts_validator` vond in de definitieve code en
+uitvoer geen resterende nieuwe blokkades. Het aanvankelijk te korte proefinterval
+bij grote GOP is gecorrigeerd en opnieuw beoordeeld. De Windows-UI-testfixture
+is hersteld: zij initialiseert nu ook de WIC-encoder voor de nieuwe JPG-controle.
+
+Geslaagd: `make all test-linux`, `make test-ts`, `make test-udp`,
+`python3 checks/check_udp.py --windows`, beide configuratie-UI-tests en
+`python3 checks/check_activity.py` (herhaalbaar via `make test-activity`).
+De Activity-suite vergelijkt originele pixels en gedecodeerde beelden tussen
+Linux en Wine en controleert echte UDP-lussen met GOP 1 en 4. Getest zijn onder
+meer 120×68, 160×90, 160×120 en 320×180, zwart/EBU, stilstaand/bewegend,
+korte export en bitrates vanaf 30080 bit/s. Een extra onafhankelijke controle
+met GOP 250 / 2 fps toetste 504 seconden en vijf IDR-beelden, bij 30080 en
+120000 bit/s; beide pasten. De export van één seconde bevatte exact twee beelden.
+
+Gemeten binnen deze scope: PCR-interval maximaal 100,000 ms, berekende
+CBR-PCR-afwijking maximaal 36,742 ns, PAT/PMT-herhaling maximaal 300 ms en
+SDT maximaal 900 ms. Bewegende beelden hebben PTS-stappen van maximaal 500 ms.
+Referenties: [TR 101 290 V1.4.1 §5.2.1–5.2.2, tabellen 5.0a/5.0b](https://www.etsi.org/deliver/etsi_tr/101200_101299/101290/01.04.01_60/tr_101290v010401p.pdf)
+en H.222.0 (08/2023), §2.4.3–2.4.4 en annex A. Logs en captures staan onder
+`build/activity-*`; onafhankelijke metingen in
+`build/activity-independent-measurements.log` en `build/activity-extreme-review.log`.
+
+**Bestaande afwijkingen blijven gelden:** de kleine resoluties, lage framerates
+en Baseline-video zijn geen volledig DVB-SDTV-AVC-profiel; NIT ontbreekt en met
+EIT uit ontbreken ook EIT/TDT. De compacte teststreams bevatten PAT/PMT/SDT,
+zonder NIT/EIT/TDT/TOT. Zie [TS 101 154 V2.10.1 §5.6.2.2–5.6.2.3](https://www.etsi.org/deliver/etsi_ts/101100_101199/101154/02.10.01_60/ts_101154v021001p.pdf)
+en [EN 300 468 V1.20.1 §5.1.4/5.2.3](https://www.etsi.org/deliver/etsi_en/300400_300499/300468/01.20.01_60/en_300468v012001p.pdf).
+**Niet geverifieerd:** fysieke RF/netwerk-PCR-jitter, volledige T-STD/HRD-analyse,
+wraparound, alle parametercombinaties, native Windows en Activity samen met
+audio/EIT/teletekst. Echte ICMP-foutaflevering onder Wine bleef onbewezen;
+foutinjectie slaagde. Nieuwste H.222.0/H.264-edities waren niet volledig
+raadpleegbaar. Geslaagde tests bewijzen geen volledige DVB/ETSI-conformiteit.
+
+De Activity-letters zijn daarna vervangen door proportionele, vloeiende
+DejaVu Sans Bold-glyphs. `tools/embed_activity_font.py` bouwt de hoge-resolutie
+alfamaskers uit `assets/fonts/DejaVuSans-Bold.ttf` in. De gedeelde C-renderer
+berekent de gemiddelde pixeldekking op de gekozen uitvoerresolutie. Daardoor
+zijn afgeronde randen en gewone letterverhoudingen ook zonder runtime-fonts
+identiek op Linux en Windows. De distributielicentie wordt mee ingebouwd.
+
+Hercontrole met dit vloeiende lettertype: beide builds, `make test-linux`
+(inclusief 1118 JPGs), `make test-ts`, `make test-udp`, de Windows-UDP-matrix,
+beide configuratie-UI-tests en de Activity-suite zijn opnieuw geslaagd.
+De nieuwe randdekking, cache-herinitialisatie en maximale roepnaamlengte zijn
+mee gecontroleerd. Beide platforms geven identieke originele en gedecodeerde
+beelden. In de 160×120-proef op 30080 bit/s, 2 fps, GOP 4 koos de encoder
+QP 32 in plaats van QP 40 met het bloklettertype.
+
+De onafhankelijke font-herreview vond geen nieuwe blokkades: PCR maximaal
+100 ms, berekende CBR-PCR-afwijking maximaal 36,742 ns, PAT/PMT maximaal 300 ms,
+SDT maximaal 900 ms en bewegende PTS-stappen maximaal 500 ms. Ook de extreme
+GOP250/2fps-proef is met dit font opnieuw geslaagd. Bewijs staat in
+`build/activity-font-*.log`, waaronder `activity-font-independent-measurements.log`
+en `activity-font-extreme-review.log`. De hierboven genoemde bestaande
+DVB-afwijkingen en ontbrekende RF/native-Windows/ICMP/T-STD-verificatie blijven
+gelden; een ander lettertype verandert het conformiteitsprofiel niet.

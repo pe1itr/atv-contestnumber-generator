@@ -12,7 +12,7 @@
 
 typedef struct {
     GtkWidget *window, *call, *locator, *show, *automatic, *code;
-    GtkWidget *aspect, *resolution, *band, *preview, *status, *inverse, *blue_yellow, *show_sum, *top_code, *ebu_top, *ebu_bottom, *mode, *manual, *new_code;
+    GtkWidget *aspect, *resolution, *band, *preview, *status, *inverse, *blue_yellow, *show_sum, *top_code, *ebu_top, *ebu_bottom, *activity_ebu, *activity_motion, *mode, *manual, *new_code;
     GtkWidget *export_menu, *export_as_menu, *about_menu, *quit_menu;
     GtkWidget *ts_menu, *level1, *level2, *level3, *level4;
     gboolean restoring;
@@ -184,6 +184,31 @@ static int selected_mode(App *app) {
 }
 static gboolean pattern_mode(App *app) { return selected_mode(app)>IMAGE_CONTEST; }
 
+static Resolution selected_resolution(App *app);
+static gboolean activity_motion_enabled(App *app) {
+    return selected_mode(app)==IMAGE_ACTIVITY && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->activity_motion));
+}
+static cairo_surface_t *render_activity(App *app, const char *call, const char *locator) {
+    wchar_t wc[25]={0}, wl[13]={0};
+    for (int i=0;i<24 && call[i];++i) wc[i]=(unsigned char)call[i];
+    for (int i=0;i<12 && locator[i];++i) wl[i]=(unsigned char)locator[i];
+    Resolution r=selected_resolution(app);
+    cairo_surface_t *s=cairo_image_surface_create(CAIRO_FORMAT_RGB24,r.width,r.height);
+    if (cairo_surface_status(s)==CAIRO_STATUS_SUCCESS) {
+        cairo_surface_flush(s);
+        if (!activity_render((uint32_t *)cairo_image_surface_get_data(s),r.width,r.height,wc,wl,
+            gtk_combo_box_get_active(GTK_COMBO_BOX(app->band)),
+            gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->activity_ebu)),
+            gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->ebu_top)),
+            gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->ebu_bottom)),activity_motion_enabled(app))) {
+            cairo_surface_destroy(s);
+            return cairo_image_surface_create(CAIRO_FORMAT_RGB24,-1,-1);
+        }
+        cairo_surface_mark_dirty(s);
+    }
+    return s;
+}
+
 static gboolean save_jpeg(cairo_surface_t *surface, const char *path,
                            gboolean overwrite, GError **error) {
     if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
@@ -294,6 +319,15 @@ static void toggled(GtkWidget *widget, gpointer data) {
     gtk_widget_set_sensitive(app->new_code, !pm && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->automatic)));
     if (widget == app->automatic && !pm && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->automatic))) new_code(NULL, app);
     gtk_widget_set_sensitive(app->locator, pm || gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show)));
+    gboolean activity=selected_mode(app)==IMAGE_ACTIVITY;
+    gtk_widget_set_sensitive(app->activity_ebu,activity);
+    gtk_widget_set_sensitive(app->activity_motion,activity);
+    if (activity) {
+        gtk_widget_set_sensitive(app->band,TRUE);
+        gtk_widget_set_sensitive(app->ebu_top,!gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->activity_ebu)));
+        gtk_widget_set_sensitive(app->ebu_bottom,!gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->activity_ebu)));
+    }
+    app->datv.activity_motion=app->udp.video.activity_motion=activity_motion_enabled(app);
     if (motion_mode(app)) {
         GtkWidget *fixed[]={app->mode,app->aspect,app->resolution,app->band,app->show,app->inverse,app->blue_yellow,app->show_sum,app->top_code,app->ebu_top,app->ebu_bottom};
         for (size_t i=0;i<G_N_ELEMENTS(fixed);++i) gtk_widget_set_sensitive(fixed[i],FALSE);
@@ -307,7 +341,7 @@ static void toggled(GtkWidget *widget, gpointer data) {
 static cairo_surface_t *current_image(App *app) {
     char *call = entry_text(app->call), *locator = entry_text(app->locator);
     char *band = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(app->band));
-    cairo_surface_t *surface = motion_mode(app) ? render_motion(call,gtk_entry_get_text(GTK_ENTRY(app->code)),locator) : pattern_mode(app) ? render_pattern(selected_resolution(app), call, locator, selected_mode(app)) : render(selected_resolution(app), call,
+    cairo_surface_t *surface = selected_mode(app)==IMAGE_ACTIVITY ? render_activity(app,call,locator) : motion_mode(app) ? render_motion(call,gtk_entry_get_text(GTK_ENTRY(app->code)),locator) : pattern_mode(app) ? render_pattern(selected_resolution(app), call, locator, selected_mode(app)) : render(selected_resolution(app), call,
         gtk_entry_get_text(GTK_ENTRY(app->code)), locator,
         gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->show)), band ? band : "",
         gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->inverse)),
@@ -453,7 +487,8 @@ static void output_udp(GtkWidget *widget, gpointer data) {
     }
     g_free(locator);
     Resolution r=selected_resolution(app);
-    const char *invalid=datv_validate(app->udp.video,r.width,r.height);
+    DatvSettings initial=app->udp.video; initial.activity_motion=0;
+    const char *invalid=datv_validate(initial,r.width,r.height);
     if (invalid) { notify_error(app,invalid); g_free(call); return; }
     cairo_surface_t *im=current_image(app);
     if (cairo_surface_status(im)!=CAIRO_STATUS_SUCCESS) {
@@ -547,6 +582,7 @@ static void output_udp(GtkWidget *widget, gpointer data) {
         if (s.video.buffer_ms==1000) s.video.buffer_ms=0;
         s.video.eit_enabled=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(d.eit));
         s.video.motion=motion_mode(app);
+        s.video.activity_motion=activity_motion_enabled(app);
         DatvUdpSettings check=s;
         if (response==3 && !check.ip[0]) g_strlcpy(check.ip,"127.0.0.1",sizeof(check.ip));
         invalid=response==4 ? datv_validate(s.video,r.width,r.height) : datv_udp_validate(check,r.width,r.height);
@@ -586,7 +622,8 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     }
     g_free(locator);
     Resolution r=selected_resolution(app);
-    const char *invalid=datv_validate(app->datv,r.width,r.height);
+    DatvSettings initial=app->datv; initial.activity_motion=0;
+    const char *invalid=datv_validate(initial,r.width,r.height);
     if (invalid) { notify_error(app,invalid); g_free(call); return; }
     GtkWidget *dialog=gtk_dialog_new_with_buttons("DATV: TS test file",GTK_WINDOW(app->window),
         GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,"_Cancel",GTK_RESPONSE_CANCEL,
@@ -627,7 +664,7 @@ static void export_ts(GtkWidget *widget, gpointer data) {
     for (int i=1; i<5; ++i) gtk_spin_button_update(GTK_SPIN_BUTTON(fields[i]));
     app->ts_dvb=dvb_controls_read(&radio_controls);
     app->datv=(DatvSettings){.bitrate=dvb_bitrate(app->ts_dvb),
-        .motion=motion_mode(app),
+        .motion=motion_mode(app), .activity_motion=activity_motion_enabled(app),
         .seconds=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[1])),
         .fps=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[2])),
         .gop=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fields[3])),
@@ -738,7 +775,7 @@ static void generate(GtkWidget *widget, gpointer data) {
     char *locator_suffix = *locator_name ? g_strconcat("-", locator_name, NULL) : g_strdup("");
     g_free(locator_name);
     char *mode_name = utf8(image_modes[selected_mode(app)]);
-    char *name = pm ? g_strdup_printf("%s%s-%s-%dx%d.jpg", call, locator_suffix, mode_name, r.width, r.height) : g_strdup_printf("%s%s-%s-%s-%dx%d%s%s.jpg", call, locator_suffix, gtk_entry_get_text(GTK_ENTRY(app->code)), band_file, r.width, r.height, color_suffix, inverse ? "-inverse" : "");
+    char *name = selected_mode(app)==IMAGE_ACTIVITY ? g_strdup_printf("%s%s-Activity-%s-%dx%d.jpg",call,locator_suffix,band_file,r.width,r.height) : pm ? g_strdup_printf("%s%s-%s-%dx%d.jpg", call, locator_suffix, mode_name, r.width, r.height) : g_strdup_printf("%s%s-%s-%s-%dx%d%s%s.jpg", call, locator_suffix, gtk_entry_get_text(GTK_ENTRY(app->code)), band_file, r.width, r.height, color_suffix, inverse ? "-inverse" : "");
     g_free(locator_suffix); g_free(mode_name);
     char *path = g_build_filename(app->directory, name, NULL);
     if (widget == app->export_as_menu) {
@@ -860,6 +897,8 @@ static AppConfig capture_config(App *app) {
     s.top_code=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->top_code));
     s.ebu_top=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->ebu_top));
     s.ebu_bottom=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->ebu_bottom));
+    s.activity_ebu=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->activity_ebu));
+    s.activity_motion=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->activity_motion));
     s.genius=motion_mode(app)?4:gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level3))?3:
         gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(app->level2))?2:1;
     s.teletext=app->teletext; s.station=app->station; s.ts=app->datv; s.udp=app->udp; s.ts_dvb=app->ts_dvb; s.udp_dvb=app->udp_dvb; return s;
@@ -881,6 +920,8 @@ static void apply_config(App *app, const AppConfig *s) {
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->top_code),s->top_code);
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->ebu_top),s->ebu_top);
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->ebu_bottom),s->ebu_bottom);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->activity_ebu),s->activity_ebu);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->activity_motion),s->activity_motion);
     gtk_entry_set_text(GTK_ENTRY(app->code),s->code);
     app->contest_square[0]=0;
     wchar_t locator[LOCATOR_MAX_LENGTH+1]; read_locator(app,locator);
@@ -1102,6 +1143,10 @@ static void create_ui(App *app) {
     gtk_box_pack_start(GTK_BOX(ebu_row), app->ebu_top, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(ebu_row), app->ebu_bottom, FALSE, FALSE, 0);
     gtk_grid_attach(GTK_GRID(fields), ebu_row, 0, 19, 2, 1);
+    app->activity_ebu=gtk_check_button_new_with_label("Activity: EBU background");
+    app->activity_motion=gtk_check_button_new_with_label("Activity: moving marker (TS/UDP)");
+    gtk_grid_attach(GTK_GRID(fields),app->activity_ebu,0,20,2,1);
+    gtk_grid_attach(GTK_GRID(fields),app->activity_motion,0,21,2,1);
     GtkWidget *frame = gtk_frame_new("Preview");
     app->preview = gtk_drawing_area_new();
     gtk_widget_set_size_request(app->preview, 480, 360);
@@ -1130,6 +1175,8 @@ static void create_ui(App *app) {
     g_signal_connect(app->top_code, "toggled", G_CALLBACK(changed), app);
     g_signal_connect(app->ebu_top, "toggled", G_CALLBACK(changed), app);
     g_signal_connect(app->ebu_bottom, "toggled", G_CALLBACK(changed), app);
+    g_signal_connect(app->activity_ebu,"toggled",G_CALLBACK(toggled),app);
+    g_signal_connect(app->activity_motion,"toggled",G_CALLBACK(toggled),app);
     g_signal_connect(app->new_code, "clicked", G_CALLBACK(new_code), app);
     g_signal_connect(button, "clicked", G_CALLBACK(generate), app);
     g_signal_connect(app->export_menu, "activate", G_CALLBACK(generate), app);

@@ -181,6 +181,16 @@ int main(void) {
     assert(!fseek(f,(long)strlen("# ATV contest number generator\nversion="),SEEK_SET));
     assert(fputc('7',f)!=EOF); assert(!fclose(f));
     assert(config_load(TEST_PATH,&loaded)==-1);
+    /* Version 8 lacks Activity controls; retain old IDs and default them off. */
+    assert(config_save(TEST_PATH,&original)); old_config[0]=0;
+    f=fopen(TEST_PATH,"rb"); assert(f);
+    while (fgets(line,sizeof(line),f)) {
+        if (!strncmp(line,"version=",8)) strcpy(line,"version=8\n");
+        if (strncmp(line,"activity_",9)) strcat(old_config,line);
+    }
+    assert(!fclose(f)); f=fopen(TEST_PATH,"wb"); assert(f);
+    assert(fputs(old_config,f)>=0); assert(!fclose(f));
+    assert(config_load(TEST_PATH,&loaded)==1 && !memcmp(&loaded,&original,sizeof(original)));
     /* Actual v7 pages have none of the grid/carousel/header fields. */
     assert(config_save(TEST_PATH,&original)); old_config[0]=0;
     f=fopen(TEST_PATH,"rb"); assert(f);

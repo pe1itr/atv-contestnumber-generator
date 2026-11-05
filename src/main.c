@@ -180,6 +180,9 @@ static int selected_mode(HWND window) {
     return row>=0 && row<IMAGE_MODE_COUNT ? image_mode_order[row] : IMAGE_CONTEST;
 }
 static int pattern_mode(HWND window) { return selected_mode(window)>IMAGE_CONTEST; }
+static int activity_motion_enabled(HWND window) {
+    return selected_mode(window)==IMAGE_ACTIVITY && IsDlgButtonChecked(window,IDC_ACTIVITY_MOTION)==BST_CHECKED;
+}
 static void locator_changed(HWND window) {
     if (pattern_mode(window) || IsDlgButtonChecked(window, IDC_AUTO) != BST_CHECKED) return;
     wchar_t locator[LOCATOR_MAX_LENGTH+1];
@@ -195,6 +198,15 @@ static void update_mode(HWND window) {
         EnableWindow(GetDlgItem(window, controls[i]), !pm);
     EnableWindow(GetDlgItem(window, IDC_NEW_CODE), !pm && IsDlgButtonChecked(window, IDC_AUTO) == BST_CHECKED);
     EnableWindow(GetDlgItem(window, IDC_LOCATOR), genius_level==4 || pm || IsDlgButtonChecked(window, IDC_SHOW_LOCATOR) == BST_CHECKED);
+    int activity=selected_mode(window)==IMAGE_ACTIVITY;
+    EnableWindow(GetDlgItem(window,IDC_ACTIVITY_EBU),activity);
+    EnableWindow(GetDlgItem(window,IDC_ACTIVITY_MOTION),activity);
+    if (activity) {
+        EnableWindow(GetDlgItem(window,IDC_BAND),TRUE);
+        EnableWindow(GetDlgItem(window,IDC_EBU_TOP),IsDlgButtonChecked(window,IDC_ACTIVITY_EBU)!=BST_CHECKED);
+        EnableWindow(GetDlgItem(window,IDC_EBU_BOTTOM),IsDlgButtonChecked(window,IDC_ACTIVITY_EBU)!=BST_CHECKED);
+    }
+    ts_settings.activity_motion=udp_settings.video.activity_motion=activity_motion_enabled(window);
     const int fixed[]={IDC_MODE,IDC_ASPECT,IDC_RESOLUTION};
     for (size_t i=0;i<sizeof(fixed)/sizeof(fixed[0]);++i) EnableWindow(GetDlgItem(window,fixed[i]),genius_level!=4);
     if (genius_level==4) {
@@ -213,6 +225,24 @@ static HBITMAP render_pattern(Resolution r, const wchar_t *call, const wchar_t *
     void *pixels;
     HBITMAP bitmap = CreateDIBSection(NULL, &info, DIB_RGB_COLORS, &pixels, NULL, 0);
     if (bitmap && !(mode==IMAGE_FUBK ? fubk_render : mode==IMAGE_PM5644 ? pm5644_render : pm5544_render)(pixels, r.width, r.height, call, locator)) {
+        DeleteObject(bitmap); return NULL;
+    }
+    return bitmap;
+}
+
+static HBITMAP render_selected_pattern(HWND window, Resolution r, const wchar_t *call, const wchar_t *locator, int mode) {
+    if (mode!=IMAGE_ACTIVITY) return render_pattern(r,call,locator,mode);
+    BITMAPINFO info={0};
+    info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth=r.width; info.bmiHeader.biHeight=-r.height;
+    info.bmiHeader.biPlanes=1; info.bmiHeader.biBitCount=32; info.bmiHeader.biCompression=BI_RGB;
+    void *pixels;
+    HBITMAP bitmap=CreateDIBSection(NULL,&info,DIB_RGB_COLORS,&pixels,NULL,0);
+    int band=(int)SendDlgItemMessageW(window,IDC_BAND,CB_GETCURSEL,0,0);
+    if (bitmap && !activity_render(pixels,r.width,r.height,call,locator,band,
+        IsDlgButtonChecked(window,IDC_ACTIVITY_EBU)==BST_CHECKED,
+        IsDlgButtonChecked(window,IDC_EBU_TOP)==BST_CHECKED,
+        IsDlgButtonChecked(window,IDC_EBU_BOTTOM)==BST_CHECKED,activity_motion_enabled(window))) {
         DeleteObject(bitmap); return NULL;
     }
     return bitmap;
@@ -458,6 +488,7 @@ static INT_PTR CALLBACK udp_dialog(HWND window,UINT message,WPARAM wp,LPARAM lp)
         if (s.video.buffer_ms<1000 || s.video.buffer_ms>10000) { udp_status_message(window,"Transport buffer must be between 1000 and 10000 ms."); return TRUE; }
         if (s.video.buffer_ms==1000) s.video.buffer_ms=0;
         s.video.motion=genius_level==4;
+        s.video.activity_motion=udp_settings.video.activity_motion;
         s.video.eit_enabled=IsDlgButtonChecked(window,IDC_INCLUDE_EIT)==BST_CHECKED;
         s.video.teletext=teletext_settings;
         s.video.teletext.enabled=IsDlgButtonChecked(window,IDC_INCLUDE_TELETEXT)==BST_CHECKED;
@@ -497,13 +528,14 @@ static void output_udp(HWND window) {
         error(window,L"Enter a valid callsign and locator first (FUBK: at least 6 locator characters). The contest code must have four digits, not all identical or in ascending or descending sequence."); return;
     }
     UdpDialog d={0}; d.size=resolution(window);
-    const char *invalid=datv_validate(udp_settings.video,d.size.width,d.size.height);
+    DatvSettings initial=udp_settings.video; initial.activity_motion=0;
+    const char *invalid=datv_validate(initial,d.size.width,d.size.height);
     if (invalid) { ts_error(window,invalid); return; }
     int band=(int)SendDlgItemMessageW(window,IDC_BAND,CB_GETCURSEL,0,0);
     if (band<0 || band>10) return;
     WideCharToMultiByte(CP_UTF8,0,call,-1,d.call,sizeof(d.call),NULL,NULL);
     WideCharToMultiByte(CP_UTF8,0,locator,-1,d.locator,sizeof(d.locator),NULL,NULL);
-    d.bitmap=pm?render_pattern(d.size,call,locator,selected_mode(window)):render(d.size.width,d.size.height,call,code,locator,show,bands[band],
+    d.bitmap=pm?render_selected_pattern(window,d.size,call,locator,selected_mode(window)):render(d.size.width,d.size.height,call,code,locator,show,bands[band],
         IsDlgButtonChecked(window,IDC_INVERSE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_SHOW_SUM)==BST_CHECKED,
         IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_BLUE_YELLOW)==BST_CHECKED,
         IsDlgButtonChecked(window, IDC_EBU_TOP) == BST_CHECKED,
@@ -597,6 +629,7 @@ static INT_PTR CALLBACK ts_options(HWND window, UINT message, WPARAM wp, LPARAM 
         if (s.buffer_ms<1000 || s.buffer_ms>10000) { error(window,L"Transport buffer must be between 1000 and 10000 ms."); return TRUE; }
         if (s.buffer_ms==1000) s.buffer_ms=0;
         s.motion=genius_level==4;
+        s.activity_motion=ts_settings.activity_motion;
         s.eit_enabled=IsDlgButtonChecked(window,IDC_INCLUDE_EIT)==BST_CHECKED;
         s.teletext=teletext_settings;
         s.teletext.enabled=IsDlgButtonChecked(window,IDC_INCLUDE_TELETEXT)==BST_CHECKED;
@@ -617,7 +650,8 @@ static void export_ts(HWND window) {
         error(window,L"Enter a valid callsign and locator first (FUBK: at least 6 locator characters). The contest code must have four digits, not all identical or in ascending or descending sequence."); return;
     }
     Resolution r=resolution(window);
-    const char *invalid=datv_validate(ts_settings,r.width,r.height);
+    DatvSettings initial=ts_settings; initial.activity_motion=0;
+    const char *invalid=datv_validate(initial,r.width,r.height);
     if (invalid) { ts_error(window,invalid); return; }
     HINSTANCE instance=(HINSTANCE)GetWindowLongPtrW(window,GWLP_HINSTANCE);
     if (DialogBoxParamW(instance,MAKEINTRESOURCEW(IDD_TS),window,ts_options,0)!=IDOK) return;
@@ -637,7 +671,7 @@ static void export_ts(HWND window) {
     job.overwrite=GetFileAttributesW(job.path)!=INVALID_FILE_ATTRIBUTES;
     int band=(int)SendDlgItemMessageW(window,IDC_BAND,CB_GETCURSEL,0,0);
     if (band<0 || band>10) return;
-    job.bitmap=pm?render_pattern(r,call,locator,selected_mode(window)):render(r.width,r.height,call,code,locator,show,bands[band],
+    job.bitmap=pm?render_selected_pattern(window,r,call,locator,selected_mode(window)):render(r.width,r.height,call,code,locator,show,bands[band],
         IsDlgButtonChecked(window,IDC_INVERSE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_SHOW_SUM)==BST_CHECKED,
         IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED,IsDlgButtonChecked(window,IDC_BLUE_YELLOW)==BST_CHECKED,
         IsDlgButtonChecked(window, IDC_EBU_TOP) == BST_CHECKED,
@@ -673,7 +707,8 @@ static void generate(HWND window, BOOL choose_path) {
     wchar_t short_locator[7], locator_suffix[8] = L"";
     filename_locator(short_locator, locator);
     if (short_locator[0]) swprintf(locator_suffix, 8, L"-%ls", short_locator);
-    if (pm) swprintf(filename, 100, L"%ls%ls-%ls-%dx%d.jpg", safe_call, locator_suffix, image_modes[selected_mode(window)], r.width, r.height);
+    if (selected_mode(window)==IMAGE_ACTIVITY) swprintf(filename,100,L"%ls%ls-Activity-%ls-%dx%d.jpg",safe_call,locator_suffix,band_files[band],r.width,r.height);
+    else if (pm) swprintf(filename, 100, L"%ls%ls-%ls-%dx%d.jpg", safe_call, locator_suffix, image_modes[selected_mode(window)], r.width, r.height);
     else swprintf(filename, 100, L"%ls%ls-%ls-%ls-%dx%d%ls%ls.jpg", safe_call, locator_suffix, code, band_files[band], r.width, r.height, contest_color_suffix(blue_yellow), inverse ? L"-inverse" : L"");
     DWORD length = GetModuleFileNameW(NULL, path, MAX_PATH);
     if (!length || length >= MAX_PATH) { error(window, L"The application path is too long."); return; }
@@ -716,7 +751,7 @@ static void generate(HWND window, BOOL choose_path) {
     if (!GetTempFileNameW(directory, L"atv", 0, temporary)) {
         error(window, L"Cannot write to the selected directory. Check write permissions or choose another directory using Export as..."); return;
     }
-    HBITMAP bitmap = pm ? render_pattern(r, call, locator,selected_mode(window)) : render(r.width, r.height, call, code, locator, show, bands[band], inverse,
+    HBITMAP bitmap = pm ? render_selected_pattern(window,r,call,locator,selected_mode(window)) : render(r.width, r.height, call, code, locator, show, bands[band], inverse,
         IsDlgButtonChecked(window, IDC_SHOW_SUM) == BST_CHECKED,
         IsDlgButtonChecked(window, IDC_TOP_CODE) == BST_CHECKED,
         IsDlgButtonChecked(window, IDC_BLUE_YELLOW) == BST_CHECKED,
@@ -742,7 +777,7 @@ static void preview(HWND window, DRAWITEMSTRUCT *item) {
     Resolution r = resolution(window);
     int band = (int)SendDlgItemMessageW(window, IDC_BAND, CB_GETCURSEL, 0, 0);
     if (band < 0 || band > 10) band = 3;
-    HBITMAP bitmap = pattern_mode(window) ? render_pattern(r, call, locator,selected_mode(window)) : render(r.width, r.height, call, code, locator,
+    HBITMAP bitmap = pattern_mode(window) ? render_selected_pattern(window,r,call,locator,selected_mode(window)) : render(r.width, r.height, call, code, locator,
         IsDlgButtonChecked(window, IDC_SHOW_LOCATOR) == BST_CHECKED, bands[band],
         IsDlgButtonChecked(window, IDC_INVERSE) == BST_CHECKED,
         IsDlgButtonChecked(window, IDC_SHOW_SUM) == BST_CHECKED,
@@ -827,6 +862,8 @@ static AppConfig capture_config(HWND window) {
     s.top_code=IsDlgButtonChecked(window,IDC_TOP_CODE)==BST_CHECKED;
     s.ebu_top=IsDlgButtonChecked(window,IDC_EBU_TOP)==BST_CHECKED;
     s.ebu_bottom=IsDlgButtonChecked(window,IDC_EBU_BOTTOM)==BST_CHECKED;
+    s.activity_ebu=IsDlgButtonChecked(window,IDC_ACTIVITY_EBU)==BST_CHECKED;
+    s.activity_motion=IsDlgButtonChecked(window,IDC_ACTIVITY_MOTION)==BST_CHECKED;
     s.teletext=teletext_settings; s.station=station_info; s.genius=genius_level; s.ts=ts_settings; s.udp=udp_settings; s.ts_dvb=ts_dvb; s.udp_dvb=udp_dvb; return s;
 }
 static void apply_config(HWND window,const AppConfig *s) {
@@ -848,6 +885,8 @@ static void apply_config(HWND window,const AppConfig *s) {
     CheckDlgButton(window,IDC_TOP_CODE,s->top_code?BST_CHECKED:BST_UNCHECKED);
     CheckDlgButton(window,IDC_EBU_BOTTOM,s->ebu_bottom?BST_CHECKED:BST_UNCHECKED);
     CheckDlgButton(window,IDC_EBU_TOP,s->ebu_top?BST_CHECKED:BST_UNCHECKED);
+    CheckDlgButton(window,IDC_ACTIVITY_EBU,s->activity_ebu?BST_CHECKED:BST_UNCHECKED);
+    CheckDlgButton(window,IDC_ACTIVITY_MOTION,s->activity_motion?BST_CHECKED:BST_UNCHECKED);
     contest_square[0]=0;
     read_text(window,IDC_LOCATOR,text,LOCATOR_MAX_LENGTH+1);
     locator_square_changed(contest_square,text);
@@ -1006,6 +1045,7 @@ static INT_PTR CALLBACK dialog(HWND window, UINT message, WPARAM wp, LPARAM lp) 
         if (LOWORD(wp) == IDC_NEW_CODE && HIWORD(wp) == BN_CLICKED) new_code(window);
         if (LOWORD(wp) == IDC_GENERATE && HIWORD(wp) == BN_CLICKED) generate(window, FALSE);
         if (LOWORD(wp) == IDC_MODE && HIWORD(wp) == CBN_SELCHANGE) update_mode(window);
+        if ((LOWORD(wp)==IDC_ACTIVITY_EBU || LOWORD(wp)==IDC_ACTIVITY_MOTION) && HIWORD(wp)==BN_CLICKED) update_mode(window);
         if (LOWORD(wp) == IDC_ASPECT && HIWORD(wp) == CBN_SELCHANGE) update_resolutions(window);
         if ((LOWORD(wp) == IDC_AUTO || LOWORD(wp) == IDC_MANUAL) && HIWORD(wp) == BN_CLICKED) {
             SendDlgItemMessageW(window, IDC_CODE, EM_SETREADONLY, IsDlgButtonChecked(window, IDC_AUTO) == BST_CHECKED, 0);

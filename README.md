@@ -56,7 +56,7 @@ toegepaste wijzigingen en stopt een eventuele stream. Na opstarten staat UDP alt
 uit; je start het uitzenden zelf. Ook een automatisch contestnummer wordt bij laden
 behouden. Alleen de huidige kaart wordt opgeslagen, geen afzonderlijke nummers per band.
 
-**Info → Over dit programma** toont het doel, uitleg over het gebruik, de auteur, het versienummer en de compilatiedatum. De huidige versie is **1.11.0**. Versie en auteur staan centraal in `src/app_info.h`; de datum wordt tijdens compilatie vastgelegd en is niet de datum waarop je het programma start.
+**Info → Over dit programma** toont het doel, uitleg over het gebruik, de auteur, het versienummer en de compilatiedatum. De huidige versie is **1.12.0**. Versie en auteur staan centraal in `src/app_info.h`; de datum wordt tijdens compilatie vastgelegd en is niet de datum waarop je het programma start.
 
 ## Gebruik: Contest
 
@@ -295,6 +295,36 @@ naar de gekozen resolutie en JPEG/H.264-compressie kunnen de fijne testpatronen
 veranderen; dit is geen gekalibreerde analoge PAL-signaalgenerator.
 `--ts-pm5644-test` accepteert dezelfde argumenten als `--ts-test` en maakt een
 PM5644-proefbestand zonder GUI of netwerkuitzending.
+
+## Activiteit zonder contestnummer
+
+Kies **Image type → Activity** voor gewone ATV-activiteit. De kaart toont alleen
+**roepnaam, locator en frequentieband**, in grote witte, vloeiend getekende letters (DejaVu Sans Bold). Een
+contestnummer is niet nodig; de contestopties worden uitgeschakeld. Alle
+resoluties en beide beeldverhoudingen blijven beschikbaar, ook 160×120 en
+120×68. Lange portable roepnamen en locators passen automatisch binnen het beeld.
+
+- Zonder kleuropties: witte letters op zwart.
+- **EBU top** en **EBU bottom**: kleurenstroken boven en/of onder.
+- **Activity: EBU background**: volledige EBU-kleurenbalk met zwarte vlakken
+  achter de witte tekst voor contrast. Deze keuze vervangt de losse stroken.
+- **Activity: moving marker**: een klein wit blokje beweegt onder de tekst
+  heen en terug in TS-export en UDP. De tekst blijft stilstaan. De lus duurt
+  twee GOPs; met 4 fps en GOP 4 is dat twee seconden. Minimaal 2 fps is vereist.
+  Het voorbeeld, Check image en JPG tonen het eerste beeld.
+
+Gebruik **Config → Genius level 2** voor TS/UDP met deze kaart. Begin voor
+circa 30 kbit/s met 160×120, zwart als achtergrond, 2 fps en GOP 4;
+controleer het resultaat met **Check image**. Kleuren en beweging kosten extra
+videobits. Pas zo nodig GOP, resolutie of transportbuffer aan. Genius level 4
+blijft de afzonderlijke bewegende contestkaart met contestnummer.
+
+De nieuwe opties worden meegenomen in **Save current settings**. Linux en
+Windows gebruiken dezelfde renderer en hetzelfde ingebouwde lettertype, met
+antialiasing op de uiteindelijke resolutie. Het font en de licentietekst staan
+in `assets/fonts/` en worden ingebouwd; losse fontbestanden zijn bij gebruik
+niet nodig.
+JPG-bestanden heten bijvoorbeeld `LX_PE1ITR_P-JO21QK-Activity-436MHz-160x120.jpg`.
 
 ## Bewegende contestkaart (Genius level 4)
 

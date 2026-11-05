@@ -10,6 +10,10 @@ int fubk_render(uint32_t *pixels, int width, int height,
                 const wchar_t *call, const wchar_t *locator);
 int pm5644_render(uint32_t *pixels, int width, int height,
                   const wchar_t *call, const wchar_t *locator);
+extern const char activity_font_license[];
+int activity_render(uint32_t *pixels, int width, int height,
+                    const wchar_t *call, const wchar_t *locator, int band,
+                    int ebu, int ebu_top, int ebu_bottom, int motion);
 void pm5544_cleanup(void);
 int motion_render(uint32_t *pixels, const wchar_t *call, const wchar_t *code,
                   const wchar_t *locator, unsigned frame);

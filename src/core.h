@@ -6,7 +6,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-enum { IMAGE_CONTEST, IMAGE_PM5544, IMAGE_FUBK, IMAGE_PM5644, IMAGE_MODE_COUNT };
+enum { IMAGE_CONTEST, IMAGE_PM5544, IMAGE_FUBK, IMAGE_PM5644, IMAGE_ACTIVITY, IMAGE_MODE_COUNT };
 extern const wchar_t *const image_modes[IMAGE_MODE_COUNT];
 extern const int image_mode_order[IMAGE_MODE_COUNT];
 extern const wchar_t contest_color_advice[];
@@ -32,6 +32,10 @@ extern const wchar_t *const dvb_guard_names[DVB_GUARD_COUNT];
 DvbSettings dvb_defaults(void);
 DvbSettings motion_dvb_defaults(void);
 DatvSettings motion_defaults(void);
+/* Reserved activity lane; shared RGB/YUV marker geometry. */
+void activity_marker(int width, int height, unsigned frame, unsigned cycle,
+                     int *left, int *top, int *size);
+void activity_luma(unsigned char *yuv, int width, int height, unsigned frame, unsigned cycle);
 /* Bottom 40 rows, limited-range luma. The other rows remain untouched. */
 void motion_luma(unsigned char *y, unsigned frame);
 int motion_options(int count, const char *const *values, DatvSettings *settings,
@@ -47,6 +51,7 @@ typedef struct {
     char call[97], locator[49], code[17]; /* UTF-8 */
     int mode, automatic, aspect, resolution, band;
     int show, inverse, blue_yellow, show_sum, top_code, genius, ebu_top, ebu_bottom;
+    int activity_ebu, activity_motion;
     DatvSettings ts;
     DatvUdpSettings udp;
     StationInfo station;

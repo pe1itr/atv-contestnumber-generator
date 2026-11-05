@@ -109,6 +109,8 @@ static HWND open_app(void) {
 }
 int wmain(void) {
     assert(SUCCEEDED(CoInitializeEx(NULL,COINIT_APARTMENTTHREADED)));
+    assert(SUCCEEDED(CoCreateInstance(&CLSID_WICImagingFactory,NULL,CLSCTX_INPROC_SERVER,
+        &IID_IWICImagingFactory,(void **)&factory)));
     INITCOMMONCONTROLSEX controls={sizeof(controls),ICC_STANDARD_CLASSES}; InitCommonControlsEx(&controls);
     char *path=config_path(); assert(path); AppConfig scratch;
     assert(config_load(path,&scratch)==0); /* Never overwrite a pre-existing config. */
@@ -185,8 +187,25 @@ int wmain(void) {
     assert(!ts_settings.motion && IsWindowEnabled(GetDlgItem(w,IDC_RESOLUTION)));
     assert(GetMenuState(GetSubMenu(GetMenu(w),0),IDM_UDP,MF_BYCOMMAND)==(UINT)-1);
     DestroyWindow(w);
+    wanted=config_defaults(); wanted.mode=IMAGE_ACTIVITY; wanted.genius=2;
+    strcpy(wanted.call,"LX/PE1ITR/P"); strcpy(wanted.locator,"JO21QK"); wanted.code[0]=0;
+    wanted.activity_ebu=1; wanted.activity_motion=1; wanted.ebu_top=wanted.ebu_bottom=1;
+    w=open_app(); apply_config(w,&wanted);
+    assert(!IsWindowEnabled(GetDlgItem(w,IDC_CODE)) && IsWindowEnabled(GetDlgItem(w,IDC_BAND)));
+    assert(IsWindowEnabled(GetDlgItem(w,IDC_LOCATOR)) && !IsWindowEnabled(GetDlgItem(w,IDC_EBU_TOP)));
+    assert(ts_settings.activity_motion && udp_settings.video.activity_motion);
+    HBITMAP card=render_selected_pattern(w,resolution(w),L"LX/PE1ITR/P",L"JO21QK",IMAGE_ACTIVITY); assert(card);
+    assert(SUCCEEDED(save_jpeg(card,L"build/activity-windows-ui.jpg"))); DeleteObject(card);
+    SendMessageW(w,WM_COMMAND,IDM_SAVE_CONFIG,0); DestroyWindow(w);
+    w=open_app(); actual=capture_config(w);
+    assert(actual.mode==IMAGE_ACTIVITY && actual.activity_motion && actual.activity_ebu && !actual.code[0]);
+    assert(actual.ts.activity_motion && actual.udp.video.activity_motion);
+    SendDlgItemMessageW(w,IDC_MODE,CB_SETCURSEL,image_mode_row(IMAGE_CONTEST),0);
+    SendMessageW(w,WM_COMMAND,MAKEWPARAM(IDC_MODE,CBN_SELCHANGE),0);
+    assert(!ts_settings.activity_motion && !udp_settings.video.activity_motion);
+    assert(!IsWindowEnabled(GetDlgItem(w,IDC_ACTIVITY_MOTION))); DestroyWindow(w);
     wchar_t wide[32768]; assert(MultiByteToWideChar(CP_UTF8,0,path,-1,wide,32768));
-    assert(DeleteFileW(wide)); free(path); pm5544_cleanup(); CoUninitialize();
+    assert(DeleteFileW(wide)); free(path); pm5544_cleanup(); IWICImagingFactory_Release(factory); CoUninitialize();
     puts("Windows config UI: save/reopen, all fields, UDP apply without Start, Genius visibility and automatic code preservation OK.");
     return 0;
 }

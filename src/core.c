@@ -79,9 +79,9 @@ void datv_timeline_plot(const DatvTimeline *t, DatvSettings s, int width, int he
     text(ctx,left,173,"* Other: SI, teletext and reserved audio. Video includes TS headers; colours show time allocation.");
 }
 
-const wchar_t *const image_modes[IMAGE_MODE_COUNT] = {L"Contest", L"PM5544", L"FUBK", L"PM5644"};
+const wchar_t *const image_modes[IMAGE_MODE_COUNT] = {L"Contest", L"PM5544", L"FUBK", L"PM5644", L"Activity"};
 /* Display order is independent of the persistent configuration IDs. */
-const int image_mode_order[IMAGE_MODE_COUNT] = {IMAGE_CONTEST, IMAGE_PM5544, IMAGE_PM5644, IMAGE_FUBK};
+const int image_mode_order[IMAGE_MODE_COUNT] = {IMAGE_CONTEST, IMAGE_PM5544, IMAGE_PM5644, IMAGE_FUBK, IMAGE_ACTIVITY};
 int image_mode_row(int mode) {
     for (int row=0; row<IMAGE_MODE_COUNT; ++row)
         if (image_mode_order[row]==mode) return row;
@@ -114,6 +114,26 @@ DatvSettings motion_defaults(void) {
     s.bitrate=dvb_bitrate(motion_dvb_defaults()); s.seconds=4;
     s.fps=10; s.gop=20; s.motion=1;
     return s;
+}
+void activity_marker(int width, int height, unsigned frame, unsigned cycle,
+                     int *left, int *top, int *size) {
+    *size=height*4/100;
+    if (*size<2) *size=2;
+    *top=height*84/100;
+    unsigned half=cycle/2;
+    unsigned phase=half ? frame%cycle : 0;
+    if (phase>half) phase=cycle-phase;
+    *left=width/20+(half ? (int)((width-width/10-*size)*phase/half) : 0);
+}
+void activity_luma(unsigned char *yuv, int width, int height, unsigned frame, unsigned cycle) {
+    int left,top,size;
+    activity_marker(width,height,frame,cycle,&left,&top,&size);
+    int y0=(height*82/100)&~1, y1=((height*90/100)+1)&~1;
+    for (int y=y0;y<y1;++y) for (int x=0;x<width;++x)
+        yuv[y*width+x]=(y>=top && y<top+size && x>=left && x<left+size)?235:16;
+    for (int plane=0;plane<2;++plane)
+        for (int y=y0/2;y<y1/2;++y)
+            memset(yuv+width*height+plane*width*height/4+y*width/2,128,width/2);
 }
 void motion_luma(unsigned char *y, unsigned frame) {
     unsigned phase=frame%40;
@@ -743,6 +763,9 @@ int teletext_import_data(TeletextSettings *page,const unsigned char *data,size_t
     return 1;
 }
 const char *datv_validate(DatvSettings s, int width, int height) {
+    if (s.activity_motion<0 || s.activity_motion>1 || (s.activity_motion && s.motion))
+        return "Invalid activity motion option.";
+    if (s.activity_motion && s.fps<2) return "Activity motion requires at least 2 frames per second.";
     if (s.motion && (s.motion!=1 || width!=160 || height!=120 || s.fps!=10 ||
         (s.gop!=5 && s.gop!=10 && s.gop!=20) || s.seconds<4 ||
         s.audio.bitrate || s.eit_enabled || s.teletext.enabled))
@@ -908,6 +931,7 @@ static const ConfigField config_fields[]={
     CONFIG_INT_FIELD(mode,0,IMAGE_MODE_COUNT-1), CONFIG_INT_FIELD(automatic,0,1), CONFIG_INT_FIELD(aspect,0,1),
     CONFIG_INT_FIELD(resolution,0,RESOLUTION_COUNT-1), CONFIG_INT_FIELD(band,0,10),
     CONFIG_INT_FIELD(show,0,1), CONFIG_INT_FIELD(inverse,0,1), CONFIG_INT_FIELD(blue_yellow,0,1),
+    CONFIG_INT_FIELD(activity_ebu,0,1), CONFIG_INT_FIELD(activity_motion,0,1),
     CONFIG_INT_FIELD(ebu_top,0,1), CONFIG_INT_FIELD(ebu_bottom,0,1),
     CONFIG_INT_FIELD(show_sum,0,1), CONFIG_INT_FIELD(top_code,0,1), CONFIG_INT_FIELD(genius,1,4),
     CONFIG_INT_FIELD(ts.bitrate,DATV_MIN_BITRATE,2000000), CONFIG_INT_FIELD(ts.seconds,1,60),
@@ -1003,6 +1027,7 @@ static int config_valid(const AppConfig *s) {
     if (teletext_validate(&s->teletext)) return 0;
     if (station_validate(&s->station)) return 0;
     DatvUdpSettings udp=s->udp;
+    udp.video.activity_motion=0; /* Editable settings may precede a frame-rate correction. */
     if (!udp.ip[0]) strcpy(udp.ip,"127.0.0.1"); /* An unused destination may be empty. */
     return !datv_udp_validate(udp,160,120) && dvb_bitrate(s->ts_dvb)>0 && dvb_bitrate(s->udp_dvb)>0;
 }
@@ -1049,7 +1074,7 @@ int config_load(const char *path, AppConfig *out) {
         char *value=strchr(line,'=');
         if (!value) { ok=0; break; } *value++=0;
         if (!strcmp(line,"version")) {
-            if (version || (strcmp(value,"1") && strcmp(value,"2") && strcmp(value,"3") && strcmp(value,"4") && strcmp(value,"5") && strcmp(value,"6") && strcmp(value,"7") && strcmp(value,"8"))) { ok=0; break; }
+            if (version || (strcmp(value,"1") && strcmp(value,"2") && strcmp(value,"3") && strcmp(value,"4") && strcmp(value,"5") && strcmp(value,"6") && strcmp(value,"7") && strcmp(value,"8") && strcmp(value,"9"))) { ok=0; break; }
             version=value[0]-'0'; continue;
         }
         size_t i;
@@ -1083,6 +1108,9 @@ int config_load(const char *path, AppConfig *out) {
             config_fields[i].offset==offsetof(AppConfig,ebu_bottom) ||
             config_fields[i].offset==offsetof(AppConfig,ts.buffer_ms) ||
             config_fields[i].offset==offsetof(AppConfig,udp.video.buffer_ms)) required &= ~(UINT64_C(1)<<i);
+    if (version<9) for (size_t i=0;i<CONFIG_FIELDS;++i)
+        if (config_fields[i].offset==offsetof(AppConfig,activity_ebu) ||
+            config_fields[i].offset==offsetof(AppConfig,activity_motion)) required &= ~(UINT64_C(1)<<i);
     if (version<8) for (size_t i=0;i<CONFIG_FIELDS;++i)
         if (config_fields[i].offset==offsetof(AppConfig,teletext.cells) ||
             config_fields[i].offset==offsetof(AppConfig,teletext.header) ||
@@ -1127,6 +1155,7 @@ int config_load(const char *path, AppConfig *out) {
     if (migrated_ts) s.ts.bitrate=dvb_bitrate(s.ts_dvb);
     if (migrated_udp) s.udp.video.bitrate=dvb_bitrate(s.udp_dvb);
     s.ts.motion=s.udp.video.motion=s.genius==4;
+    s.ts.activity_motion=s.udp.video.activity_motion=s.genius!=4 && s.mode==IMAGE_ACTIVITY && s.activity_motion;
     if (!ok || !version || (seen&required)!=required || !config_valid(&s)) return -1;
     if (version<6 && s.resolution>=11) return -1;
     /* Version 1 stored 240px at index 10; version 2 sorts by width. */
@@ -1145,7 +1174,7 @@ int config_save(const char *path, const AppConfig *s) {
     snprintf(temporary,n,"%s.tmp",path);
     FILE *f=config_open(temporary,1);
     if (!f) { free(temporary); return 0; }
-    int ok=fprintf(f,"# ATV contest number generator\nversion=8\n")>=0;
+    int ok=fprintf(f,"# ATV contest number generator\nversion=9\n")>=0;
     for (size_t i=0;i<CONFIG_FIELDS && ok;++i) {
         const ConfigField *field=&config_fields[i]; const char *value=(const char *)s+field->offset;
         ok=(field->size?fprintf(f,"%s=%s\n",field->key,value):

@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "pm_assets.h"
+#include "activity_font.h"
 
 /* Original 5 x 7 block lettering, embedded for identical rendering on both platforms. */
 static const unsigned char glyphs[][7] = {
@@ -67,6 +68,93 @@ static void label(uint32_t *pixels, int width, int height, int source_width, int
         if (column < 5 && index >= 0 && (glyphs[index][row] & (1 << (4-column))))
             pixels[(y0+y)*width+x0+x] = 0x00ffffff;
     }
+}
+
+/* High-resolution coverage masks are shared by both platforms. No font files
+ * or platform font rasterizers are used at runtime. */
+static unsigned char *activity_font_pixels;
+static int activity_font_load(void) {
+    if (activity_font_pixels) return 1;
+    unsigned char *pixels=malloc(ACTIVITY_FONT_SIZE);
+    if (!pixels) return 0;
+    size_t offset=0;
+    for (size_t i=0;i<sizeof(activity_font_runs);i+=3) {
+        size_t count=activity_font_runs[i] | ((size_t)activity_font_runs[i+1]<<8);
+        if (!count || count>ACTIVITY_FONT_SIZE-offset) { free(pixels); return 0; }
+        memset(pixels+offset,activity_font_runs[i+2],count); offset+=count;
+    }
+    if (offset!=ACTIVITY_FONT_SIZE) { free(pixels); return 0; }
+    activity_font_pixels=pixels;
+    return 1;
+}
+
+/* Area coverage, rather than nearest-neighbour scaling, preserves rounded
+ * strokes and smooth edges even at 120x68. Integer weights give identical
+ * pixels on Linux and Windows. */
+static int activity_label(uint32_t *pixels, int w, int h, int top, int bottom, const wchar_t *text) {
+    size_t length=wcslen(text);
+    if (!length || length>24) return 1;
+    unsigned indices[24]; int sw=0, sh=ACTIVITY_FONT_HEIGHT;
+    for (size_t i=0;i<length;++i) {
+        const wchar_t *glyph=wcschr(activity_font_chars,text[i]);
+        if (!glyph) glyph=wcschr(activity_font_chars,L'?');
+        indices[i]=(unsigned)(glyph-activity_font_chars);
+        sw+=(int)activity_font_widths[indices[i]];
+    }
+    int th=(bottom-top)*h/100, tw=sw*th/sh;
+    if (tw>w-w/12) { tw=w-w/12; th=sh*tw/sw; }
+    if (tw<1) tw=1;
+    if (th<1) th=1;
+    unsigned char *source=malloc((size_t)sw*sh);
+    if (!source) return 0;
+    int pen=0;
+    for (size_t i=0;i<length;++i) {
+        int gw=(int)activity_font_widths[indices[i]];
+        const unsigned char *glyph=activity_font_pixels+activity_font_offsets[indices[i]];
+        for (int y=0;y<sh;++y) memcpy(source+y*sw+pen,glyph+y*gw,gw);
+        pen+=gw;
+    }
+    int x0=(w-tw)/2, y0=top*h/100+((bottom-top)*h/100-th)/2;
+    int pad=th/10;
+    if (pad<1) pad=1;
+    for (int y=y0-pad;y<y0+th+pad;++y) for (int x=x0-pad;x<x0+tw+pad;++x)
+        if (x>=0 && x<w && y>=0 && y<h) pixels[y*w+x]=0;
+    for (int y=0;y<th;++y) for (int x=0;x<tw;++x) {
+        int xa=x*sw, xb=(x+1)*sw, ya=y*sh, yb=(y+1)*sh;
+        uint64_t sum=0;
+        for (int sy=ya/th;sy<=(yb-1)/th;++sy) {
+            int wy=(yb<(sy+1)*th?yb:(sy+1)*th)-(ya>sy*th?ya:sy*th);
+            for (int sx=xa/tw;sx<=(xb-1)/tw;++sx) {
+                int wx=(xb<(sx+1)*tw?xb:(sx+1)*tw)-(xa>sx*tw?xa:sx*tw);
+                sum+=(uint64_t)source[sy*sw+sx]*wx*wy;
+            }
+        }
+        unsigned alpha=(unsigned)((sum+(uint64_t)sw*sh/2)/((uint64_t)sw*sh));
+        pixels[(y0+y)*w+x0+x]=alpha*0x010101u;
+    }
+    free(source);
+    return 1;
+}
+int activity_render(uint32_t *pixels, int width, int height,
+                    const wchar_t *call, const wchar_t *locator, int band,
+                    int ebu, int ebu_top, int ebu_bottom, int motion) {
+    if (!pixels || width<16 || height<16 || band<0 || band>10) return 0;
+    if (!activity_font_load()) return 0;
+    for (int y=0;y<height;++y) for (int x=0;x<width;++x) {
+        ContestColor c=ebu_colors[x*EBU_BAR_COUNT/width];
+        pixels[y*width+x]=(ebu || (ebu_top && y<height*9/100) ||
+            (ebu_bottom && y>=height*91/100)) ? ((uint32_t)c.red<<16)|((uint32_t)c.green<<8)|c.blue : 0;
+    }
+    if (!activity_label(pixels,width,height,14,39,call) ||
+        !activity_label(pixels,width,height,44,63,locator) ||
+        !activity_label(pixels,width,height,68,80,bands[band])) return 0;
+    if (motion) {
+        int left,top,size; activity_marker(width,height,0,2,&left,&top,&size);
+        int y0=(height*82/100)&~1, y1=((height*90/100)+1)&~1;
+        for (int y=y0;y<y1;++y) for (int x=0;x<width;++x)
+            pixels[y*width+x]=(y>=top && y<top+size && x>=left && x<left+size)?0xffffff:0;
+    }
+    return 1;
 }
 
 /* Original 7 x 11 lettering for motion: finer strokes at the same line height.
@@ -222,5 +310,6 @@ int pm5644_render(uint32_t *pixels, int width, int height,
 }
 
 void pm5544_cleanup(void) {
+    free(activity_font_pixels); activity_font_pixels=NULL;
     for (int i=0; i<6; ++i) { free(backgrounds[i]); backgrounds[i]=NULL; }
 }

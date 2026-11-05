@@ -22,10 +22,13 @@ dist/atv-contestnummer: src/linux.c src/teletext_linux.h src/quality_linux.h src
 build/pm_assets.h: tools/embed_pm5544.py tools/pm5644_rom.py $(wildcard assets/pm5644/*.inc.h) assets/pm5544.jpg assets/pm5544w.jpg assets/FuBK-Testbild.png assets/FuBK_wide.jpg
 	$(PYTHON) tools/embed_pm5544.py
 
-build/pm5544-linux.o: src/pm5544.c src/pm5544.h src/core.h build/pm_assets.h
+build/activity_font.h: tools/embed_activity_font.py assets/fonts/DejaVuSans-Bold.ttf assets/fonts/LICENSE-DejaVu.txt
+	$(PYTHON) tools/embed_activity_font.py
+
+build/pm5544-linux.o: src/pm5544.c src/pm5544.h src/core.h build/pm_assets.h build/activity_font.h
 	$(HOSTCC) $(CFLAGS) -Ibuild -c src/pm5544.c -o $@
 
-build/pm5544-windows.o: src/pm5544.c src/pm5544.h src/core.h build/pm_assets.h
+build/pm5544-windows.o: src/pm5544.c src/pm5544.h src/core.h build/pm_assets.h build/activity_font.h
 	$(CC) $(CFLAGS) -Ibuild -c src/pm5544.c -o $@
 
 HOSTCC ?= cc
@@ -176,3 +179,12 @@ camera:
 	$(MAKE) -C camera
 test-camera:
 	$(MAKE) -C camera test
+
+build/test-activity: checks/test_activity.cpp src/core.h src/datv.h src/pm5544.h build/core-linux.o build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a
+	$(CXX) $(CXXFLAGS) -Isrc $< build/core-linux.o build/pm5544-linux.o build/datv-linux.o build/openh264-linux/libopenh264.a -lpthread $(AUDIO_LIBS) -o $@
+build/test-activity.exe: checks/test_activity.cpp src/core.h src/datv.h src/pm5544.h build/core-windows.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a
+	$(WINCXX) $(CXXFLAGS) -static -Isrc $< build/core-windows.o build/pm5544-windows.o build/datv-windows.o build/openh264-windows/libopenh264.a -lws2_32 -lwinmm -lwinpthread -lssp -o $@
+
+.PHONY: test-activity
+test-activity: all build/test-activity build/test-activity.exe build/udp-sender build/udp-sender.exe
+	$(PYTHON) checks/check_activity.py
